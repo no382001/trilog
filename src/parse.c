@@ -102,7 +102,7 @@ static const op_prec_t precedence_table[] = {
     {"=:=", 20}, {"=\\=", 20}, {"==", 20},  {"\\==", 20}, {"@<", 20},
     {"@>", 20},  {"@=<", 20},  {"@>=", 20}, {"is", 10},   {"=", 10},
     {"\\=", 10}, {"..", 10},   {"->", 7},   {";", 5},     {"^", 6},
-    {NULL, 0}};
+    {",", 9},    {NULL, 0}};
 
 // ordered longest-first to avoid prefix conflicts
 static const op_pattern_t op_patterns[] = {
@@ -113,7 +113,7 @@ static const op_pattern_t op_patterns[] = {
     {">>", 2, false},  {"<<", 2, false},   {"//", 2, false},  {"/\\", 2, false},
     {"is", 2, true},   {"+", 1, false},    {"*", 1, false},   {"/", 1, false},
     {"<", 1, false},   {">", 1, false},    {"=", 1, false},   {"-", 1, false},
-    {";", 1, false},   {"^", 1, false},    {NULL, 0, false}};
+    {";", 1, false},   {"^", 1, false},    {",", 1, false},   {NULL, 0, false}};
 
 static int get_precedence(const char *op) {
   for (const op_prec_t *p = precedence_table; p->op; p++) {
@@ -136,10 +136,6 @@ static int try_parse_op(prolog_ctx_t *ctx, char *op_out, int max_len) {
       if (isalnum(next) || next == '_')
         continue;
     }
-
-    // special case: minus before digit is negative number, not operator
-    if (pat->text[0] == '-' && pat->len == 1 && isdigit(p[1]))
-      continue;
 
     strncpy(op_out, pat->text, max_len);
     op_out[max_len - 1] = '\0';
@@ -263,21 +259,8 @@ static term_t *parse_primary(prolog_ctx_t *ctx) {
       return NULL;
     }
     skip_ws(ctx);
-    // comma inside parens builds conjunction ','/2
-    while (*ctx->input_ptr == ',') {
-      ctx->input_ptr++;
-      skip_ws(ctx);
-      term_t *rhs = parse_term(ctx);
-      if (!rhs) {
-        if (!parse_has_error(ctx))
-          parse_error(ctx,
-                      "expected term after ',' in parenthesized expression");
-        return NULL;
-      }
-      term_t *conj_args[2] = {inner, rhs};
-      inner = make_func(ctx, ",", conj_args, 2);
-      skip_ws(ctx);
-    }
+    // ',' is now an infix operator, so parse_term above already consumed
+    // any conjunction chain inside the parens.
     if (*ctx->input_ptr != ')') {
       if (*ctx->input_ptr == '\0')
         parse_error_eof(ctx);
@@ -497,7 +480,7 @@ static term_t *parse_primary(prolog_ctx_t *ctx) {
     if (ctx->input_ptr[1] == '+') {
       ctx->input_ptr += 2;
       skip_ws(ctx);
-      term_t *inner = parse_term(ctx);
+      term_t *inner = parse_arg(ctx); // stop before ',' like functor args
       if (!inner) {
         if (*ctx->input_ptr == '\0' && !parse_has_error(ctx))
           parse_error_eof(ctx);
@@ -657,21 +640,34 @@ term_t *parse_term(prolog_ctx_t *ctx) {
 }
 
 // parse_arg: parses a functor argument or list element.
-// Comma is not an infix operator in this parser, so this is equivalent to
-// parse_term — but kept separate for clarity and future changes.
-static term_t *parse_arg(prolog_ctx_t *ctx) { return parse_term(ctx); }
+// Stops before ',' so functor args and list elements are delimited correctly.
+static term_t *parse_arg(prolog_ctx_t *ctx) {
+  term_t *left = parse_primary(ctx);
+  if (!left)
+    return NULL;
+  return parse_infix(ctx, left, 10); // 10 > ',' prec (9), so comma stops arg
+}
 
 void strip_line_comment(char *line) {
-  bool in_string = false;
+  bool in_dq = false, in_sq = false;
   for (char *p = line; *p; p++) {
-    if (in_string) {
+    if (in_dq) {
       if (*p == '\\' && *(p + 1))
         p++;
       else if (*p == '"')
-        in_string = false;
+        in_dq = false;
+    } else if (in_sq) {
+      if (*p == '\\' && *(p + 1))
+        p++; // backslash escape (e.g. \')
+      else if (*p == '\'' && *(p + 1) == '\'')
+        p++; // escaped ''
+      else if (*p == '\'')
+        in_sq = false;
     } else {
       if (*p == '"')
-        in_string = true;
+        in_dq = true;
+      else if (*p == '\'')
+        in_sq = true;
       else if (*p == '%') {
         *p = '\0';
         break;
@@ -681,17 +677,26 @@ void strip_line_comment(char *line) {
 }
 
 bool has_complete_clause(const char *buf) {
-  bool in_string = false;
+  bool in_dq = false, in_sq = false;
   int depth = 0;
   for (const char *p = buf; *p; p++) {
-    if (in_string) {
+    if (in_dq) {
       if (*p == '\\' && *(p + 1))
         p++;
       else if (*p == '"')
-        in_string = false;
+        in_dq = false;
+    } else if (in_sq) {
+      if (*p == '\\' && *(p + 1))
+        p++; // backslash escape (e.g. \')
+      else if (*p == '\'' && *(p + 1) == '\'')
+        p++; // doubled-quote escape ''
+      else if (*p == '\'')
+        in_sq = false;
     } else {
       if (*p == '"') {
-        in_string = true;
+        in_dq = true;
+      } else if (*p == '\'') {
+        in_sq = true;
       } else if (*p == '(' || *p == '[') {
         depth++;
       } else if (*p == ')' || *p == ']') {

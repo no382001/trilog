@@ -93,10 +93,10 @@ bool son(prolog_ctx_t *ctx, goal_stmt_t *cn, int *clause_idx, env_t *env,
 static bool has_more_alternatives(prolog_ctx_t *ctx, term_t *goal, env_t *env,
                                   int from_clause) {
   goal = deref(env, goal);
+  int goal_arity = (goal->type == FUNC) ? goal->arity : 0;
   for (int i = from_clause; i < ctx->db_count; i++) {
     clause_t *c = &ctx->database[i];
     // cheap arity/name check before trying unify
-    int goal_arity = (goal->type == FUNC) ? goal->arity : 0;
     int head_arity = (c->head->type == FUNC) ? c->head->arity : 0;
     if (goal->name == c->head->name && goal_arity == head_arity) {
       return true;
@@ -403,6 +403,10 @@ C:
 
   debug(ctx, "*** Restored: clause_idx=%d, env_mark=%d, cut_point=%d ***\n",
         clause_idx, env_mark, cut_point);
+  // clause_idx == 0 means this was a disjunction choice point (not a clause
+  // retry), so go to A to allow inline handlers (,/2, ->/2, etc.) to run.
+  if (clause_idx == 0)
+    goto A;
   goto B;
 }
 

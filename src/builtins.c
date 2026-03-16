@@ -656,6 +656,23 @@ static builtin_result_t builtin_nl(prolog_ctx_t *ctx, term_t *goal,
   return BUILTIN_OK;
 }
 
+static builtin_result_t builtin_flush_output(prolog_ctx_t *ctx, term_t *goal,
+                                             env_t *env) {
+  (void)goal;
+  (void)env;
+  (void)ctx;
+  fflush(stdout);
+  return BUILTIN_OK;
+}
+
+static builtin_result_t builtin_clear(prolog_ctx_t *ctx, term_t *goal,
+                                      env_t *env) {
+  (void)goal;
+  (void)env;
+  io_write_str(ctx, "\033[2J\033[H");
+  return BUILTIN_OK;
+}
+
 static builtin_result_t builtin_write(prolog_ctx_t *ctx, term_t *goal,
                                       env_t *env) {
   io_write_term(ctx, deref(env, goal->args[0]), env);
@@ -1563,6 +1580,119 @@ static bool get_stream_id(env_t *env, term_t *t, int *id) {
   return term_as_int(t->args[0], id);
 }
 
+// stream write helpers — redirect ctx io hooks to a file stream
+typedef struct {
+  io_hooks_t saved;
+  prolog_ctx_t *ctx;
+  void *file_handle;
+} scap_t;
+
+static void scap_write_str(prolog_ctx_t *ctx, const char *str, void *ud) {
+  (void)ctx;
+  scap_t *c = ud;
+  io_file_write(c->ctx, c->file_handle, str);
+}
+
+static void scap_writef(prolog_ctx_t *ctx, const char *fmt, va_list args,
+                        void *ud) {
+  (void)ctx;
+  scap_t *c = ud;
+  char buf[4096];
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  io_file_write(c->ctx, c->file_handle, buf);
+}
+
+static void scap_start(prolog_ctx_t *ctx, scap_t *c, void *file_handle) {
+  c->saved = ctx->io_hooks;
+  c->ctx = ctx;
+  c->file_handle = file_handle;
+  ctx->io_hooks.write_str = scap_write_str;
+  ctx->io_hooks.writef = scap_writef;
+  ctx->io_hooks.writef_err = scap_writef;
+  ctx->io_hooks.userdata = c;
+}
+
+static void scap_end(prolog_ctx_t *ctx, scap_t *c) { ctx->io_hooks = c->saved; }
+
+// resolve stream arg: NULL = user_output, (void*)-1 = error, else file handle
+static void *resolve_output_stream(prolog_ctx_t *ctx, env_t *env, term_t *arg) {
+  arg = deref(env, arg);
+  if (arg && arg->type == CONST &&
+      (strcmp(arg->name, "user_output") == 0 || strcmp(arg->name, "user") == 0))
+    return NULL;
+  int id;
+  if (!get_stream_id(env, arg, &id))
+    return (void *)-1;
+  if (id < 0 || id >= MAX_OPEN_STREAMS || !ctx->open_streams[id])
+    return (void *)-1;
+  return ctx->open_streams[id];
+}
+
+static builtin_result_t builtin_nl1(prolog_ctx_t *ctx, term_t *goal,
+                                    env_t *env) {
+  void *h = resolve_output_stream(ctx, env, goal->args[0]);
+  if (h == (void *)-1)
+    return BUILTIN_FAIL;
+  if (!h)
+    io_write_str(ctx, "\n");
+  else
+    io_file_write(ctx, h, "\n");
+  return BUILTIN_OK;
+}
+
+static builtin_result_t builtin_write2(prolog_ctx_t *ctx, term_t *goal,
+                                       env_t *env) {
+  void *h = resolve_output_stream(ctx, env, goal->args[0]);
+  if (h == (void *)-1)
+    return BUILTIN_FAIL;
+  term_t *term = deref(env, goal->args[1]);
+  if (!h) {
+    io_write_term(ctx, term, env);
+  } else {
+    scap_t cap;
+    scap_start(ctx, &cap, h);
+    io_write_term(ctx, term, env);
+    scap_end(ctx, &cap);
+  }
+  return BUILTIN_OK;
+}
+
+static builtin_result_t builtin_writeln2(prolog_ctx_t *ctx, term_t *goal,
+                                         env_t *env) {
+  void *h = resolve_output_stream(ctx, env, goal->args[0]);
+  if (h == (void *)-1)
+    return BUILTIN_FAIL;
+  term_t *term = deref(env, goal->args[1]);
+  if (!h) {
+    io_write_term(ctx, term, env);
+    io_write_str(ctx, "\n");
+  } else {
+    scap_t cap;
+    scap_start(ctx, &cap, h);
+    io_write_term(ctx, term, env);
+    scap_end(ctx, &cap);
+    io_file_write(ctx, h, "\n");
+  }
+  return BUILTIN_OK;
+}
+
+static builtin_result_t builtin_writeq2(prolog_ctx_t *ctx, term_t *goal,
+                                        env_t *env) {
+  void *h = resolve_output_stream(ctx, env, goal->args[0]);
+  if (h == (void *)-1)
+    return BUILTIN_FAIL;
+  term_t *term = deref(env, goal->args[1]);
+  if (!h) {
+    io_write_term_quoted(ctx, term, env);
+  } else {
+    scap_t cap;
+    scap_start(ctx, &cap, h);
+    io_write_term_quoted(ctx, term, env);
+    scap_end(ctx, &cap);
+  }
+  return BUILTIN_OK;
+}
+
 static builtin_result_t builtin_with_output_to(prolog_ctx_t *ctx, term_t *goal,
                                                env_t *env) {
   term_t *sink = deref(env, goal->args[0]);
@@ -1793,14 +1923,23 @@ static builtin_result_t builtin_close(prolog_ctx_t *ctx, term_t *goal,
 
 static builtin_result_t builtin_read_line_to_atom(prolog_ctx_t *ctx,
                                                   term_t *goal, env_t *env) {
-  int id;
-  if (!get_stream_id(env, goal->args[0], &id))
-    return BUILTIN_FAIL;
-  if (id < 0 || id >= MAX_OPEN_STREAMS || !ctx->open_streams[id])
-    return BUILTIN_FAIL;
-
   char line[1024];
-  char *r = io_file_read_line(ctx, ctx->open_streams[id], line, sizeof(line));
+  char *r;
+
+  term_t *stream_arg = deref(env, goal->args[0]);
+  bool is_user = stream_arg && stream_arg->type == CONST &&
+                 (strcmp(stream_arg->name, "user_input") == 0 ||
+                  strcmp(stream_arg->name, "user") == 0);
+  if (is_user) {
+    r = io_read_line(ctx, line, sizeof(line));
+  } else {
+    int id;
+    if (!get_stream_id(env, stream_arg, &id))
+      return BUILTIN_FAIL;
+    if (id < 0 || id >= MAX_OPEN_STREAMS || !ctx->open_streams[id])
+      return BUILTIN_FAIL;
+    r = io_file_read_line(ctx, ctx->open_streams[id], line, sizeof(line));
+  }
   term_t *result;
   if (!r) {
     result = make_const(ctx, "end_of_file");
@@ -1808,6 +1947,7 @@ static builtin_result_t builtin_read_line_to_atom(prolog_ctx_t *ctx,
     line[strcspn(line, "\n")] = '\0';
     result = make_const(ctx, line);
   }
+
   return unify(ctx, goal->args[1], result, env) ? BUILTIN_OK : BUILTIN_FAIL;
 }
 
@@ -2016,6 +2156,9 @@ static const builtin_t builtins[] = {
     {"stats", 0, builtin_stats},
     {"make", 0, builtin_make},
     {"nl", 0, builtin_nl},
+    {"flush_output", 0, builtin_flush_output},
+    {"clear", 0, builtin_clear},
+    {"nl", 1, builtin_nl1},
     {"is", 2, builtin_is},
     {"=", 2, builtin_unify},
     {"\\=", 2, builtin_not_unify},
@@ -2040,8 +2183,11 @@ static const builtin_t builtins[] = {
     {"integer", 1, builtin_integer},
     {"is_list", 1, builtin_is_list},
     {"write", 1, builtin_write},
+    {"write", 2, builtin_write2},
     {"writeln", 1, builtin_writeln},
+    {"writeln", 2, builtin_writeln2},
     {"writeq", 1, builtin_writeq},
+    {"writeq", 2, builtin_writeq2},
     {"consult", 1, builtin_consult},
     {"include", 1, builtin_include},
     {"findall", 3, builtin_findall},

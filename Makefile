@@ -38,7 +38,7 @@ $(BUILD_DIR):
 
 .PHONY: clean
 clean:
-	rm -rf $(BUILD_DIR) $(TARGET)
+	rm -rf $(BUILD_DIR) $(TARGET) $(WEB_DIR)/prolog.js $(WEB_DIR)/prolog.wasm
 
 .PHONY: examples
 examples: $(EXAMPLE_BINS)
@@ -82,6 +82,29 @@ quad-junit: $(TARGET)
 		fi \
 	done
 	@echo "JUnit reports written to _build/test-results/"
+
+WEB_DIR := web
+WEB_LIB_SRCS := $(filter-out src/main.c, $(SRCS))
+WEB_ENTRY := $(WEB_DIR)/main_web.c
+
+.PHONY: web
+web: $(WEB_DIR)/prolog.js
+
+$(WEB_DIR)/prolog.js: $(WEB_LIB_SRCS) $(WEB_ENTRY) $(HDRS) core.pl ed.pl
+	emcc $(WEB_LIB_SRCS) $(WEB_ENTRY) \
+	    -o $@ \
+	    -O2 \
+	    -s WASM=1 \
+	    -s ALLOW_MEMORY_GROWTH=1 \
+	    -s ASYNCIFY=1 \
+	    -s EXPORTED_FUNCTIONS='["_prolog_web_init","_prolog_web_eval","_prolog_web_push_line","_prolog_web_is_reading","_prolog_web_take_output"]' \
+	    -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
+	    --embed-file core.pl@/core.pl \
+	    --embed-file ed.pl@/ed.pl
+
+.PHONY: serve-web
+serve-web:
+	php -S localhost:8080 -t $(WEB_DIR)
 
 .PHONY: freestanding
 freestanding: | $(BUILD_DIR)
