@@ -209,6 +209,7 @@ struct prolog_ctx {
   int term_pool_offset; // temp: grows up from 0
   int term_pool_perm;   // perm: grows down from term_pool_size
   int term_pool_floor;  // backtrack cannot reclaim below this
+  int bind_floor;       // LCO cannot reclaim bindings below this
   bool alloc_permanent; // when true, allocate from perm end
 
   char string_pool[MAX_STRING_POOL];

@@ -1,5 +1,17 @@
 #include "platform_impl.h"
 
+// Check if LCO can safely reclaim bindings in [from, to).
+// Unsafe when a named (query) var points to an unbound renamed var —
+// reclaiming would lose the name and prevent print_bindings from showing it.
+static bool lco_safe(env_t *env, int from, int to) {
+  for (int i = from; i < to; i++) {
+    term_t *v = deref(env, env->bindings[i].value);
+    if (v->type == VAR && env->bindings[i].name)
+      return false; // named var → unbound var: would lose the name
+  }
+  return true;
+}
+
 bool son(prolog_ctx_t *ctx, goal_stmt_t *cn, int *clause_idx, env_t *env,
          int env_mark, goal_stmt_t *resolvent) {
   assert(ctx != NULL && "Context is NULL");
@@ -371,7 +383,19 @@ B:
         stack[sp].term_mark = term_mark_b;
         sp++;
         cut_point = sp - 1;
-      } // else reuse the stack frame
+      } else if (ctx->bind_count > env_mark && resolvent.count > 0 &&
+                 env_mark > ctx->bind_floor &&
+                 lco_safe(env, env_mark, ctx->bind_count)) {
+        // LCO: no more alternatives — substitute bindings into resolvent
+        // and reclaim binding slots from this deterministic clause.
+        // Also patch existing binding values that reference vars in the
+        // reclaimed range, so the binding chain doesn't break.
+        for (int j = 0; j < resolvent.count; j++)
+          resolvent.goals[j] = substitute(ctx, env, resolvent.goals[j]);
+        for (int j = 0; j < env_mark; j++)
+          env->bindings[j].value = substitute(ctx, env, env->bindings[j].value);
+        env->count = ctx->bind_count = env_mark;
+      }
 
       cn = resolvent;
       goto A;

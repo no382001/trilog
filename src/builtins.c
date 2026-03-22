@@ -434,8 +434,8 @@ static int collect_solutions(prolog_ctx_t *ctx, term_t *goal, env_t *env,
   }
 
   var_id_map_t _map = {0};
-  template = rename_vars_mapped(ctx, template, &_map);
-  query = rename_vars_mapped(ctx, query, &_map);
+  template = rename_vars_mapped(ctx, substitute(ctx, env, template), &_map);
+  query = rename_vars_mapped(ctx, substitute(ctx, env, query), &_map);
 
   goal_stmt_t goals = goals_alloc(ctx, 1);
   goals.goals[goals.count++] = query;
@@ -447,10 +447,13 @@ static int collect_solutions(prolog_ctx_t *ctx, term_t *goal, env_t *env,
 
   int bind_save = ctx->bind_count;
   int floor_save = ctx->term_pool_floor;
+  int bfloor_save = ctx->bind_floor;
+  ctx->bind_floor = MAX_BINDINGS; // disable LCO inside findall
   env_t query_env = {.bindings = ctx->bindings, .count = ctx->bind_count};
   solve_all(ctx, &goals, &query_env, findall_callback, &state);
   ctx->bind_count = bind_save;
   ctx->term_pool_floor = floor_save;
+  ctx->bind_floor = bfloor_save;
 
   if (fail_on_empty && state.count == 0)
     return BUILTIN_FAIL;
@@ -493,8 +496,8 @@ static builtin_result_t builtin_setof(prolog_ctx_t *ctx, term_t *goal,
   }
 
   var_id_map_t _map = {0};
-  template = rename_vars_mapped(ctx, template, &_map);
-  query = rename_vars_mapped(ctx, query, &_map);
+  template = rename_vars_mapped(ctx, substitute(ctx, env, template), &_map);
+  query = rename_vars_mapped(ctx, substitute(ctx, env, query), &_map);
 
   goal_stmt_t goals = goals_alloc(ctx, 1);
   goals.goals[goals.count++] = query;
@@ -506,10 +509,13 @@ static builtin_result_t builtin_setof(prolog_ctx_t *ctx, term_t *goal,
 
   int bind_save = ctx->bind_count;
   int floor_save = ctx->term_pool_floor;
+  int bfloor_save = ctx->bind_floor;
+  ctx->bind_floor = MAX_BINDINGS; // disable LCO inside setof
   env_t query_env = {.bindings = ctx->bindings, .count = ctx->bind_count};
   solve_all(ctx, &goals, &query_env, findall_callback, &state);
   ctx->bind_count = bind_save;
   ctx->term_pool_floor = floor_save;
+  ctx->bind_floor = bfloor_save;
 
   if (state.count == 0)
     return BUILTIN_FAIL;
