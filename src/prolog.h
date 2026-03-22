@@ -53,7 +53,7 @@ typedef __builtin_va_list va_list;
 #define MAX_OPEN_STREAMS 16
 #define MAX_CLAUSE_VARS 64
 
-#define TERM_POOL_BYTES (4 * 1024 * 1024)
+#define TERM_POOL_BYTES (16 * 1024 * 1024)
 #define PROLOG_CTX_SIZE(pool_bytes) (sizeof(prolog_ctx_t) + (pool_bytes))
 
 typedef struct prolog_ctx prolog_ctx_t;

@@ -90,7 +90,7 @@ WEB_ENTRY := $(WEB_DIR)/main_web.c
 .PHONY: web
 web: $(WEB_DIR)/prolog.js
 
-$(WEB_DIR)/prolog.js: $(WEB_LIB_SRCS) $(WEB_ENTRY) $(HDRS) core.pl ed.pl
+$(WEB_DIR)/prolog.js: $(WEB_LIB_SRCS) $(WEB_ENTRY) $(HDRS) core.pl ledit.pl
 	emcc $(WEB_LIB_SRCS) $(WEB_ENTRY) \
 	    -o $@ \
 	    -O2 \
@@ -100,7 +100,7 @@ $(WEB_DIR)/prolog.js: $(WEB_LIB_SRCS) $(WEB_ENTRY) $(HDRS) core.pl ed.pl
 	    -s EXPORTED_FUNCTIONS='["_prolog_web_init","_prolog_web_eval","_prolog_web_push_line","_prolog_web_is_reading","_prolog_web_take_output"]' \
 	    -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
 	    --embed-file core.pl@/core.pl \
-	    --embed-file ed.pl@/ed.pl
+	    --embed-file ledit.pl@/ledit.pl
 
 .PHONY: serve-web
 serve-web:
