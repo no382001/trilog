@@ -398,6 +398,7 @@ static bool findall_callback(prolog_ctx_t *ctx, env_t *env, void *userdata,
   term_t *args[2] = {val, state->list};
   state->list = make_func(ctx, ".", args, 2);
   state->count++;
+  ctx->term_pool_floor = ctx->term_pool_offset;
   return true;
 }
 
@@ -445,9 +446,11 @@ static int collect_solutions(prolog_ctx_t *ctx, term_t *goal, env_t *env,
                            .count = 0};
 
   int bind_save = ctx->bind_count;
+  int floor_save = ctx->term_pool_floor;
   env_t query_env = {.bindings = ctx->bindings, .count = ctx->bind_count};
   solve_all(ctx, &goals, &query_env, findall_callback, &state);
   ctx->bind_count = bind_save;
+  ctx->term_pool_floor = floor_save;
 
   if (fail_on_empty && state.count == 0)
     return BUILTIN_FAIL;
@@ -502,9 +505,11 @@ static builtin_result_t builtin_setof(prolog_ctx_t *ctx, term_t *goal,
                            .count = 0};
 
   int bind_save = ctx->bind_count;
+  int floor_save = ctx->term_pool_floor;
   env_t query_env = {.bindings = ctx->bindings, .count = ctx->bind_count};
   solve_all(ctx, &goals, &query_env, findall_callback, &state);
   ctx->bind_count = bind_save;
+  ctx->term_pool_floor = floor_save;
 
   if (state.count == 0)
     return BUILTIN_FAIL;
@@ -865,12 +870,45 @@ static builtin_result_t builtin_sub_atom(prolog_ctx_t *ctx, term_t *goal,
 
   term_t *bef_t = deref(env, goal->args[1]);
   term_t *lng_t = deref(env, goal->args[2]);
+  term_t *sub_t = deref(env, goal->args[4]);
 
   int bef_fixed = -1, lng_fixed = -1;
   if (term_as_int(bef_t, &bef_fixed) && bef_fixed < 0)
     return BUILTIN_FAIL;
   if (term_as_int(lng_t, &lng_fixed) && lng_fixed < 0)
     return BUILTIN_FAIL;
+
+  // When Sub is bound, avoid interning every possible substring
+  const char *sub_str = NULL;
+  if (sub_t->type != VAR)
+    sub_str = term_atom_str(sub_t);
+  if (sub_str) {
+    int sub_len = (int)strlen(sub_str);
+    if (lng_fixed >= 0 && lng_fixed != sub_len)
+      return BUILTIN_FAIL;
+    for (int b = (bef_fixed >= 0 ? bef_fixed : 0);
+         b <= (bef_fixed >= 0 ? bef_fixed : len - sub_len); b++) {
+      if (b + sub_len > len)
+        break;
+      if (strncmp(s + b, sub_str, (size_t)sub_len) != 0)
+        continue;
+      int a = len - b - sub_len;
+      char num[16];
+      int env_mark = env->count;
+      snprintf(num, sizeof(num), "%d", b);
+      term_t *bef_v = make_const(ctx, num);
+      snprintf(num, sizeof(num), "%d", sub_len);
+      term_t *lng_v = make_const(ctx, num);
+      snprintf(num, sizeof(num), "%d", a);
+      term_t *aft_v = make_const(ctx, num);
+      if (unify(ctx, goal->args[1], bef_v, env) &&
+          unify(ctx, goal->args[2], lng_v, env) &&
+          unify(ctx, goal->args[3], aft_v, env))
+        return BUILTIN_OK;
+      env->count = ctx->bind_count = env_mark;
+    }
+    return BUILTIN_FAIL;
+  }
 
   for (int b = (bef_fixed >= 0 ? bef_fixed : 0);
        b <= (bef_fixed >= 0 ? bef_fixed : len); b++) {

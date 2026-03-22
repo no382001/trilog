@@ -120,6 +120,7 @@ bool solve_all(prolog_ctx_t *ctx, goal_stmt_t *initial_goals, env_t *env,
   stack[sp].clause_index = 0;
   stack[sp].env_mark = env->count;
   stack[sp].cut_point = 0;
+  stack[sp].term_mark = ctx->term_pool_offset;
   sp++;
 
   int clause_idx;
@@ -314,6 +315,7 @@ A:
       stack[sp].clause_index = 0;
       stack[sp].env_mark = env->count;
       stack[sp].cut_point = cut_point;
+      stack[sp].term_mark = ctx->term_pool_offset;
       sp++;
 
       goal_stmt_t new_cn = goals_alloc(ctx, cn.count);
@@ -354,6 +356,7 @@ B:
   debug(ctx, "\n*** LABEL B: trying son, clause_idx=%d, env_mark=%d ***\n",
         clause_idx, env_mark);
   {
+    int term_mark_b = ctx->term_pool_offset;
     goal_stmt_t resolvent;
     if (son(ctx, &cn, &clause_idx, env, env_mark, &resolvent)) {
       assert(sp < MAX_STACK && "Stack overflow");
@@ -365,6 +368,7 @@ B:
         stack[sp].clause_index = clause_idx;
         stack[sp].env_mark = env_mark;
         stack[sp].cut_point = cut_point;
+        stack[sp].term_mark = term_mark_b;
         sp++;
         cut_point = sp - 1;
       } // else reuse the stack frame
@@ -396,6 +400,12 @@ C:
   clause_idx = stack[sp].clause_index;
   env_mark = stack[sp].env_mark;
   cut_point = stack[sp].cut_point;
+  {
+    int restored = stack[sp].term_mark;
+    if (restored < ctx->term_pool_floor)
+      restored = ctx->term_pool_floor;
+    ctx->term_pool_offset = restored;
+  }
 
   assert(env_mark >= 0 && env_mark <= env->count &&
          "Invalid env_mark from stack");

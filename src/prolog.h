@@ -53,7 +53,7 @@ typedef __builtin_va_list va_list;
 #define MAX_OPEN_STREAMS 16
 #define MAX_CLAUSE_VARS 64
 
-#define TERM_POOL_BYTES (16 * 1024 * 1024)
+#define TERM_POOL_BYTES (4 * 1024 * 1024)
 #define PROLOG_CTX_SIZE(pool_bytes) (sizeof(prolog_ctx_t) + (pool_bytes))
 
 typedef struct prolog_ctx prolog_ctx_t;
@@ -183,6 +183,7 @@ typedef struct {
   int clause_index;
   int env_mark;
   int cut_point; // stack pointer to cut back to
+  int term_mark; // term_pool_offset at push time (restored on backtrack)
 } frame_t;
 
 typedef struct {
@@ -207,6 +208,7 @@ struct prolog_ctx {
   int term_pool_size;   // total bytes
   int term_pool_offset; // temp: grows up from 0
   int term_pool_perm;   // perm: grows down from term_pool_size
+  int term_pool_floor;  // backtrack cannot reclaim below this
   bool alloc_permanent; // when true, allocate from perm end
 
   char string_pool[MAX_STRING_POOL];
