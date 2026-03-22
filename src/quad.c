@@ -208,11 +208,6 @@ static bool run_one_test(prolog_ctx_t *ctx, const char *query_raw,
     display[60] = '\0';
   }
 
-  // save interpreter state
-  int term_mark = ctx->term_pool_offset;
-  int string_mark = ctx->string_pool_offset;
-  int db_mark = ctx->db_count;
-
   // time the query execution
   double t_start = io_clock_monotonic(ctx);
 
@@ -247,12 +242,6 @@ static bool run_one_test(prolog_ctx_t *ctx, const char *query_raw,
   ctx->io_hooks = saved_hooks;
 
   double elapsed = io_clock_monotonic(ctx) - t_start;
-
-  // restore pools if no new clauses were added
-  if (ctx->db_count == db_mark) {
-    ctx->term_pool_offset = term_mark;
-    ctx->string_pool_offset = string_mark;
-  }
 
   // compare results
   bool pass = false;

@@ -762,6 +762,7 @@ bool prolog_exec_query(prolog_ctx_t *ctx, char *query) {
   int term_mark = ctx->term_pool_offset;
   int string_mark = ctx->string_pool_offset;
   int db_mark = ctx->db_count;
+  ctx->db_dirty = false;
 
   goal_stmt_t goals = {0};
   if (!parse_goals(ctx, query, &goals))
@@ -789,12 +790,12 @@ bool prolog_exec_query(prolog_ctx_t *ctx, char *query) {
     io_write_str(ctx, "false\n");
   }
 
-  // restore pools if no new clauses were added
-  // (clauses added via include must keep their terms)
-  if (ctx->db_count == db_mark) {
+  // restore pools if no database modifications happened
+  if (!ctx->db_dirty && ctx->db_count == db_mark) {
     ctx->term_pool_offset = term_mark;
     ctx->string_pool_offset = string_mark;
   }
+  ctx->db_dirty = false;
   return ok;
 }
 
@@ -805,6 +806,7 @@ bool prolog_exec_query_multi(prolog_ctx_t *ctx, char *query,
   int term_mark = ctx->term_pool_offset;
   int string_mark = ctx->string_pool_offset;
   int db_mark = ctx->db_count;
+  ctx->db_dirty = false;
 
   goal_stmt_t goals = {0};
   if (!parse_goals(ctx, query, &goals))
@@ -827,10 +829,11 @@ bool prolog_exec_query_multi(prolog_ctx_t *ctx, char *query,
     found = false;
   }
 
-  if (ctx->db_count == db_mark) {
+  if (!ctx->db_dirty && ctx->db_count == db_mark) {
     ctx->term_pool_offset = term_mark;
     ctx->string_pool_offset = string_mark;
   }
+  ctx->db_dirty = false;
   return found;
 }
 

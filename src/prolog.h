@@ -211,6 +211,7 @@ struct prolog_ctx {
   int term_pool_floor;  // backtrack cannot reclaim below this
   int bind_floor;       // LCO cannot reclaim bindings below this
   bool alloc_permanent; // when true, allocate from perm end
+  bool db_dirty;        // set when assert/retract modifies the database
 
   char string_pool[MAX_STRING_POOL];
   int string_pool_offset;

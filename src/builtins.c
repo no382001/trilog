@@ -1349,6 +1349,7 @@ static builtin_result_t builtin_assertz(prolog_ctx_t *ctx, term_t *goal,
   }
   ctx->alloc_permanent = false;
   ctx->db_count++;
+  ctx->db_dirty = true;
   return BUILTIN_OK;
 }
 
@@ -1370,6 +1371,7 @@ static builtin_result_t builtin_asserta(prolog_ctx_t *ctx, term_t *goal,
     c->head = arg;
   }
   ctx->alloc_permanent = false;
+  ctx->db_dirty = true;
   return BUILTIN_OK;
 }
 
@@ -1409,6 +1411,7 @@ static builtin_result_t builtin_retract(prolog_ctx_t *ctx, term_t *goal,
       for (int j = i; j < ctx->db_count - 1; j++)
         ctx->database[j] = ctx->database[j + 1];
       ctx->db_count--;
+      ctx->db_dirty = true;
       return BUILTIN_OK;
     }
     env->count = ctx->bind_count = env_mark;
@@ -1432,6 +1435,7 @@ static builtin_result_t builtin_retractall(prolog_ctx_t *ctx, term_t *goal,
       for (int j = i; j < ctx->db_count - 1; j++)
         ctx->database[j] = ctx->database[j + 1];
       ctx->db_count--;
+      ctx->db_dirty = true;
     } else {
       i++;
     }
