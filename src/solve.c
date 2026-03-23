@@ -184,28 +184,17 @@ A:
       first_goal->arity == 1) {
     term_t *arg = deref(env, first_goal->args[0]);
     if (arg->type == VAR) {
-      ctx_runtime_error(ctx, "instantiation_error in call/1");
-      term_t *ie = make_const(ctx, "instantiation_error");
-      term_t *ea[2] = {ie, make_const(ctx, "call/1")};
-      ctx->thrown_ball = make_func(ctx, "error", ea, 2);
+      throw_instantiation_error(ctx, "call/1");
       return false;
     }
     if (arg->type != FUNC && arg->type != CONST) {
-      ctx_runtime_error(ctx, "type_error(callable) in call/1");
-      term_t *ta[2] = {make_const(ctx, "callable"), arg};
-      term_t *te = make_func(ctx, "type_error", ta, 2);
-      term_t *ea[2] = {te, make_const(ctx, "call/1")};
-      ctx->thrown_ball = make_func(ctx, "error", ea, 2);
+      throw_type_error(ctx, "callable", arg, "call/1");
       return false;
     }
     if (arg->type == CONST) {
       int dummy;
       if (term_as_int(arg, &dummy)) {
-        ctx_runtime_error(ctx, "type_error(callable,%s) in call/1", arg->name);
-        term_t *ta[2] = {make_const(ctx, "callable"), arg};
-        term_t *te = make_func(ctx, "type_error", ta, 2);
-        term_t *ea[2] = {te, make_const(ctx, "call/1")};
-        ctx->thrown_ball = make_func(ctx, "error", ea, 2);
+        throw_type_error(ctx, "callable", arg, "call/1");
         return false;
       }
     }
