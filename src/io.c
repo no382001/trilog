@@ -235,6 +235,14 @@ double io_clock_monotonic(abclog_ctx_t *ctx) {
   return 0.0;
 }
 
+void abclog_set_yield(abclog_ctx_t *ctx, solve_yield_cb_t cb, int interval,
+                      void *userdata) {
+  ctx->solve_yield_cb = cb;
+  ctx->solve_yield_interval = interval > 0 ? interval : 1;
+  ctx->solve_yield_ud = userdata;
+  ctx->solve_step_counter = 0;
+}
+
 // shared toplevel: non-interactive callback that emits all answers
 bool toplevel_emit_all_cb(abclog_ctx_t *ctx, env_t *env, void *ud,
                           bool has_more) {

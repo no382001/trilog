@@ -141,6 +141,14 @@ bool solve_all(abclog_ctx_t *ctx, goal_stmt_t *initial_goals, env_t *env,
   bool found_any = false;
 
 A:
+  // yield callback: fire every N steps so embedders can inspect stats
+  if (ctx->solve_yield_cb &&
+      ++ctx->solve_step_counter >= ctx->solve_yield_interval) {
+    ctx->solve_step_counter = 0;
+    if (!ctx->solve_yield_cb(ctx, sp, ctx->solve_yield_ud))
+      return found_any;
+  }
+
   if (ctx->debug_enabled) {
     debug(ctx, "\n*** LABEL A: cn has %d goals ***\n", cn.count);
     for (int i = 0; i < cn.count; i++) {

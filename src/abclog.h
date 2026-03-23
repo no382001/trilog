@@ -78,6 +78,11 @@ typedef struct {
   void *userdata;
 } custom_builtin_t;
 
+// yield callback: called periodically during solving.
+// receives current stats snapshot + stack depth.
+// return true to continue, false to abort the query.
+typedef bool (*solve_yield_cb_t)(abclog_ctx_t *ctx, int depth, void *userdata);
+
 typedef void (*io_write_callback_t)(abclog_ctx_t *ctx, const char *str,
                                     void *userdata);
 typedef void (*io_write_term_callback_t)(abclog_ctx_t *ctx, term_t *t,
@@ -255,6 +260,12 @@ struct abclog_ctx {
 
   // open file streams (handles from io_file_open); NULL = free slot
   void *open_streams[MAX_OPEN_STREAMS];
+
+  // solve yield callback
+  solve_yield_cb_t solve_yield_cb;
+  void *solve_yield_ud;
+  int solve_yield_interval; // call every N steps (0 = disabled)
+  int solve_step_counter;
 
   bool has_runtime_error;
   char runtime_error[MAX_ERROR_MSG];
@@ -449,6 +460,10 @@ typedef struct {
 bool toplevel_emit_all_cb(abclog_ctx_t *ctx, env_t *env, void *ud,
                           bool has_more);
 void toplevel_query(abclog_ctx_t *ctx, char *query);
+
+// solve yield: set a callback invoked every `interval` steps during solving
+void abclog_set_yield(abclog_ctx_t *ctx, solve_yield_cb_t cb, int interval,
+                      void *userdata);
 
 // ffi: Register custom builtins
 bool ffi_register_builtin(abclog_ctx_t *ctx, const char *name, int arity,

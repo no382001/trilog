@@ -93,6 +93,44 @@ void abclog_web_init(void) {
   abclog_load_file(g_ctx, "/core.pl");
 }
 
+// yield callback: fires every N steps, lets JS poll stats in real-time.
+// uses emscripten_sleep(0) to yield to the browser event loop so JS can
+// read the stats buffer and update visualizations.
+static bool web_yield_cb(abclog_ctx_t *ctx, int depth, void *ud) {
+  (void)ud;
+  (void)depth;
+  (void)ctx;
+  emscripten_sleep(0); // yield to browser
+  return true;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void abclog_web_set_yield(int interval) {
+  if (!g_ctx) return;
+  if (interval <= 0) {
+    abclog_set_yield(g_ctx, NULL, 0, NULL);
+  } else {
+    abclog_set_yield(g_ctx, web_yield_cb, interval, NULL);
+  }
+}
+
+// stats snapshot: returns pointer to a static int array JS can read.
+// layout: [son_calls, unify_calls, unify_fails, backtracks,
+//          terms_allocated, terms_peak]
+static int g_stats_buf[6];
+
+EMSCRIPTEN_KEEPALIVE
+int *abclog_web_get_stats(void) {
+  if (!g_ctx) return g_stats_buf;
+  g_stats_buf[0] = g_ctx->stats.son_calls;
+  g_stats_buf[1] = g_ctx->stats.unify_calls;
+  g_stats_buf[2] = g_ctx->stats.unify_fails;
+  g_stats_buf[3] = g_ctx->stats.backtracks;
+  g_stats_buf[4] = g_ctx->stats.terms_allocated;
+  g_stats_buf[5] = g_ctx->stats.terms_peak;
+  return g_stats_buf;
+}
+
 EMSCRIPTEN_KEEPALIVE
 const char *abclog_web_eval(const char *query) {
   if (!g_ctx) return "error: not initialized\n";

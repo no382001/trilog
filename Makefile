@@ -97,13 +97,14 @@ $(WEB_DIR)/abclog.js: $(WEB_LIB_SRCS) $(WEB_ENTRY) $(HDRS) core.pl ledit.pl
 	    -s WASM=1 \
 	    -s ALLOW_MEMORY_GROWTH=1 \
 	    -s ASYNCIFY=1 \
-	    -s EXPORTED_FUNCTIONS='["_abclog_web_init","_abclog_web_eval","_abclog_web_push_line","_abclog_web_is_reading","_abclog_web_take_output"]' \
-	    -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
+	    -s EXPORTED_FUNCTIONS='["_abclog_web_init","_abclog_web_eval","_abclog_web_push_line","_abclog_web_is_reading","_abclog_web_take_output","_abclog_web_set_yield","_abclog_web_get_stats"]' \
+	    -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","getValue"]' \
 	    --embed-file core.pl@/core.pl \
 	    --embed-file ledit.pl@/ledit.pl
 
 .PHONY: serve-web
 serve-web:
+	-kill $$(ss -tlnp 'sport = :8080' 2>/dev/null | grep -oP 'pid=\K[0-9]+') 2>/dev/null; sleep 0.2
 	php -S localhost:8080 -t $(WEB_DIR)
 
 .PHONY: freestanding
