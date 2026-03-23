@@ -388,6 +388,19 @@ void throw_permission_error(prolog_ctx_t *ctx, const char *operation,
 void throw_existence_error(prolog_ctx_t *ctx, const char *object_type,
                            term_t *object, const char *context);
 
+// arithmetic (arith.c)
+bool eval_arith(prolog_ctx_t *ctx, term_t *t, env_t *env, int *result,
+                const char *pred);
+builtin_result_t builtin_is(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_lt(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_gt(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_le(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_ge(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_arith_eq(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_arith_ne(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_succ(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_plus(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+
 // i/o hook management
 void io_hooks_init_default(prolog_ctx_t *ctx);
 void io_hooks_set(prolog_ctx_t *ctx, io_hooks_t *hooks);

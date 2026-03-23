@@ -1,114 +1,6 @@
 #include "platform_impl.h"
 
 typedef struct {
-  const char *op;
-  int (*fn)(int, int);
-} arith_op_t;
-
-static int arith_add(int a, int b) { return a + b; }
-static int arith_sub(int a, int b) { return a - b; }
-static int arith_mul(int a, int b) { return a * b; }
-static int arith_div(int a, int b) { return b ? a / b : 0; }
-static int arith_mod(int a, int b) {
-  if (!b)
-    return 0;
-  int r = a % b;
-  // ISO: result has sign of divisor
-  if (r != 0 && (r ^ b) < 0)
-    r += b;
-  return r;
-}
-static int arith_max(int a, int b) { return a > b ? a : b; }
-static int arith_min(int a, int b) { return a < b ? a : b; }
-static int arith_bor(int a, int b) { return a | b; }
-static int arith_band(int a, int b) { return a & b; }
-static int arith_xor(int a, int b) { return a ^ b; }
-static int arith_shr(int a, int b) { return (int)((unsigned)a >> b); }
-static int arith_shl(int a, int b) { return (int)((unsigned)a << b); }
-
-static const arith_op_t arith_ops[] = {
-    {"+", arith_add},    {"-", arith_sub},   {"*", arith_mul},
-    {"/", arith_div},    {"mod", arith_mod}, {"//", arith_div},
-    {"max", arith_max},  {"min", arith_min}, {"\\/", arith_bor},
-    {"/\\", arith_band}, {"xor", arith_xor}, {">>", arith_shr},
-    {"<<", arith_shl},   {NULL, NULL}};
-
-static bool eval_arith(prolog_ctx_t *ctx, term_t *t, env_t *env, int *result,
-                       const char *pred) {
-  t = deref(env, t);
-
-  if (term_as_int(t, result))
-    return true;
-
-  if (t->type == VAR) {
-    throw_instantiation_error(ctx, pred);
-    return false;
-  }
-
-  if (t->type == FUNC && t->arity == 1) {
-    int val;
-    if (!eval_arith(ctx, t->args[0], env, &val, pred))
-      return false;
-    if (strcmp(t->name, "-") == 0) {
-      *result = -val;
-      return true;
-    }
-    if (strcmp(t->name, "abs") == 0) {
-      *result = val < 0 ? -val : val;
-      return true;
-    }
-    if (strcmp(t->name, "\\") == 0) {
-      *result = ~val;
-      return true;
-    }
-    // Unknown unary operator
-    throw_evaluable_error(ctx, t->name, 1, pred);
-    return false;
-  }
-
-  if (t->type == FUNC && t->arity == 2) {
-    int left, right;
-    if (!eval_arith(ctx, t->args[0], env, &left, pred))
-      return false;
-    if (!eval_arith(ctx, t->args[1], env, &right, pred))
-      return false;
-
-    if (right == 0 &&
-        (strcmp(t->name, "/") == 0 || strcmp(t->name, "//") == 0 ||
-         strcmp(t->name, "mod") == 0)) {
-      throw_evaluation_error(ctx, "zero_divisor", pred);
-      return false;
-    }
-
-    for (const arith_op_t *op = arith_ops; op->op; op++) {
-      if (strcmp(t->name, op->op) == 0) {
-        bool overflow = false;
-        if (strcmp(t->name, "+") == 0)
-          overflow = __builtin_add_overflow(left, right, result);
-        else if (strcmp(t->name, "-") == 0)
-          overflow = __builtin_sub_overflow(left, right, result);
-        else if (strcmp(t->name, "*") == 0)
-          overflow = __builtin_mul_overflow(left, right, result);
-        else
-          *result = op->fn(left, right);
-        if (overflow) {
-          throw_evaluation_error(ctx, "int_overflow", pred);
-          return false;
-        }
-        return true;
-      }
-    }
-  }
-
-  // Unknown functor or non-numeric atom: type_error(evaluable, Name/Arity)
-  if (t->type == CONST || t->type == FUNC) {
-    int arity = (t->type == FUNC) ? t->arity : 0;
-    throw_evaluable_error(ctx, t->name, arity, pred);
-  }
-  return false;
-}
-
-typedef struct {
   const char *name;
   int arity; // -1 means any arity, 0 for CONST
   builtin_result_t (*handler)(prolog_ctx_t *ctx, term_t *goal, env_t *env);
@@ -128,18 +20,6 @@ static builtin_result_t builtin_fail(prolog_ctx_t *ctx, term_t *goal,
   (void)goal;
   (void)env;
   return BUILTIN_FAIL;
-}
-
-static builtin_result_t builtin_is(prolog_ctx_t *ctx, term_t *goal,
-                                   env_t *env) {
-  int result;
-  if (!eval_arith(ctx, goal->args[1], env, &result, "is/2"))
-    return ctx->has_runtime_error ? BUILTIN_ERROR : BUILTIN_FAIL;
-  char buf[32];
-  snprintf(buf, sizeof(buf), "%d", result);
-  term_t *result_term = make_const(ctx, buf);
-  return unify(ctx, goal->args[0], result_term, env) ? BUILTIN_OK
-                                                     : BUILTIN_FAIL;
 }
 
 static builtin_result_t builtin_unify(prolog_ctx_t *ctx, term_t *goal,
@@ -287,25 +167,6 @@ static builtin_result_t builtin_term_ge(prolog_ctx_t *ctx, term_t *goal,
   return term_order(goal->args[0], goal->args[1], env) >= 0 ? BUILTIN_OK
                                                             : BUILTIN_FAIL;
 }
-
-#define ARITH_CMP_BUILTIN(name, op, pred)                                      \
-  static builtin_result_t name(prolog_ctx_t *ctx, term_t *goal, env_t *env) {  \
-    int left, right;                                                           \
-    if (!eval_arith(ctx, goal->args[0], env, &left, pred))                     \
-      return ctx->has_runtime_error ? BUILTIN_ERROR : BUILTIN_NOT_HANDLED;     \
-    if (!eval_arith(ctx, goal->args[1], env, &right, pred))                    \
-      return ctx->has_runtime_error ? BUILTIN_ERROR : BUILTIN_NOT_HANDLED;     \
-    return left op right ? BUILTIN_OK : BUILTIN_FAIL;                          \
-  }
-
-ARITH_CMP_BUILTIN(builtin_lt, <, "</2")
-ARITH_CMP_BUILTIN(builtin_gt, >, ">/2")
-ARITH_CMP_BUILTIN(builtin_le, <=, "=</2")
-ARITH_CMP_BUILTIN(builtin_ge, >=, ">=/2")
-ARITH_CMP_BUILTIN(builtin_arith_eq, ==, "=:=/2")
-ARITH_CMP_BUILTIN(builtin_arith_ne, !=, "=\\=/2")
-
-#undef ARITH_CMP_BUILTIN
 
 static builtin_result_t builtin_cut(prolog_ctx_t *ctx, term_t *goal,
                                     env_t *env) {
@@ -1389,60 +1250,6 @@ static builtin_result_t builtin_retractall(prolog_ctx_t *ctx, term_t *goal,
     }
   }
   return BUILTIN_OK;
-}
-
-static builtin_result_t builtin_succ(prolog_ctx_t *ctx, term_t *goal,
-                                     env_t *env) {
-  term_t *x = deref(env, goal->args[0]);
-  term_t *y = deref(env, goal->args[1]);
-  char buf[16];
-  int n;
-  if (x->type != VAR) {
-    if (!term_as_int(x, &n) || n < 0)
-      return BUILTIN_FAIL;
-    snprintf(buf, sizeof(buf), "%d", n + 1);
-    return unify(ctx, goal->args[1], make_const(ctx, buf), env) ? BUILTIN_OK
-                                                                : BUILTIN_FAIL;
-  }
-  if (y->type != VAR) {
-    if (!term_as_int(y, &n) || n < 1)
-      return BUILTIN_FAIL;
-    snprintf(buf, sizeof(buf), "%d", n - 1);
-    return unify(ctx, goal->args[0], make_const(ctx, buf), env) ? BUILTIN_OK
-                                                                : BUILTIN_FAIL;
-  }
-  return BUILTIN_FAIL;
-}
-
-static builtin_result_t builtin_plus(prolog_ctx_t *ctx, term_t *goal,
-                                     env_t *env) {
-  term_t *x = deref(env, goal->args[0]);
-  term_t *y = deref(env, goal->args[1]);
-  term_t *z = deref(env, goal->args[2]);
-  char buf[16];
-  int nx, ny, nz;
-  if (x->type != VAR && y->type != VAR) {
-    if (!term_as_int(x, &nx) || !term_as_int(y, &ny))
-      return BUILTIN_FAIL;
-    snprintf(buf, sizeof(buf), "%d", nx + ny);
-    return unify(ctx, goal->args[2], make_const(ctx, buf), env) ? BUILTIN_OK
-                                                                : BUILTIN_FAIL;
-  }
-  if (x->type != VAR && z->type != VAR) {
-    if (!term_as_int(x, &nx) || !term_as_int(z, &nz))
-      return BUILTIN_FAIL;
-    snprintf(buf, sizeof(buf), "%d", nz - nx);
-    return unify(ctx, goal->args[1], make_const(ctx, buf), env) ? BUILTIN_OK
-                                                                : BUILTIN_FAIL;
-  }
-  if (y->type != VAR && z->type != VAR) {
-    if (!term_as_int(y, &ny) || !term_as_int(z, &nz))
-      return BUILTIN_FAIL;
-    snprintf(buf, sizeof(buf), "%d", nz - ny);
-    return unify(ctx, goal->args[0], make_const(ctx, buf), env) ? BUILTIN_OK
-                                                                : BUILTIN_FAIL;
-  }
-  return BUILTIN_FAIL;
 }
 
 static int list_to_array(env_t *env, term_t *list, term_t **arr, int max) {
