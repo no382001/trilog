@@ -104,7 +104,7 @@ static void exec_query(abclog_ctx_t *ctx, char *query, bool interactive) {
       .interactive = interactive, .want_more = false, .first = true};
   bool found = abclog_exec_query_multi(ctx, query, toplevel_cb, &st);
   if (!ctx->has_runtime_error && (!found || st.want_more))
-    io_write_str(ctx, "false.\n");
+    io_write_str(ctx, "   false.\n");
   ctx->has_runtime_error = false;
 }
 
