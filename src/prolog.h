@@ -401,6 +401,24 @@ builtin_result_t builtin_arith_ne(prolog_ctx_t *ctx, term_t *goal, env_t *env);
 builtin_result_t builtin_succ(prolog_ctx_t *ctx, term_t *goal, env_t *env);
 builtin_result_t builtin_plus(prolog_ctx_t *ctx, term_t *goal, env_t *env);
 
+// streams (streams.c)
+builtin_result_t builtin_nl1(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_write2(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_writeln2(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_writeq2(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_with_output_to(prolog_ctx_t *ctx, term_t *goal,
+                                        env_t *env);
+builtin_result_t builtin_term_to_atom(prolog_ctx_t *ctx, term_t *goal,
+                                      env_t *env);
+builtin_result_t builtin_atom_to_term(prolog_ctx_t *ctx, term_t *goal,
+                                      env_t *env);
+builtin_result_t builtin_open(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_close(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_read_line_to_atom(prolog_ctx_t *ctx, term_t *goal,
+                                           env_t *env);
+builtin_result_t builtin_get_char(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_read_term(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+
 // i/o hook management
 void io_hooks_init_default(prolog_ctx_t *ctx);
 void io_hooks_set(prolog_ctx_t *ctx, io_hooks_t *hooks);
