@@ -234,3 +234,29 @@ double io_clock_monotonic(abclog_ctx_t *ctx) {
     return ctx->io_hooks.clock_monotonic(ctx, ctx->io_hooks.userdata);
   return 0.0;
 }
+
+// shared toplevel: non-interactive callback that emits all answers
+bool toplevel_emit_all_cb(abclog_ctx_t *ctx, env_t *env, void *ud,
+                          bool has_more) {
+  toplevel_state_t *st = ud;
+  io_write_str(ctx, st->first ? "   " : "\n;  ");
+  st->first = false;
+  print_bindings(ctx, env);
+  if (!has_more) {
+    io_write_str(ctx, ".\n");
+    st->done = true;
+    return false;
+  }
+  return true;
+}
+
+// shared toplevel: run query, print all answers, print "   false." if none
+void toplevel_query(abclog_ctx_t *ctx, char *query) {
+  toplevel_state_t st = {.first = true};
+  bool found = abclog_exec_query_multi(ctx, query, toplevel_emit_all_cb, &st);
+  if (!ctx->has_runtime_error && !found)
+    io_write_str(ctx, "   false.\n");
+  else if (found && !st.done)
+    io_write_str(ctx, ".\n"); // terminate last answer that expected more
+  ctx->has_runtime_error = false;
+}

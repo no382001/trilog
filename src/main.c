@@ -62,49 +62,42 @@ static void print_usage(abclog_ctx_t *ctx, const char *prog) {
 
 typedef struct {
   bool interactive;
-  bool want_more; // true if user typed ; on the last solution
-  bool first;     // true before any answer has been printed
-  bool all;       // true if user pressed 'a' to emit all answers
-} toplevel_state_t;
+  bool want_more;
+  bool all;
+  toplevel_state_t base;
+} interactive_state_t;
 
-static bool toplevel_cb(abclog_ctx_t *ctx, env_t *env, void *ud,
-                        bool has_more) {
-  toplevel_state_t *st = ud;
-
-  if (st->first) {
-    io_write_str(ctx, "   ");
-    st->first = false;
-  } else {
-    io_write_str(ctx, ";  ");
-  }
-
-  print_bindings(ctx, env);
+static bool interactive_cb(abclog_ctx_t *ctx, env_t *env, void *ud,
+                           bool has_more) {
+  interactive_state_t *st = ud;
   st->want_more = false;
 
-  if (!st->interactive || !has_more) {
-    io_write_str(ctx, ".\n");
-    return false;
-  }
+  if (!st->interactive || !has_more || st->all)
+    return toplevel_emit_all_cb(ctx, env, &st->base, has_more);
 
-  if (st->all) {
-    io_write_str(ctx, "\n");
-    st->want_more = true;
-    return true;
-  }
+  // interactive: print answer, then wait for keypress
+  io_write_str(ctx, st->base.first ? "   " : ";  ");
+  st->base.first = false;
+  print_bindings(ctx, env);
 
   int c = read_key();
-  io_write_str(ctx, "\n");
-  st->want_more = (c == ';' || c == 'a');
+  st->want_more = (c == ';' || c == 'a' || c == ' ');
   st->all = (c == 'a');
+  if (!st->want_more) {
+    io_write_str(ctx, ".\n");
+    st->base.done = true;
+  }
   return st->want_more;
 }
 
 static void exec_query(abclog_ctx_t *ctx, char *query, bool interactive) {
-  toplevel_state_t st = {
-      .interactive = interactive, .want_more = false, .first = true};
-  bool found = abclog_exec_query_multi(ctx, query, toplevel_cb, &st);
+  interactive_state_t st = {.interactive = interactive,
+                            .base = {.first = true}};
+  bool found = abclog_exec_query_multi(ctx, query, interactive_cb, &st);
   if (!ctx->has_runtime_error && (!found || st.want_more))
     io_write_str(ctx, "   false.\n");
+  else if (found && !st.base.done)
+    io_write_str(ctx, ".\n");
   ctx->has_runtime_error = false;
 }
 

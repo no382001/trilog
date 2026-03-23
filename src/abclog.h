@@ -441,6 +441,15 @@ bool io_file_exists(abclog_ctx_t *ctx, const char *path);
 long long io_file_mtime(abclog_ctx_t *ctx, const char *path);
 double io_clock_monotonic(abclog_ctx_t *ctx);
 
+// toplevel helpers (shared by CLI, web, embedders)
+typedef struct {
+  bool first;
+  bool done; // last answer was terminated with .
+} toplevel_state_t;
+bool toplevel_emit_all_cb(abclog_ctx_t *ctx, env_t *env, void *ud,
+                          bool has_more);
+void toplevel_query(abclog_ctx_t *ctx, char *query);
+
 // ffi: Register custom builtins
 bool ffi_register_builtin(abclog_ctx_t *ctx, const char *name, int arity,
                           builtin_handler_t handler, void *userdata);

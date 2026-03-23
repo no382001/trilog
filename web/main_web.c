@@ -50,21 +50,6 @@ static char *web_read_line(abclog_ctx_t *ctx, char *buf, int size, void *ud) {
   return buf;
 }
 
-typedef struct { bool first; bool want_more; } web_cb_state_t;
-
-static bool web_toplevel_cb(abclog_ctx_t *ctx, env_t *env, void *ud,
-                            bool has_more) {
-  web_cb_state_t *st = ud;
-  st->want_more = false;
-  io_write_str(ctx, st->first ? "   " : ";  ");
-  st->first = false;
-  print_bindings(ctx, env);
-  if (!has_more) { io_write_str(ctx, ".\n"); return false; }
-  io_write_str(ctx, "\n");
-  st->want_more = true;
-  return true;
-}
-
 EMSCRIPTEN_KEEPALIVE
 void abclog_web_push_line(const char *line) {
   int next = (g_input_tail + 1) % INPUT_QUEUE_MAX;
@@ -120,11 +105,6 @@ const char *abclog_web_eval(const char *query) {
   buf[sizeof(buf) - 1] = '\0';
   char *qptr = (strncmp(buf, "?-", 2) == 0) ? buf + 2 : buf;
 
-  web_cb_state_t st = {.first = true, .want_more = false};
-  bool found = abclog_exec_query_multi(g_ctx, qptr, web_toplevel_cb, &st);
-
-  if (!g_ctx->has_runtime_error && (!found || st.want_more))
-    io_write_str(g_ctx, "false.\n");
-  g_ctx->has_runtime_error = false;
+  toplevel_query(g_ctx, qptr);
   return g_out;
 }
