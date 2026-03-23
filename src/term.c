@@ -1,6 +1,6 @@
 #include "platform_impl.h"
 
-void *term_alloc(prolog_ctx_t *ctx, size_t size) {
+void *term_alloc(abclog_ctx_t *ctx, size_t size) {
   size = (size + 7) & ~7; // 8-byte align
   if (ctx->alloc_permanent) {
     int new_perm = ctx->term_pool_perm - (int)size;
@@ -18,13 +18,13 @@ void *term_alloc(prolog_ctx_t *ctx, size_t size) {
   return ptr;
 }
 
-void ctx_reset_terms(prolog_ctx_t *ctx) {
+void ctx_reset_terms(abclog_ctx_t *ctx) {
   ctx->term_pool_offset = 0;
   ctx->term_pool_perm = ctx->term_pool_size;
   ctx->string_pool_offset = 0;
 }
 
-const char *intern_name(prolog_ctx_t *ctx, const char *name) {
+const char *intern_name(abclog_ctx_t *ctx, const char *name) {
   assert(ctx != NULL && "Context is NULL");
   assert(name != NULL && "Name is NULL");
 
@@ -47,7 +47,7 @@ const char *intern_name(prolog_ctx_t *ctx, const char *name) {
   return dest;
 }
 
-term_t *make_const(prolog_ctx_t *ctx, const char *name) {
+term_t *make_const(abclog_ctx_t *ctx, const char *name) {
   assert(name != NULL && "Constant name cannot be NULL");
   term_t *t = term_alloc(ctx, sizeof(term_t)); // no args
   t->type = CONST;
@@ -55,7 +55,7 @@ term_t *make_const(prolog_ctx_t *ctx, const char *name) {
   return t;
 }
 
-term_t *make_var(prolog_ctx_t *ctx, const char *name, int var_id) {
+term_t *make_var(abclog_ctx_t *ctx, const char *name, int var_id) {
   term_t *t = term_alloc(ctx, sizeof(term_t)); // no args
   t->type = VAR;
   if (name)
@@ -64,7 +64,7 @@ term_t *make_var(prolog_ctx_t *ctx, const char *name, int var_id) {
   return t;
 }
 
-term_t *make_func(prolog_ctx_t *ctx, const char *name, term_t **args,
+term_t *make_func(abclog_ctx_t *ctx, const char *name, term_t **args,
                   int arity) {
   assert(name != NULL && "Functor name cannot be NULL");
   assert(arity >= 0 && "Functor arity cannot be negative");
@@ -77,7 +77,7 @@ term_t *make_func(prolog_ctx_t *ctx, const char *name, term_t **args,
   return t;
 }
 
-term_t *make_string(prolog_ctx_t *ctx, const char *str) {
+term_t *make_string(abclog_ctx_t *ctx, const char *str) {
   assert(ctx != NULL && "Context is NULL");
   assert(str != NULL && "String cannot be NULL");
 
@@ -97,7 +97,7 @@ term_t *make_string(prolog_ctx_t *ctx, const char *str) {
 }
 
 // make_term: backward compat wrapper (used in a few places in builtins)
-term_t *make_term(prolog_ctx_t *ctx, term_type type, const char *name,
+term_t *make_term(abclog_ctx_t *ctx, term_type type, const char *name,
                   term_t **args, int arity) {
   assert(ctx != NULL && "Context is NULL");
   assert(name != NULL && "Term name cannot be NULL");
@@ -118,7 +118,7 @@ term_t *make_term(prolog_ctx_t *ctx, term_type type, const char *name,
   return t;
 }
 
-term_t *rename_vars_mapped(prolog_ctx_t *ctx, term_t *t, var_id_map_t *map) {
+term_t *rename_vars_mapped(abclog_ctx_t *ctx, term_t *t, var_id_map_t *map) {
   if (!t)
     return NULL;
   if (t->type == CONST || t->type == STRING)
@@ -143,7 +143,7 @@ term_t *rename_vars_mapped(prolog_ctx_t *ctx, term_t *t, var_id_map_t *map) {
   return make_func(ctx, t->name, args, t->arity);
 }
 
-term_t *rename_vars(prolog_ctx_t *ctx, term_t *t) {
+term_t *rename_vars(abclog_ctx_t *ctx, term_t *t) {
   var_id_map_t map = {0};
   return rename_vars_mapped(ctx, t, &map);
 }

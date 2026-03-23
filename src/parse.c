@@ -1,6 +1,6 @@
 #include "platform_impl.h"
 
-void parse_error(prolog_ctx_t *ctx, const char *fmt, ...) {
+void parse_error(abclog_ctx_t *ctx, const char *fmt, ...) {
   if (ctx->error.has_error)
     return;
 
@@ -14,7 +14,7 @@ void parse_error(prolog_ctx_t *ctx, const char *fmt, ...) {
   va_end(args);
 }
 
-void parse_error_clear(prolog_ctx_t *ctx) {
+void parse_error_clear(abclog_ctx_t *ctx) {
   ctx->error.has_error = false;
   ctx->error.error_is_eof = false;
   ctx->error.message[0] = '\0';
@@ -22,7 +22,7 @@ void parse_error_clear(prolog_ctx_t *ctx) {
   ctx->error.column = 0;
 }
 
-static void parse_error_eof(prolog_ctx_t *ctx) {
+static void parse_error_eof(abclog_ctx_t *ctx) {
   if (ctx->error.has_error)
     return;
   ctx->error.has_error = true;
@@ -33,9 +33,9 @@ static void parse_error_eof(prolog_ctx_t *ctx) {
   ctx->error.column = (int)(ctx->input_ptr - ctx->input_start) + 1;
 }
 
-bool parse_has_error(prolog_ctx_t *ctx) { return ctx->error.has_error; }
+bool parse_has_error(abclog_ctx_t *ctx) { return ctx->error.has_error; }
 
-void parse_error_print(prolog_ctx_t *ctx) {
+void parse_error_print(abclog_ctx_t *ctx) {
   if (!ctx->error.has_error)
     return;
 
@@ -51,7 +51,7 @@ void parse_error_print(prolog_ctx_t *ctx) {
   }
 }
 
-void skip_ws(prolog_ctx_t *ctx) {
+void skip_ws(abclog_ctx_t *ctx) {
   assert(ctx != NULL && "Context is NULL");
   assert(ctx->input_ptr != NULL && "Input pointer is NULL");
   while (*ctx->input_ptr) {
@@ -81,9 +81,9 @@ typedef struct {
   int precedence;
 } op_prec_t;
 
-static term_t *parse_primary(prolog_ctx_t *ctx);
-static term_t *parse_infix(prolog_ctx_t *ctx, term_t *left, int min_prec);
-static term_t *parse_arg(prolog_ctx_t *ctx);
+static term_t *parse_primary(abclog_ctx_t *ctx);
+static term_t *parse_infix(abclog_ctx_t *ctx, term_t *left, int min_prec);
+static term_t *parse_arg(abclog_ctx_t *ctx);
 
 static const op_prec_t precedence_table[] = {
     {"*", 40},   {"/", 40},    {"//", 40},  {"mod", 40},  {">>", 40},
@@ -113,7 +113,7 @@ static int get_precedence(const char *op) {
   return 0;
 }
 
-static int try_parse_op(prolog_ctx_t *ctx, char *op_out, int max_len) {
+static int try_parse_op(abclog_ctx_t *ctx, char *op_out, int max_len) {
   char *p = ctx->input_ptr;
 
   for (const op_pattern_t *pat = op_patterns; pat->text; pat++) {
@@ -135,7 +135,7 @@ static int try_parse_op(prolog_ctx_t *ctx, char *op_out, int max_len) {
   return 0;
 }
 
-term_t *parse_list(prolog_ctx_t *ctx) {
+term_t *parse_list(abclog_ctx_t *ctx) {
   assert(ctx != NULL && "Context is NULL");
   assert(ctx->input_ptr != NULL && "Input pointer is NULL");
 
@@ -220,7 +220,7 @@ term_t *parse_list(prolog_ctx_t *ctx) {
   return result;
 }
 
-static term_t *parse_primary(prolog_ctx_t *ctx) {
+static term_t *parse_primary(abclog_ctx_t *ctx) {
   assert(ctx != NULL && "Context is NULL");
   assert(ctx->input_ptr != NULL && "Input pointer is NULL");
 
@@ -571,7 +571,7 @@ static term_t *parse_primary(prolog_ctx_t *ctx) {
   return make_const(ctx, name);
 }
 
-static term_t *parse_infix(prolog_ctx_t *ctx, term_t *left, int min_prec) {
+static term_t *parse_infix(abclog_ctx_t *ctx, term_t *left, int min_prec) {
   while (1) {
     skip_ws(ctx);
 
@@ -615,7 +615,7 @@ static term_t *parse_infix(prolog_ctx_t *ctx, term_t *left, int min_prec) {
   }
 }
 
-term_t *parse_term(prolog_ctx_t *ctx) {
+term_t *parse_term(abclog_ctx_t *ctx) {
   assert(ctx != NULL && "Context is NULL");
   assert(ctx->input_ptr != NULL && "Input pointer is NULL");
 
@@ -631,7 +631,7 @@ term_t *parse_term(prolog_ctx_t *ctx) {
 
 // parse_arg: parses a functor argument or list element.
 // Stops before ',' so functor args and list elements are delimited correctly.
-static term_t *parse_arg(prolog_ctx_t *ctx) {
+static term_t *parse_arg(abclog_ctx_t *ctx) {
   term_t *left = parse_primary(ctx);
   if (!left)
     return NULL;
@@ -701,7 +701,7 @@ bool has_complete_clause(const char *buf) {
   return false;
 }
 
-static bool parse_goals(prolog_ctx_t *ctx, char *query, goal_stmt_t *goals) {
+static bool parse_goals(abclog_ctx_t *ctx, char *query, goal_stmt_t *goals) {
   parse_error_clear(ctx);
   ctx->has_runtime_error = false;
   ctx->input_ptr = query;
@@ -748,7 +748,7 @@ static bool parse_goals(prolog_ctx_t *ctx, char *query, goal_stmt_t *goals) {
   return true;
 }
 
-bool prolog_exec_query(prolog_ctx_t *ctx, char *query) {
+bool abclog_exec_query(abclog_ctx_t *ctx, char *query) {
   int term_mark = ctx->term_pool_offset;
   int string_mark = ctx->string_pool_offset;
   int db_mark = ctx->db_count;
@@ -791,7 +791,7 @@ bool prolog_exec_query(prolog_ctx_t *ctx, char *query) {
 
 // parse and run a query, calling cb for each solution (no printing).
 // returns true if at least one solution was found.
-bool prolog_exec_query_multi(prolog_ctx_t *ctx, char *query,
+bool abclog_exec_query_multi(abclog_ctx_t *ctx, char *query,
                              solution_callback_t cb, void *ud) {
   int term_mark = ctx->term_pool_offset;
   int string_mark = ctx->string_pool_offset;
@@ -827,13 +827,13 @@ bool prolog_exec_query_multi(prolog_ctx_t *ctx, char *query,
   return found;
 }
 
-static void exec_directive(prolog_ctx_t *ctx, char *buf) {
-  prolog_exec_query(ctx, buf + 2); // skip "?-" or ":-"
+static void exec_directive(abclog_ctx_t *ctx, char *buf) {
+  abclog_exec_query(ctx, buf + 2); // skip "?-" or ":-"
 }
 
 // accumulate one trimmed line into clause[]. if a complete clause is ready,
 // dispatch it and reset. returns false on parse error.
-static bool process_clause_line(prolog_ctx_t *ctx, char *clause, size_t sz,
+static bool process_clause_line(abclog_ctx_t *ctx, char *clause, size_t sz,
                                 const char *trimmed) {
   if (*trimmed == '\0' && clause[0] == '\0')
     return true;
@@ -853,7 +853,7 @@ static bool process_clause_line(prolog_ctx_t *ctx, char *clause, size_t sz,
   return !parse_has_error(ctx);
 }
 
-static bool load_clauses_from_fp(prolog_ctx_t *ctx, void *f,
+static bool load_clauses_from_fp(abclog_ctx_t *ctx, void *f,
                                  const char *label) {
   char line[1024];
   char clause[16384] = {0};
@@ -876,7 +876,7 @@ static bool load_clauses_from_fp(prolog_ctx_t *ctx, void *f,
   return true;
 }
 
-bool prolog_load_file(prolog_ctx_t *ctx, const char *filename) {
+bool abclog_load_file(abclog_ctx_t *ctx, const char *filename) {
   void *f = io_file_open(ctx, filename, "r");
   if (!f) {
     io_writef_err(ctx, "Error: cannot open file '%s'\n", filename);
@@ -931,7 +931,7 @@ bool prolog_load_file(prolog_ctx_t *ctx, const char *filename) {
   return ok;
 }
 
-bool prolog_load_string(prolog_ctx_t *ctx, const char *src) {
+bool abclog_load_string(abclog_ctx_t *ctx, const char *src) {
   char line[1024];
   char clause[16384] = {0};
   ctx->include_depth++; // not tracked for make/0
@@ -958,7 +958,7 @@ bool prolog_load_string(prolog_ctx_t *ctx, const char *src) {
   return true;
 }
 
-void parse_clause(prolog_ctx_t *ctx, char *line) {
+void parse_clause(abclog_ctx_t *ctx, char *line) {
   assert(ctx != NULL && "Context is NULL");
   assert(line != NULL && "Line cannot be NULL");
 

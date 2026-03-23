@@ -1,6 +1,6 @@
 #include "platform_impl.h"
 
-void debug(prolog_ctx_t *ctx, const char *fmt, ...) {
+void debug(abclog_ctx_t *ctx, const char *fmt, ...) {
   if (!ctx->debug_enabled)
     return;
   va_list args;
@@ -11,7 +11,7 @@ void debug(prolog_ctx_t *ctx, const char *fmt, ...) {
   va_end(args);
 }
 
-void print_term_raw(prolog_ctx_t *ctx, term_t *t) {
+void print_term_raw(abclog_ctx_t *ctx, term_t *t) {
   if (!t) {
     io_writef_err(ctx, "NULL");
     return;
@@ -44,7 +44,7 @@ void print_term_raw(prolog_ctx_t *ctx, term_t *t) {
   }
 }
 
-void debug_term_raw(prolog_ctx_t *ctx, term_t *t) {
+void debug_term_raw(abclog_ctx_t *ctx, term_t *t) {
   if (!ctx->debug_enabled)
     return;
   print_term_raw(ctx, t);

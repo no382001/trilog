@@ -3,7 +3,7 @@ _build/*
 *.a
 *.so
 *.dylib
-prolog
+abclog
 *.exe
 *.out
 *.dSYM/
@@ -19,6 +19,6 @@ Thumbs.db
 compile_commands.json
 vgcore.*
 *.log
-prolog
-web/prolog.js
-web/prolog.wasm
+abclog
+web/abclog.js
+web/abclog.wasm

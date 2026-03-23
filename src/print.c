@@ -46,7 +46,7 @@ static bool needs_quoting(const char *name) {
   return false;
 }
 
-static void print_atom(prolog_ctx_t *ctx, const char *name, bool quoted) {
+static void print_atom(abclog_ctx_t *ctx, const char *name, bool quoted) {
   if (quoted && needs_quoting(name)) {
     io_write_str(ctx, "'");
     for (const char *p = name; *p; p++) {
@@ -65,7 +65,7 @@ static void print_atom(prolog_ctx_t *ctx, const char *name, bool quoted) {
   }
 }
 
-void print_term(prolog_ctx_t *ctx, term_t *t, env_t *env, bool quoted) {
+void print_term(abclog_ctx_t *ctx, term_t *t, env_t *env, bool quoted) {
   assert(env != ((void *)0) && "Environment is NULL");
 
   if (!t) {
@@ -159,7 +159,7 @@ void print_term(prolog_ctx_t *ctx, term_t *t, env_t *env, bool quoted) {
   }
 }
 
-void print_bindings(prolog_ctx_t *ctx, env_t *env) {
+void print_bindings(abclog_ctx_t *ctx, env_t *env) {
   bool printed = false;
   for (int i = 0; i < env->count; i++) {
     const char *name = env->bindings[i].name;

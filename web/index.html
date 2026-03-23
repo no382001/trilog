@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Prolog</title>
+  <title>abclog</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
   <style>
     *, *::before, *::after { box-sizing: border-box; }
@@ -24,7 +24,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
-  <script src="prolog.js"></script>
+  <script src="abclog.js"></script>
   <script>
     const term = new Terminal({
       cursorBlink: true,
@@ -60,12 +60,12 @@
     function termWrite(text) { term.write(text.replace(/\n/g, '\r\n')); }
 
     Module.onRuntimeInitialized = function () {
-      const init       = Module.cwrap('prolog_web_init',       null,     []);
-      const eval_      = Module.cwrap('prolog_web_eval',       'string', ['string'], {async: true});
-      const pushLine   = Module.cwrap('prolog_web_push_line',  null,     ['string']);
-      const isReading  = Module.cwrap('prolog_web_is_reading', 'number', []);
-      const takeOutput = Module._prolog_web_take_output
-        ? Module.cwrap('prolog_web_take_output', 'string', [])
+      const init       = Module.cwrap('abclog_web_init',       null,     []);
+      const eval_      = Module.cwrap('abclog_web_eval',       'string', ['string'], {async: true});
+      const pushLine   = Module.cwrap('abclog_web_push_line',  null,     ['string']);
+      const isReading  = Module.cwrap('abclog_web_is_reading', 'number', []);
+      const takeOutput = Module._abclog_web_take_output
+        ? Module.cwrap('abclog_web_take_output', 'string', [])
         : null;
 
       const statusbar = document.getElementById('statusbar');
@@ -95,7 +95,7 @@
             inputLine  = '';
 
             if (isReading()) {
-              // Prolog is blocked in read_line_to_atom — feed the line in
+              // abclog is blocked in read_line_to_atom — feed the line in
               if (takeOutput) { const out = takeOutput(); if (out) termWrite(out); }
               pushLine(line);
             } else if (!evalBusy) {

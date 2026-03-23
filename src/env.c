@@ -11,7 +11,7 @@ term_t *lookup(env_t *env, int var_id) {
   return NULL;
 }
 
-void bind(prolog_ctx_t *ctx, env_t *env, term_t *var, term_t *value) {
+void bind(abclog_ctx_t *ctx, env_t *env, term_t *var, term_t *value) {
   assert(ctx != NULL && "Context is NULL");
   assert(env != NULL && "Environment is NULL");
   assert(var != NULL && "Var is NULL");
@@ -48,7 +48,7 @@ term_t *deref(env_t *env, term_t *t) {
   return t;
 }
 
-term_t *substitute(prolog_ctx_t *ctx, env_t *env, term_t *t) {
+term_t *substitute(abclog_ctx_t *ctx, env_t *env, term_t *t) {
   assert(ctx != NULL && "Context is NULL");
   assert(env != NULL && "Environment is NULL");
 

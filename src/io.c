@@ -1,55 +1,55 @@
 #include "platform_impl.h"
 
-#ifndef PROLOG_FREESTANDING
+#ifndef ABCLOG_FREESTANDING
 
-static void default_write_str(prolog_ctx_t *ctx, const char *str,
+static void default_write_str(abclog_ctx_t *ctx, const char *str,
                               void *userdata) {
   (void)ctx;
   (void)userdata;
   printf("%s", str);
 }
 
-static void default_write_term(prolog_ctx_t *ctx, term_t *t, env_t *env,
+static void default_write_term(abclog_ctx_t *ctx, term_t *t, env_t *env,
                                void *userdata) {
   (void)userdata;
   print_term(ctx, t, env, false);
 }
 
-static void default_writef(prolog_ctx_t *ctx, const char *fmt, va_list args,
+static void default_writef(abclog_ctx_t *ctx, const char *fmt, va_list args,
                            void *userdata) {
   (void)ctx;
   (void)userdata;
   vprintf(fmt, args);
 }
 
-static void default_writef_err(prolog_ctx_t *ctx, const char *fmt, va_list args,
+static void default_writef_err(abclog_ctx_t *ctx, const char *fmt, va_list args,
                                void *userdata) {
   (void)ctx;
   (void)userdata;
   vfprintf(stderr, fmt, args);
 }
 
-static int default_read_char(prolog_ctx_t *ctx, void *userdata) {
+static int default_read_char(abclog_ctx_t *ctx, void *userdata) {
   (void)ctx;
   (void)userdata;
   return getchar();
 }
 
-static char *default_read_line(prolog_ctx_t *ctx, char *buf, int size,
+static char *default_read_line(abclog_ctx_t *ctx, char *buf, int size,
                                void *userdata) {
   (void)ctx;
   (void)userdata;
   return fgets(buf, size, stdin);
 }
 
-static void *default_file_open(prolog_ctx_t *ctx, const char *path,
+static void *default_file_open(abclog_ctx_t *ctx, const char *path,
                                const char *mode, void *userdata) {
   (void)ctx;
   (void)userdata;
   return fopen(path, mode);
 }
 
-static void default_file_close(prolog_ctx_t *ctx, void *handle,
+static void default_file_close(abclog_ctx_t *ctx, void *handle,
                                void *userdata) {
   (void)ctx;
   (void)userdata;
@@ -57,21 +57,21 @@ static void default_file_close(prolog_ctx_t *ctx, void *handle,
     fclose(handle);
 }
 
-static char *default_file_read_line(prolog_ctx_t *ctx, void *handle, char *buf,
+static char *default_file_read_line(abclog_ctx_t *ctx, void *handle, char *buf,
                                     int size, void *userdata) {
   (void)ctx;
   (void)userdata;
   return fgets(buf, size, handle);
 }
 
-static bool default_file_write(prolog_ctx_t *ctx, void *handle, const char *str,
+static bool default_file_write(abclog_ctx_t *ctx, void *handle, const char *str,
                                void *userdata) {
   (void)ctx;
   (void)userdata;
   return fputs(str, handle) >= 0;
 }
 
-static bool default_file_exists(prolog_ctx_t *ctx, const char *path,
+static bool default_file_exists(abclog_ctx_t *ctx, const char *path,
                                 void *userdata) {
   (void)ctx;
   (void)userdata;
@@ -79,7 +79,7 @@ static bool default_file_exists(prolog_ctx_t *ctx, const char *path,
   return stat(path, &st) == 0;
 }
 
-static long long default_file_mtime(prolog_ctx_t *ctx, const char *path,
+static long long default_file_mtime(abclog_ctx_t *ctx, const char *path,
                                     void *userdata) {
   (void)ctx;
   (void)userdata;
@@ -87,7 +87,7 @@ static long long default_file_mtime(prolog_ctx_t *ctx, const char *path,
   return (stat(path, &st) == 0) ? (long long)st.st_mtime : -1LL;
 }
 
-static double default_clock_monotonic(prolog_ctx_t *ctx, void *userdata) {
+static double default_clock_monotonic(abclog_ctx_t *ctx, void *userdata) {
   (void)ctx;
   (void)userdata;
   struct timespec ts;
@@ -95,7 +95,7 @@ static double default_clock_monotonic(prolog_ctx_t *ctx, void *userdata) {
   return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
 }
 
-void io_hooks_init_default(prolog_ctx_t *ctx) {
+void io_hooks_init_default(abclog_ctx_t *ctx) {
   ctx->io_hooks.write_str = default_write_str;
   ctx->io_hooks.write_term = default_write_term;
   ctx->io_hooks.writef = default_writef;
@@ -112,9 +112,9 @@ void io_hooks_init_default(prolog_ctx_t *ctx) {
   ctx->io_hooks.userdata = NULL;
 }
 
-#endif // !PROLOG_FREESTANDING
+#endif // !ABCLOG_FREESTANDING
 
-void io_hooks_set(prolog_ctx_t *ctx, io_hooks_t *hooks) {
+void io_hooks_set(abclog_ctx_t *ctx, io_hooks_t *hooks) {
   if (hooks->write_str)
     ctx->io_hooks.write_str = hooks->write_str;
   if (hooks->write_term)
@@ -145,23 +145,23 @@ void io_hooks_set(prolog_ctx_t *ctx, io_hooks_t *hooks) {
   ctx->io_hooks.userdata = hooks->userdata;
 }
 
-void io_write_str(prolog_ctx_t *ctx, const char *str) {
+void io_write_str(abclog_ctx_t *ctx, const char *str) {
   if (ctx->io_hooks.write_str) {
     ctx->io_hooks.write_str(ctx, str, ctx->io_hooks.userdata);
   }
 }
 
-void io_write_term(prolog_ctx_t *ctx, term_t *t, env_t *env) {
+void io_write_term(abclog_ctx_t *ctx, term_t *t, env_t *env) {
   if (ctx->io_hooks.write_term) {
     ctx->io_hooks.write_term(ctx, t, env, ctx->io_hooks.userdata);
   }
 }
 
-void io_write_term_quoted(prolog_ctx_t *ctx, term_t *t, env_t *env) {
+void io_write_term_quoted(abclog_ctx_t *ctx, term_t *t, env_t *env) {
   print_term(ctx, t, env, true);
 }
 
-void io_writef(prolog_ctx_t *ctx, const char *fmt, ...) {
+void io_writef(abclog_ctx_t *ctx, const char *fmt, ...) {
   if (ctx->io_hooks.writef) {
     va_list args;
     va_start(args, fmt);
@@ -170,7 +170,7 @@ void io_writef(prolog_ctx_t *ctx, const char *fmt, ...) {
   }
 }
 
-void io_writef_err(prolog_ctx_t *ctx, const char *fmt, ...) {
+void io_writef_err(abclog_ctx_t *ctx, const char *fmt, ...) {
   if (ctx->io_hooks.writef_err) {
     va_list args;
     va_start(args, fmt);
@@ -179,57 +179,57 @@ void io_writef_err(prolog_ctx_t *ctx, const char *fmt, ...) {
   }
 }
 
-int io_read_char(prolog_ctx_t *ctx) {
+int io_read_char(abclog_ctx_t *ctx) {
   if (ctx->io_hooks.read_char) {
     return ctx->io_hooks.read_char(ctx, ctx->io_hooks.userdata);
   }
   return -1; // EOF
 }
 
-char *io_read_line(prolog_ctx_t *ctx, char *buf, int size) {
+char *io_read_line(abclog_ctx_t *ctx, char *buf, int size) {
   if (ctx->io_hooks.read_line) {
     return ctx->io_hooks.read_line(ctx, buf, size, ctx->io_hooks.userdata);
   }
   return NULL;
 }
 
-void *io_file_open(prolog_ctx_t *ctx, const char *path, const char *mode) {
+void *io_file_open(abclog_ctx_t *ctx, const char *path, const char *mode) {
   if (ctx->io_hooks.file_open)
     return ctx->io_hooks.file_open(ctx, path, mode, ctx->io_hooks.userdata);
   return NULL;
 }
 
-void io_file_close(prolog_ctx_t *ctx, void *handle) {
+void io_file_close(abclog_ctx_t *ctx, void *handle) {
   if (ctx->io_hooks.file_close)
     ctx->io_hooks.file_close(ctx, handle, ctx->io_hooks.userdata);
 }
 
-char *io_file_read_line(prolog_ctx_t *ctx, void *handle, char *buf, int size) {
+char *io_file_read_line(abclog_ctx_t *ctx, void *handle, char *buf, int size) {
   if (ctx->io_hooks.file_read_line)
     return ctx->io_hooks.file_read_line(ctx, handle, buf, size,
                                         ctx->io_hooks.userdata);
   return NULL;
 }
 
-bool io_file_write(prolog_ctx_t *ctx, void *handle, const char *str) {
+bool io_file_write(abclog_ctx_t *ctx, void *handle, const char *str) {
   if (ctx->io_hooks.file_write)
     return ctx->io_hooks.file_write(ctx, handle, str, ctx->io_hooks.userdata);
   return false;
 }
 
-bool io_file_exists(prolog_ctx_t *ctx, const char *path) {
+bool io_file_exists(abclog_ctx_t *ctx, const char *path) {
   if (ctx->io_hooks.file_exists)
     return ctx->io_hooks.file_exists(ctx, path, ctx->io_hooks.userdata);
   return false;
 }
 
-long long io_file_mtime(prolog_ctx_t *ctx, const char *path) {
+long long io_file_mtime(abclog_ctx_t *ctx, const char *path) {
   if (ctx->io_hooks.file_mtime)
     return ctx->io_hooks.file_mtime(ctx, path, ctx->io_hooks.userdata);
   return -1LL;
 }
 
-double io_clock_monotonic(prolog_ctx_t *ctx) {
+double io_clock_monotonic(abclog_ctx_t *ctx) {
   if (ctx->io_hooks.clock_monotonic)
     return ctx->io_hooks.clock_monotonic(ctx, ctx->io_hooks.userdata);
   return 0.0;

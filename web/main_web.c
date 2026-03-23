@@ -8,7 +8,7 @@
 #define INPUT_QUEUE_MAX 16
 #define INPUT_LINE_MAX  4096
 
-static prolog_ctx_t *g_ctx = NULL;
+static abclog_ctx_t *g_ctx = NULL;
 static char g_out[WEB_OUT_SIZE];
 static int  g_out_pos = 0;
 
@@ -18,7 +18,7 @@ static int  g_input_head = 0;
 static int  g_input_tail = 0;
 static bool g_reading    = false;
 
-static void web_write_str(prolog_ctx_t *ctx, const char *str, void *ud) {
+static void web_write_str(abclog_ctx_t *ctx, const char *str, void *ud) {
   (void)ctx; (void)ud;
   int len = (int)strlen(str);
   int rem = WEB_OUT_SIZE - 1 - g_out_pos;
@@ -28,7 +28,7 @@ static void web_write_str(prolog_ctx_t *ctx, const char *str, void *ud) {
   g_out[g_out_pos] = '\0';
 }
 
-static void web_writef(prolog_ctx_t *ctx, const char *fmt, va_list args,
+static void web_writef(abclog_ctx_t *ctx, const char *fmt, va_list args,
                        void *ud) {
   (void)ctx; (void)ud;
   int rem = WEB_OUT_SIZE - 1 - g_out_pos;
@@ -38,7 +38,7 @@ static void web_writef(prolog_ctx_t *ctx, const char *fmt, va_list args,
   g_out[g_out_pos] = '\0';
 }
 
-static char *web_read_line(prolog_ctx_t *ctx, char *buf, int size, void *ud) {
+static char *web_read_line(abclog_ctx_t *ctx, char *buf, int size, void *ud) {
   (void)ctx; (void)ud;
   g_reading = true;
   while (g_input_head == g_input_tail)
@@ -52,7 +52,7 @@ static char *web_read_line(prolog_ctx_t *ctx, char *buf, int size, void *ud) {
 
 typedef struct { bool first; bool want_more; } web_cb_state_t;
 
-static bool web_toplevel_cb(prolog_ctx_t *ctx, env_t *env, void *ud,
+static bool web_toplevel_cb(abclog_ctx_t *ctx, env_t *env, void *ud,
                             bool has_more) {
   web_cb_state_t *st = ud;
   st->want_more = false;
@@ -66,7 +66,7 @@ static bool web_toplevel_cb(prolog_ctx_t *ctx, env_t *env, void *ud,
 }
 
 EMSCRIPTEN_KEEPALIVE
-void prolog_web_push_line(const char *line) {
+void abclog_web_push_line(const char *line) {
   int next = (g_input_tail + 1) % INPUT_QUEUE_MAX;
   if (next == g_input_head) return; // full, drop
   strncpy(g_input_queue[g_input_tail], line, INPUT_LINE_MAX - 2);
@@ -78,11 +78,11 @@ void prolog_web_push_line(const char *line) {
 }
 
 EMSCRIPTEN_KEEPALIVE
-int prolog_web_is_reading(void) { return g_reading ? 1 : 0; }
+int abclog_web_is_reading(void) { return g_reading ? 1 : 0; }
 
 // return and clear any buffered output produced so far (usable while blocked).
 EMSCRIPTEN_KEEPALIVE
-const char *prolog_web_take_output(void) {
+const char *abclog_web_take_output(void) {
   static char tmp[WEB_OUT_SIZE];
   memcpy(tmp, g_out, (size_t)(g_out_pos + 1));
   g_out_pos = 0;
@@ -91,11 +91,11 @@ const char *prolog_web_take_output(void) {
 }
 
 EMSCRIPTEN_KEEPALIVE
-void prolog_web_init(void) {
+void abclog_web_init(void) {
   if (g_ctx) { free(g_ctx); g_ctx = NULL; }
-  g_ctx = malloc(PROLOG_CTX_SIZE(TERM_POOL_BYTES));
+  g_ctx = malloc(ABCLOG_CTX_SIZE(TERM_POOL_BYTES));
   if (!g_ctx) return;
-  prolog_ctx_init(g_ctx, TERM_POOL_BYTES);
+  abclog_ctx_init(g_ctx, TERM_POOL_BYTES);
   io_hooks_init_default(g_ctx);
 
   io_hooks_t hooks = {0};
@@ -105,11 +105,11 @@ void prolog_web_init(void) {
   hooks.read_line  = web_read_line;
   io_hooks_set(g_ctx, &hooks);
 
-  prolog_load_file(g_ctx, "/core.pl");
+  abclog_load_file(g_ctx, "/core.pl");
 }
 
 EMSCRIPTEN_KEEPALIVE
-const char *prolog_web_eval(const char *query) {
+const char *abclog_web_eval(const char *query) {
   if (!g_ctx) return "error: not initialized\n";
 
   g_out_pos = 0;
@@ -121,7 +121,7 @@ const char *prolog_web_eval(const char *query) {
   char *qptr = (strncmp(buf, "?-", 2) == 0) ? buf + 2 : buf;
 
   web_cb_state_t st = {.first = true, .want_more = false};
-  bool found = prolog_exec_query_multi(g_ctx, qptr, web_toplevel_cb, &st);
+  bool found = abclog_exec_query_multi(g_ctx, qptr, web_toplevel_cb, &st);
 
   if (!g_ctx->has_runtime_error && (!found || st.want_more))
     io_write_str(g_ctx, "false.\n");

@@ -9,7 +9,7 @@ CFLAGS := \
 CFLAGS += -fsanitize=address -fno-omit-frame-pointer
 LDFLAGS += -fsanitize=address
 
-TARGET := prolog
+TARGET := abclog
 BUILD_DIR := _build
 EXAMPLES_DIR := examples
 
@@ -38,7 +38,7 @@ $(BUILD_DIR):
 
 .PHONY: clean
 clean:
-	rm -rf $(BUILD_DIR) $(TARGET) $(WEB_DIR)/prolog.js $(WEB_DIR)/prolog.wasm
+	rm -rf $(BUILD_DIR) $(TARGET) $(WEB_DIR)/abclog.js $(WEB_DIR)/abclog.wasm
 
 .PHONY: examples
 examples: $(EXAMPLE_BINS)
@@ -88,16 +88,16 @@ WEB_LIB_SRCS := $(filter-out src/main.c, $(SRCS))
 WEB_ENTRY := $(WEB_DIR)/main_web.c
 
 .PHONY: web
-web: $(WEB_DIR)/prolog.js
+web: $(WEB_DIR)/abclog.js
 
-$(WEB_DIR)/prolog.js: $(WEB_LIB_SRCS) $(WEB_ENTRY) $(HDRS) core.pl ledit.pl
+$(WEB_DIR)/abclog.js: $(WEB_LIB_SRCS) $(WEB_ENTRY) $(HDRS) core.pl ledit.pl
 	emcc $(WEB_LIB_SRCS) $(WEB_ENTRY) \
 	    -o $@ \
 	    -O2 \
 	    -s WASM=1 \
 	    -s ALLOW_MEMORY_GROWTH=1 \
 	    -s ASYNCIFY=1 \
-	    -s EXPORTED_FUNCTIONS='["_prolog_web_init","_prolog_web_eval","_prolog_web_push_line","_prolog_web_is_reading","_prolog_web_take_output"]' \
+	    -s EXPORTED_FUNCTIONS='["_abclog_web_init","_abclog_web_eval","_abclog_web_push_line","_abclog_web_is_reading","_abclog_web_take_output"]' \
 	    -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
 	    --embed-file core.pl@/core.pl \
 	    --embed-file ledit.pl@/ledit.pl
@@ -109,6 +109,6 @@ serve-web:
 .PHONY: freestanding
 freestanding: | $(BUILD_DIR)
 	$(CC) -std=c11 -Wall -Wextra -Wpedantic -Werror -g \
-		-DPROLOG_FREESTANDING -DNDEBUG \
+		-DABCLOG_FREESTANDING -DNDEBUG \
 		-ffreestanding -nostdlib \
 		$(EXAMPLES_DIR)/freestanding.c -o $(BUILD_DIR)/freestanding

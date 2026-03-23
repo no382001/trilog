@@ -37,7 +37,7 @@ static const arith_op_t arith_ops[] = {
 
 /* ── Arithmetic Evaluator ────────────────────────────── */
 
-bool eval_arith(prolog_ctx_t *ctx, term_t *t, env_t *env, int *result,
+bool eval_arith(abclog_ctx_t *ctx, term_t *t, env_t *env, int *result,
                 const char *pred) {
   t = deref(env, t);
 
@@ -113,7 +113,7 @@ bool eval_arith(prolog_ctx_t *ctx, term_t *t, env_t *env, int *result,
 
 /* ── Arithmetic Builtins ─────────────────────────────── */
 
-builtin_result_t builtin_is(prolog_ctx_t *ctx, term_t *goal, env_t *env) {
+builtin_result_t builtin_is(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
   int result;
   if (!eval_arith(ctx, goal->args[1], env, &result, "is/2"))
     return ctx->has_runtime_error ? BUILTIN_ERROR : BUILTIN_FAIL;
@@ -125,7 +125,7 @@ builtin_result_t builtin_is(prolog_ctx_t *ctx, term_t *goal, env_t *env) {
 }
 
 #define ARITH_CMP_BUILTIN(name, op, pred)                                      \
-  builtin_result_t name(prolog_ctx_t *ctx, term_t *goal, env_t *env) {         \
+  builtin_result_t name(abclog_ctx_t *ctx, term_t *goal, env_t *env) {         \
     int left, right;                                                           \
     if (!eval_arith(ctx, goal->args[0], env, &left, pred))                     \
       return ctx->has_runtime_error ? BUILTIN_ERROR : BUILTIN_NOT_HANDLED;     \
@@ -143,7 +143,7 @@ ARITH_CMP_BUILTIN(builtin_arith_ne, !=, "=\\=/2")
 
 #undef ARITH_CMP_BUILTIN
 
-builtin_result_t builtin_succ(prolog_ctx_t *ctx, term_t *goal, env_t *env) {
+builtin_result_t builtin_succ(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
   term_t *x = deref(env, goal->args[0]);
   term_t *s = deref(env, goal->args[1]);
   int ix, is_val;
@@ -165,7 +165,7 @@ builtin_result_t builtin_succ(prolog_ctx_t *ctx, term_t *goal, env_t *env) {
   return BUILTIN_FAIL;
 }
 
-builtin_result_t builtin_plus(prolog_ctx_t *ctx, term_t *goal, env_t *env) {
+builtin_result_t builtin_plus(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
   term_t *a = deref(env, goal->args[0]);
   term_t *b = deref(env, goal->args[1]);
   term_t *c = deref(env, goal->args[2]);

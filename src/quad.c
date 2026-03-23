@@ -23,7 +23,7 @@ static void cap_reset(capture_buf_t *c) {
   c->buf[0] = '\0';
 }
 
-static void cap_write_str(prolog_ctx_t *ctx, const char *str, void *ud) {
+static void cap_write_str(abclog_ctx_t *ctx, const char *str, void *ud) {
   (void)ctx;
   capture_buf_t *c = ud;
   int len = (int)strlen(str);
@@ -37,7 +37,7 @@ static void cap_write_str(prolog_ctx_t *ctx, const char *str, void *ud) {
   }
 }
 
-static void cap_writef(prolog_ctx_t *ctx, const char *fmt, va_list args,
+static void cap_writef(abclog_ctx_t *ctx, const char *fmt, va_list args,
                        void *ud) {
   (void)ctx;
   capture_buf_t *c = ud;
@@ -60,7 +60,7 @@ typedef struct {
   capture_buf_t cap;
 } collector_t;
 
-static bool collect_cb(prolog_ctx_t *ctx, env_t *env, void *ud, bool has_more) {
+static bool collect_cb(abclog_ctx_t *ctx, env_t *env, void *ud, bool has_more) {
   collector_t *col = ud;
   if (col->count >= MAX_QUAD_ANSWERS)
     return false;
@@ -173,7 +173,7 @@ static int parse_expected(const char *desc, char out[][MAX_ANSWER_LEN],
   return count;
 }
 
-static bool run_one_test(prolog_ctx_t *ctx, const char *query_raw,
+static bool run_one_test(abclog_ctx_t *ctx, const char *query_raw,
                          const char *answer_raw, int test_num,
                          quad_results_t *res, test_record_t *rec) {
   // parse expected answers
@@ -227,7 +227,7 @@ static bool run_one_test(prolog_ctx_t *ctx, const char *query_raw,
 
   collector_t col;
   memset(&col, 0, sizeof(col));
-  bool found = prolog_exec_query_multi(ctx, query_buf, collect_cb, &col);
+  bool found = abclog_exec_query_multi(ctx, query_buf, collect_cb, &col);
 
   bool had_error = ctx->has_runtime_error;
   char error_msg[MAX_ERROR_MSG];
@@ -410,7 +410,7 @@ static void xml_escape(const char *src, char *dst, int dstlen) {
   dst[o] = '\0';
 }
 
-static void write_junit_xml(prolog_ctx_t *ctx, const char *filename,
+static void write_junit_xml(abclog_ctx_t *ctx, const char *filename,
                             const char *suite_name, test_record_t *records,
                             int count, quad_results_t *res) {
   void *xf = io_file_open(ctx, filename, "w");
@@ -450,7 +450,7 @@ static void write_junit_xml(prolog_ctx_t *ctx, const char *filename,
   io_file_close(ctx, xf);
 }
 
-static quad_results_t run_quad_file_impl(prolog_ctx_t *ctx,
+static quad_results_t run_quad_file_impl(abclog_ctx_t *ctx,
                                          const char *filename,
                                          const char *junit_dir) {
   quad_results_t res = {0};
@@ -523,7 +523,7 @@ static quad_results_t run_quad_file_impl(prolog_ctx_t *ctx,
       ctx->io_hooks.write_str = cap_write_str;
       ctx->io_hooks.writef = cap_writef;
       ctx->io_hooks.userdata = &discard;
-      prolog_exec_query(ctx, clause_buf + 2);
+      abclog_exec_query(ctx, clause_buf + 2);
       ctx->io_hooks = saved;
     } else {
       // regular clause
@@ -562,11 +562,11 @@ static quad_results_t run_quad_file_impl(prolog_ctx_t *ctx,
   return res;
 }
 
-quad_results_t prolog_run_quad_file(prolog_ctx_t *ctx, const char *filename) {
+quad_results_t abclog_run_quad_file(abclog_ctx_t *ctx, const char *filename) {
   return run_quad_file_impl(ctx, filename, NULL);
 }
 
-quad_results_t prolog_run_quad_file_junit(prolog_ctx_t *ctx,
+quad_results_t abclog_run_quad_file_junit(abclog_ctx_t *ctx,
                                           const char *filename,
                                           const char *junit_dir) {
   return run_quad_file_impl(ctx, filename, junit_dir);
