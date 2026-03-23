@@ -370,9 +370,23 @@ void parse_error_clear(prolog_ctx_t *ctx);
 bool parse_has_error(prolog_ctx_t *ctx);
 void parse_error_print(prolog_ctx_t *ctx);
 
-void ctx_runtime_error(prolog_ctx_t *ctx, const char *fmt, ...);
-
 builtin_result_t try_builtin(prolog_ctx_t *ctx, term_t *goal, env_t *env);
+
+// errors (errors.c)
+void ctx_runtime_error(prolog_ctx_t *ctx, const char *fmt, ...);
+void throw_error(prolog_ctx_t *ctx, term_t *error_type, const char *context);
+void throw_instantiation_error(prolog_ctx_t *ctx, const char *context);
+void throw_type_error(prolog_ctx_t *ctx, const char *expected, term_t *got,
+                      const char *context);
+void throw_evaluation_error(prolog_ctx_t *ctx, const char *kind,
+                            const char *context);
+void throw_evaluable_error(prolog_ctx_t *ctx, const char *name, int arity,
+                           const char *context);
+void throw_permission_error(prolog_ctx_t *ctx, const char *operation,
+                            const char *object_type, term_t *object,
+                            const char *context);
+void throw_existence_error(prolog_ctx_t *ctx, const char *object_type,
+                           term_t *object, const char *context);
 
 // i/o hook management
 void io_hooks_init_default(prolog_ctx_t *ctx);

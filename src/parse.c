@@ -35,16 +35,6 @@ static void parse_error_eof(prolog_ctx_t *ctx) {
 
 bool parse_has_error(prolog_ctx_t *ctx) { return ctx->error.has_error; }
 
-void ctx_runtime_error(prolog_ctx_t *ctx, const char *fmt, ...) {
-  if (ctx->has_runtime_error)
-    return; // keep first error
-  ctx->has_runtime_error = true;
-  va_list args;
-  va_start(args, fmt);
-  vsnprintf(ctx->runtime_error, MAX_ERROR_MSG, fmt, args);
-  va_end(args);
-}
-
 void parse_error_print(prolog_ctx_t *ctx) {
   if (!ctx->error.has_error)
     return;

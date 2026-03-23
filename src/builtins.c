@@ -33,58 +33,6 @@ static const arith_op_t arith_ops[] = {
     {"/\\", arith_band}, {"xor", arith_xor}, {">>", arith_shr},
     {"<<", arith_shl},   {NULL, NULL}};
 
-static void throw_error(prolog_ctx_t *ctx, term_t *error_type,
-                        const char *context) {
-  term_t *ctx_atom = make_const(ctx, context);
-  term_t *args[2] = {error_type, ctx_atom};
-  term_t *err = make_func(ctx, "error", args, 2);
-  ctx->thrown_ball = err;
-  ctx->has_runtime_error = true;
-  // set readable string (prefix-compatible with existing quad tests)
-  const char *etype = error_type->name;
-  if (error_type->type == FUNC)
-    snprintf(ctx->runtime_error, MAX_ERROR_MSG, "%s in %s", etype, context);
-  else
-    snprintf(ctx->runtime_error, MAX_ERROR_MSG, "%s in %s", etype, context);
-}
-
-static void throw_instantiation_error(prolog_ctx_t *ctx, const char *context) {
-  throw_error(ctx, make_const(ctx, "instantiation_error"), context);
-}
-
-static void throw_type_error(prolog_ctx_t *ctx, const char *expected,
-                             term_t *got, const char *context)
-    __attribute__((unused));
-static void throw_type_error(prolog_ctx_t *ctx, const char *expected,
-                             term_t *got, const char *context) {
-  term_t *targs[2] = {make_const(ctx, expected), got};
-  term_t *te = make_func(ctx, "type_error", targs, 2);
-  throw_error(ctx, te, context);
-}
-
-static void throw_evaluation_error(prolog_ctx_t *ctx, const char *kind,
-                                   const char *context) {
-  term_t *kargs[1] = {make_const(ctx, kind)};
-  term_t *ee = make_func(ctx, "evaluation_error", kargs, 1);
-  throw_error(ctx, ee, context);
-}
-
-static void throw_evaluable_error(prolog_ctx_t *ctx, const char *name,
-                                  int arity, const char *context) {
-  char arity_buf[16];
-  snprintf(arity_buf, sizeof(arity_buf), "%d", arity);
-  term_t *slash_args[2] = {make_const(ctx, name), make_const(ctx, arity_buf)};
-  term_t *indicator = make_func(ctx, "/", slash_args, 2);
-  term_t *targs[2] = {make_const(ctx, "evaluable"), indicator};
-  term_t *te = make_func(ctx, "type_error", targs, 2);
-  term_t *ctx_atom = make_const(ctx, context);
-  term_t *err_args[2] = {te, ctx_atom};
-  ctx->thrown_ball = make_func(ctx, "error", err_args, 2);
-  ctx->has_runtime_error = true;
-  snprintf(ctx->runtime_error, MAX_ERROR_MSG, "type_error(evaluable, %s/%d)",
-           name, arity);
-}
-
 static bool eval_arith(prolog_ctx_t *ctx, term_t *t, env_t *env, int *result,
                        const char *pred) {
   t = deref(env, t);
