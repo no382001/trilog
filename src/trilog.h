@@ -42,22 +42,51 @@ typedef __builtin_va_list va_list;
 //* configuration limits
 //****
 
+#ifndef MAX_NAME
 #define MAX_NAME 64
+#endif
+#ifndef MAX_ARGS
 #define MAX_ARGS 8
+#endif
+#ifndef MAX_LIST_LIT
 #define MAX_LIST_LIT 1024
+#endif
+#ifndef MAX_CLAUSES
 #define MAX_CLAUSES 1024
+#endif
+#ifndef MAX_BINDINGS
 #define MAX_BINDINGS 4096
+#endif
+#ifndef MAX_GOALS
 #define MAX_GOALS 128
+#endif
+#ifndef MAX_STACK
 #define MAX_STACK 256
+#endif
+#ifndef MAX_ERROR_MSG
 #define MAX_ERROR_MSG 256
+#endif
+#ifndef MAX_CUSTOM_BUILTINS
 #define MAX_CUSTOM_BUILTINS 64
+#endif
+#ifndef MAX_STRING_POOL
 #define MAX_STRING_POOL 65536
+#endif
+#ifndef MAX_FILE_PATH
 #define MAX_FILE_PATH 512
+#endif
+#ifndef MAX_MAKE_FILES
 #define MAX_MAKE_FILES 16
+#endif
+#ifndef MAX_OPEN_STREAMS
 #define MAX_OPEN_STREAMS 16
+#endif
+#ifndef MAX_CLAUSE_VARS
 #define MAX_CLAUSE_VARS 64
-
+#endif
+#ifndef TERM_POOL_BYTES
 #define TERM_POOL_BYTES (4 * 1024 * 1024)
+#endif
 #define TRILOG_CTX_SIZE(pool_bytes) (sizeof(trilog_ctx_t) + (pool_bytes))
 
 //****
@@ -276,6 +305,7 @@ struct trilog_ctx {
     int unify_fails;
     int son_calls;
     int backtracks;
+    int stack_peak;
   } stats;
 
   // open file streams (handles from io_file_open); null = free slot
@@ -492,6 +522,36 @@ void toplevel_query(trilog_ctx_t *ctx, char *query);
 // solve yield: set a callback invoked every `interval` steps during solving
 void trilog_set_yield(trilog_ctx_t *ctx, solve_yield_cb_t cb, int interval,
                       void *userdata);
+
+// resource usage snapshot
+typedef struct {
+  int term_pool_used;
+  int term_pool_total;
+  int string_pool_used;
+  int string_pool_total;
+  int clauses_used;
+  int clauses_total;
+  int bindings_used;
+  int bindings_total;
+  int stack_peak;
+  int stack_total;
+} trilog_usage_t;
+
+static inline trilog_usage_t trilog_get_usage(trilog_ctx_t *ctx) {
+  return (trilog_usage_t){
+      .term_pool_used =
+          ctx->term_pool_offset + (ctx->term_pool_size - ctx->term_pool_perm),
+      .term_pool_total = ctx->term_pool_size,
+      .string_pool_used = ctx->string_pool_offset,
+      .string_pool_total = MAX_STRING_POOL,
+      .clauses_used = ctx->db_count,
+      .clauses_total = MAX_CLAUSES,
+      .bindings_used = ctx->bind_count,
+      .bindings_total = MAX_BINDINGS,
+      .stack_peak = ctx->stats.stack_peak,
+      .stack_total = MAX_STACK,
+  };
+}
 
 // ffi: register custom builtins
 bool ffi_register_builtin(trilog_ctx_t *ctx, const char *name, int arity,

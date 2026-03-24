@@ -16,6 +16,8 @@ wasm demo:
     - ledit should use core.pl for internals
     - some simpler non distracting style
     - a workable terminal
+    [x] some real constraints, arm m0+ (32kb sram profile: 16kb term pool, 4kb strings, 128 clauses, 512 bindings)
+    [x] it should have some usage stats, and constrained to m0 things (resource bars: heap, strings, clauses, bindings, stack)
 
 testing:
     - move quad to a pl file, separate TAP and jUnit outputs

@@ -29,22 +29,71 @@
     }
     #stats-panel .stat { white-space: nowrap; }
     #stats-panel .stat b { color: #d4d4d4; }
+    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 3px; vertical-align: middle; }
     #stats-canvas {
       flex: 1;
       height: 48px;
       min-width: 100px;
     }
+    #usage-panel {
+      background: #111;
+      border-top: 1px solid #222;
+      padding: 6px 10px;
+      display: flex;
+      gap: 12px;
+      font: 11px "Cascadia Code", "Fira Code", monospace;
+      color: #666;
+      flex-shrink: 0;
+    }
+    .usage-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .usage-item .label { color: #888; min-width: 50px; }
+    .usage-bar {
+      width: 60px;
+      height: 8px;
+      background: #222;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .usage-bar-fill {
+      height: 100%;
+      background: #4ec994;
+      border-radius: 2px;
+      transition: width 0.15s, background 0.3s;
+    }
+    .usage-bar-fill.warn { background: #d7ba7d; }
+    .usage-bar-fill.crit { background: #f44747; }
+    .usage-val { color: #555; }
+    #m0-badge {
+      color: #555;
+      font-size: 10px;
+      margin-left: auto;
+      white-space: nowrap;
+    }
+    #m0-badge b { color: #888; }
   </style>
 </head>
 <body>
   <div id="terminal"></div>
   <div id="stats-panel">
-    <span class="stat">son <b id="st-son">0</b></span>
-    <span class="stat">unify <b id="st-unify">0</b></span>
+    <span class="stat"><span class="dot" style="background:#4ec994"></span>son <b id="st-son">0</b></span>
+    <span class="stat"><span class="dot" style="background:#569cd6"></span>unify <b id="st-unify">0</b></span>
     <span class="stat">fail <b id="st-fail">0</b></span>
-    <span class="stat">bt <b id="st-bt">0</b></span>
+    <span class="stat"><span class="dot" style="background:#f44747"></span>bt <b id="st-bt">0</b></span>
     <span class="stat">terms <b id="st-terms">0</b></span>
     <canvas id="stats-canvas"></canvas>
+  </div>
+  <div id="usage-panel">
+    <div class="usage-item"><span class="label">heap</span><div class="usage-bar"><div class="usage-bar-fill" id="ub-term"></div></div><span class="usage-val" id="uv-term"></span></div>
+    <div class="usage-item"><span class="label">strings</span><div class="usage-bar"><div class="usage-bar-fill" id="ub-str"></div></div><span class="usage-val" id="uv-str"></span></div>
+    <div class="usage-item"><span class="label">clauses</span><div class="usage-bar"><div class="usage-bar-fill" id="ub-cls"></div></div><span class="usage-val" id="uv-cls"></span></div>
+    <div class="usage-item"><span class="label">binds</span><div class="usage-bar"><div class="usage-bar-fill" id="ub-bind"></div></div><span class="usage-val" id="uv-bind"></span></div>
+    <div class="usage-item"><span class="label">stack</span><div class="usage-bar"><div class="usage-bar-fill" id="ub-stk"></div></div><span class="usage-val" id="uv-stk"></span></div>
+    <span id="m0-badge"><b>M0+</b> 32KB SRAM</span>
   </div>
   <div id="statusbar">reading input &mdash; type <span>end_of_file.</span> on its own line to finish, or <span>?</span> for help (output shown when done)</div>
 
@@ -113,6 +162,7 @@
       // --- stats graph setup ---
       const setYield = Module.cwrap('trilog_web_set_yield', null, ['number']);
       const getStats = Module.cwrap('trilog_web_get_stats', 'number', []);
+      const getUsage = Module.cwrap('trilog_web_get_usage', 'number', []);
       setYield(1);
 
       const canvas = document.getElementById('stats-canvas');
@@ -123,7 +173,7 @@
         unify: { pts: [], color: '#569cd6' },
         bt:    { pts: [], color: '#f44747' },
       };
-      let prevStats = [0, 0, 0, 0, 0, 0];
+      let prevStats = [0, 0, 0, 0, 0, 0, 0];
 
       function readStats() {
         const ptr = getStats();
@@ -135,7 +185,42 @@
           Module.getValue(ptr + 12, 'i32'),
           Module.getValue(ptr + 16, 'i32'),
           Module.getValue(ptr + 20, 'i32'),
+          Module.getValue(ptr + 24, 'i32'),
         ];
+      }
+
+      function readUsage() {
+        const ptr = getUsage();
+        if (!ptr) return null;
+        const u = [];
+        for (let i = 0; i < 10; i++)
+          u.push(Module.getValue(ptr + i * 4, 'i32'));
+        return u;
+      }
+
+      function fmtBytes(n) {
+        if (n >= 1024) return (n / 1024).toFixed(1) + 'K';
+        return n + 'B';
+      }
+
+      function updateUsageBar(barId, valId, used, total, isBytes) {
+        const pct = total > 0 ? (used / total) * 100 : 0;
+        const bar = document.getElementById(barId);
+        bar.style.width = Math.min(pct, 100) + '%';
+        bar.className = 'usage-bar-fill' +
+          (pct > 90 ? ' crit' : pct > 70 ? ' warn' : '');
+        document.getElementById(valId).textContent =
+          isBytes ? fmtBytes(used) + '/' + fmtBytes(total) : used + '/' + total;
+      }
+
+      function updateUsage() {
+        const u = readUsage();
+        if (!u) return;
+        updateUsageBar('ub-term', 'uv-term', u[0], u[1], true);
+        updateUsageBar('ub-str',  'uv-str',  u[2], u[3], true);
+        updateUsageBar('ub-cls',  'uv-cls',  u[4], u[5], false);
+        updateUsageBar('ub-bind', 'uv-bind', u[6], u[7], false);
+        updateUsageBar('ub-stk',  'uv-stk',  u[8], u[9], false);
       }
 
       function drawGraph() {
@@ -173,7 +258,10 @@
         const dSon   = s[0] - prevStats[0];
         const dUnify = s[1] - prevStats[1];
         const dBt    = s[3] - prevStats[3];
-        if (!dSon && !dUnify && !dBt) return;
+        if (!dSon && !dUnify && !dBt) {
+          updateUsage();
+          return;
+        }
         prevStats = [...s];
 
         series.son.pts.push(dSon);
@@ -188,6 +276,7 @@
         document.getElementById('st-bt').textContent     = s[3];
         document.getElementById('st-terms').textContent  = s[4];
         drawGraph();
+        updateUsage();
       }
 
       prompt();
@@ -215,6 +304,7 @@
                 eval_(trimmed).then(result => {
                   termWrite(result);
                   updateStats();
+                  updateUsage();
                   prompt();
                   evalBusy = false;
                 });

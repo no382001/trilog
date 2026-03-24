@@ -116,8 +116,8 @@ void trilog_web_set_yield(int interval) {
 
 // stats snapshot: returns pointer to a static int array js can read.
 // layout: [son_calls, unify_calls, unify_fails, backtracks,
-//          terms_allocated, terms_peak]
-static int g_stats_buf[6];
+//          terms_allocated, terms_peak, stack_peak]
+static int g_stats_buf[7];
 
 EMSCRIPTEN_KEEPALIVE
 int *trilog_web_get_stats(void) {
@@ -128,7 +128,29 @@ int *trilog_web_get_stats(void) {
   g_stats_buf[3] = g_ctx->stats.backtracks;
   g_stats_buf[4] = g_ctx->stats.terms_allocated;
   g_stats_buf[5] = g_ctx->stats.terms_peak;
+  g_stats_buf[6] = g_ctx->stats.stack_peak;
   return g_stats_buf;
+}
+
+// resource usage snapshot: [used, total] pairs for term_pool, string_pool,
+// clauses, bindings, stack
+static int g_usage_buf[10];
+
+EMSCRIPTEN_KEEPALIVE
+int *trilog_web_get_usage(void) {
+  if (!g_ctx) return g_usage_buf;
+  trilog_usage_t u = trilog_get_usage(g_ctx);
+  g_usage_buf[0] = u.term_pool_used;
+  g_usage_buf[1] = u.term_pool_total;
+  g_usage_buf[2] = u.string_pool_used;
+  g_usage_buf[3] = u.string_pool_total;
+  g_usage_buf[4] = u.clauses_used;
+  g_usage_buf[5] = u.clauses_total;
+  g_usage_buf[6] = u.bindings_used;
+  g_usage_buf[7] = u.bindings_total;
+  g_usage_buf[8] = u.stack_peak;
+  g_usage_buf[9] = u.stack_total;
+  return g_usage_buf;
 }
 
 EMSCRIPTEN_KEEPALIVE

@@ -146,6 +146,8 @@ bool solve_all(trilog_ctx_t *ctx, goal_stmt_t *initial_goals, env_t *env,
   stack[sp].cut_point = 0;
   stack[sp].term_mark = ctx->term_pool_offset;
   sp++;
+  if (sp > ctx->stats.stack_peak)
+    ctx->stats.stack_peak = sp;
 
   int clause_idx;
   int env_mark;
@@ -338,6 +340,8 @@ A:
       stack[sp].cut_point = cut_point;
       stack[sp].term_mark = ctx->term_pool_offset;
       sp++;
+      if (sp > ctx->stats.stack_peak)
+        ctx->stats.stack_peak = sp;
 
       goal_stmt_t new_cn = goals_alloc(ctx, cn.count);
       new_cn.goals[new_cn.count++] = left;
@@ -391,6 +395,8 @@ B:
         stack[sp].cut_point = cut_point;
         stack[sp].term_mark = term_mark_b;
         sp++;
+        if (sp > ctx->stats.stack_peak)
+          ctx->stats.stack_peak = sp;
         cut_point = sp - 1;
       } else if (ctx->bind_count > env_mark && resolvent.count > 0 &&
                  env_mark > ctx->bind_floor &&
