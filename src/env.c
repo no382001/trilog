@@ -48,6 +48,30 @@ term_t *deref(env_t *env, term_t *t) {
   return t;
 }
 
+// deep-copy a term into perm pool (for assert)
+static term_t *copy_to_perm(trilog_ctx_t *ctx, term_t *t) {
+  if (!t)
+    return NULL;
+  switch (t->type) {
+  case CONST:
+    return make_const(ctx, t->name);
+  case VAR:
+    return make_var(ctx, t->name, t->arity);
+  case STRING:
+    return make_string(ctx, t->string_data);
+  case FUNC: {
+    term_t *args[MAX_ARGS];
+    for (int i = 0; i < t->arity; i++) {
+      args[i] = copy_to_perm(ctx, t->args[i]);
+      if (!args[i])
+        return NULL;
+    }
+    return make_func(ctx, t->name, args, t->arity);
+  }
+  }
+  return NULL;
+}
+
 term_t *substitute(trilog_ctx_t *ctx, env_t *env, term_t *t) {
   assert(ctx != NULL && "Context is NULL");
   assert(env != NULL && "Environment is NULL");
@@ -55,16 +79,31 @@ term_t *substitute(trilog_ctx_t *ctx, env_t *env, term_t *t) {
   if (!t)
     return NULL;
   t = deref(env, t);
+  if (!t)
+    return NULL;
 
-  if (t->type == CONST || t->type == VAR || t->type == STRING)
+  if (t->type == CONST || t->type == VAR || t->type == STRING) {
+    if (ctx->alloc_permanent)
+      return copy_to_perm(ctx, t);
     return t;
+  }
 
   if (t->type != FUNC)
     return t;
 
   term_t *args[MAX_ARGS];
+  bool changed = false;
   for (int i = 0; i < t->arity; i++) {
     args[i] = substitute(ctx, env, t->args[i]);
+    if (!args[i])
+      return NULL;
+    if (args[i] != t->args[i])
+      changed = true;
+  }
+  if (!changed) {
+    if (ctx->alloc_permanent)
+      return copy_to_perm(ctx, t);
+    return t;
   }
   return make_func(ctx, t->name, args, t->arity);
 }

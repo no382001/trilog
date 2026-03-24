@@ -23,13 +23,11 @@
 %   (empty line)   -- re-execute previous command
 %
 % State stored via assert/retract:
-%   l_value(line, (Above, Below))  -- Above = [cur,prev,...,0], Below = [next,...]
-%   l_value(newnum, N)             -- next line tag
+%   l_value(line, (Above, Below))  -- gap buffer; Above/Below hold text atoms
 %   l_value(command, Cs)           -- last command char list
 %   l_value(look, S)               -- last search atom
 %   l_value(change, S1/S2)         -- last change atoms
-%   l_value(delete, Tags)          -- delete buffer
-%   l_line(Tag, Text)              -- line text (atom)
+%   l_value(delete, Texts)         -- delete buffer (text atoms)
 
 % --- Entry points ---
 
@@ -55,9 +53,7 @@ l_set(P, V, W) :-
 l_initialize :-
     ( l_value(line, _) -> true
     ;
-        l_set(line, ([0], [])),
-        assert(l_line(0, '*** top_of_file ***')),
-        l_set(newnum, 1),
+        l_set(line, (['*** top_of_file ***'], [])),
         l_set(delete, [])
     ).
 
@@ -80,8 +76,7 @@ l_exec(Cs) :-
 % --- Display current line ---
 
 l_display :-
-    l_value(line, ([N|_], _)),
-    l_line(N, Text),
+    l_value(line, ([Text|_], _)),
     write(Text), nl.
 
 % --- Continuation ---
@@ -102,11 +97,6 @@ l_for(N, P) :-
     N1 is N - 1,
     l_for(N1, P).
 l_for(_, _).
-
-l_newnum(N) :-
-    l_value(newnum, N),
-    N1 is N + 1,
-    l_set(newnum, N1), !.
 
 % --- Argument parsing ---
 
@@ -152,9 +142,7 @@ l_add_lines :-
     read_line_to_atom(user_input, LA),
     ( LA == end_of_file -> true
     ; LA == '.' -> true
-    ; l_newnum(N),
-      l_set(line, (L1, L2), ([N|L1], L2)),
-      assert(l_line(N, LA)),
+    ; l_set(line, (L1, L2), ([LA|L1], L2)),
       l_add_lines
     ).
 
@@ -180,7 +168,7 @@ l_do([p|L]) :- !,
 l_do([r|_]) :- !,
     l_value(line, ([X, Y|L1], L2)),
     reverse(L1, [Y, X|L2], [_|L3]),
-    l_set(line, ([0], L3)).
+    l_set(line, (['*** top_of_file ***'], L3)).
 
 % wind
 l_do([w|_]) :- !,
@@ -188,9 +176,9 @@ l_do([w|_]) :- !,
     reverse(L2, [X|L1], L3),
     l_set(line, (L3, [])).
 
-% delete (line 0 check)
+% delete (top-of-file check)
 l_do([d|_]) :-
-    l_value(line, ([0], _)), !,
+    l_value(line, (['*** top_of_file ***'], _)), !,
     write('?'), nl.
 l_do([d|L]) :- !,
     l_skip_spaces(L, Rest),
@@ -206,13 +194,7 @@ l_delete :-
     l_set(delete, D, [X|D]).
 
 l_deletebuf :-
-    l_set(delete, D, []),
-    l_retract_lines(D).
-
-l_retract_lines([]).
-l_retract_lines([X|Rest]) :-
-    ( retract(l_line(X, _)) -> true ; true ),
-    l_retract_lines(Rest).
+    l_set(delete, []).
 
 % Delete all
 l_do(['D'|_]) :- !,
@@ -224,7 +206,7 @@ l_deleteall :-
     reverse(L1, L2, [_|L3]),
     reverse(L3, [], L4),
     l_set(delete, L4),
-    l_set(line, ([0], [])), !.
+    l_set(line, (['*** top_of_file ***'], [])), !.
 
 % yank
 l_do([y|_]) :-
@@ -235,12 +217,9 @@ l_do([y|_]) :- !,
     l_yank(D).
 
 l_yank([]) :- !.
-l_yank([X|D]) :-
+l_yank([Text|D]) :-
     l_yank(D), !,
-    l_line(X, Text),
-    l_newnum(N),
-    l_set(line, (L1, L2), ([N|L1], L2)),
-    assert(l_line(N, Text)).
+    l_set(line, (L1, L2), ([Text|L1], L2)).
 
 % look
 l_do([l|L]) :- !,
@@ -261,8 +240,7 @@ l_lookstr(_, _) :- write('?'), nl, fail.
 l_look(S) :-
     ( \+ l_forward ->
         write('? not found'), nl, fail
-    ; l_value(line, ([N|_], _)),
-      l_line(N, Text),
+    ; l_value(line, ([Text|_], _)),
       ( sub_atom(Text, _, _, _, S) -> true
       ; l_look(S)
       )
@@ -301,8 +279,8 @@ l_change(S1, S2, N) :-
     l_backward.
 
 l_change_once(S1, S2) :-
-    l_value(line, ([N|_], _)), N \== 0, !,
-    l_line(N, Text),
+    l_value(line, ([Text|Rest], Below)),
+    Text \== '*** top_of_file ***', !,
     ( sub_atom(Text, Before, _, After, S1) ->
         sub_atom(Text, 0, Before, _, Prefix),
         atom_length(Text, TLen),
@@ -310,20 +288,18 @@ l_change_once(S1, S2) :-
         sub_atom(Text, Start, After, _, Suffix),
         atom_concat(Prefix, S2, Tmp),
         atom_concat(Tmp, Suffix, NewText),
-        retract(l_line(N, _)), !,
-        assert(l_line(N, NewText))
+        l_set(line, ([Text|Rest], Below), ([NewText|Rest], Below))
     ; true
     ).
 l_change_once(_, _) :-
     write('?'), nl.
 
 l_changes(S1, S2) :-
-    l_value(line, ([N|_], _)), N \== 0, !,
-    l_line(N, Text),
+    l_value(line, ([Text|Rest], Below)),
+    Text \== '*** top_of_file ***', !,
     l_replace_all(Text, S1, S2, NewText),
     ( Text \== NewText ->
-        retract(l_line(N, _)), !,
-        assert(l_line(N, NewText))
+        l_set(line, ([Text|Rest], Below), ([NewText|Rest], Below))
     ; true
     ).
 l_changes(_, _).
@@ -360,13 +336,24 @@ l_do_get_file(Fname) :-
     ).
 
 l_read_file(S) :-
+    l_read_all_lines(S, Lines),
+    l_bulk_insert(Lines).
+
+l_read_all_lines(S, [LA|Rest]) :-
     read_line_to_atom(S, LA),
-    ( LA == end_of_file -> true
-    ; l_newnum(N),
-      l_set(line, (L1, L2), ([N|L1], L2)),
-      assert(l_line(N, LA)),
-      l_read_file(S)
-    ).
+    LA \== end_of_file, !,
+    l_read_all_lines(S, Rest).
+l_read_all_lines(_, []).
+
+l_bulk_insert(Lines) :-
+    l_value(line, (L1, L2)),
+    l_bulk_insert_acc(Lines, L1, NewL1),
+    ( retract(l_value(line, _)) -> true ; true ),
+    assert(l_value(line, (NewL1, L2))).
+
+l_bulk_insert_acc([], L, L).
+l_bulk_insert_acc([Text|Rest], L1, NewL1) :-
+    l_bulk_insert_acc(Rest, [Text|L1], NewL1).
 
 % save
 l_do([s|L]) :- !,
@@ -391,13 +378,12 @@ l_do_save_file(Fname) :-
 l_listing(S) :-
     l_value(line, (L1, L2)),
     reverse(L1, L2, [_|L3]),
-    l_list_tags(L3, S).
+    l_list_lines(L3, S).
 
-l_list_tags([], _).
-l_list_tags([N|Rest], S) :-
-    l_line(N, Text),
+l_list_lines([], _).
+l_list_lines([Text|Rest], S) :-
     writeln(S, Text),
-    l_list_tags(Rest, S).
+    l_list_lines(Rest, S).
 
 % help
 l_do([h|_]) :- !,

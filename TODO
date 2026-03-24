@@ -16,7 +16,7 @@ wasm demo:
     [x] ledit should use core.pl for internals (removed l_member/2 and l_reverse/3, uses core.pl's member/2 and reverse/3)
     - some simpler non distracting style
     - a workable terminal
-    [x] some real constraints, arm m0+ (32kb sram profile: 16kb term pool, 4kb strings, 128 clauses, 512 bindings)
+    [x] some real constraints, arm m0+ (rp2040 profile: 64kb term pool, 8kb strings, 256 clauses, 1024 bindings)
     [x] it should have some usage stats, and constrained to m0 things (resource bars: heap, strings, clauses, bindings, stack)
 
 testing:

@@ -8,14 +8,19 @@ void *term_alloc(trilog_ctx_t *ctx, size_t size) {
   size = (size + 7) & ~7; // 8-byte align
   if (ctx->alloc_permanent) {
     int new_perm = ctx->term_pool_perm - (int)size;
-    assert(new_perm >= ctx->term_pool_offset && "Term pool exhausted (perm)");
+    if (new_perm < ctx->term_pool_offset) {
+      ctx_runtime_error(ctx, "term pool exhausted (perm)");
+      return NULL;
+    }
     ctx->term_pool_perm = new_perm;
     void *ptr = ctx->term_pool + new_perm;
     memset(ptr, 0, size);
     return ptr;
   }
-  assert(ctx->term_pool_offset + (int)size <= ctx->term_pool_perm &&
-         "Term pool exhausted");
+  if (ctx->term_pool_offset + (int)size > ctx->term_pool_perm) {
+    ctx_runtime_error(ctx, "term pool exhausted");
+    return NULL;
+  }
   void *ptr = ctx->term_pool + ctx->term_pool_offset;
   memset(ptr, 0, size);
   ctx->term_pool_offset += (int)size;
@@ -42,8 +47,10 @@ const char *intern_name(trilog_ctx_t *ctx, const char *name) {
     i += strlen(&ctx->string_pool[i]) + 1;
   }
 
-  assert(ctx->string_pool_offset + len + 1 <= MAX_STRING_POOL &&
-         "String pool exhausted");
+  if (ctx->string_pool_offset + len + 1 > MAX_STRING_POOL) {
+    ctx_runtime_error(ctx, "string pool exhausted");
+    return name;
+  }
 
   char *dest = &ctx->string_pool[ctx->string_pool_offset];
   memcpy(dest, name, len + 1);
@@ -58,6 +65,8 @@ const char *intern_name(trilog_ctx_t *ctx, const char *name) {
 term_t *make_const(trilog_ctx_t *ctx, const char *name) {
   assert(name != NULL && "Constant name cannot be NULL");
   term_t *t = term_alloc(ctx, sizeof(term_t)); // no args
+  if (!t)
+    return NULL;
   t->type = CONST;
   t->name = intern_name(ctx, name);
   return t;
@@ -65,6 +74,8 @@ term_t *make_const(trilog_ctx_t *ctx, const char *name) {
 
 term_t *make_var(trilog_ctx_t *ctx, const char *name, int var_id) {
   term_t *t = term_alloc(ctx, sizeof(term_t)); // no args
+  if (!t)
+    return NULL;
   t->type = VAR;
   if (name)
     t->name = intern_name(ctx, name);
@@ -77,6 +88,8 @@ term_t *make_func(trilog_ctx_t *ctx, const char *name, term_t **args,
   assert(name != NULL && "Functor name cannot be NULL");
   assert(arity >= 0 && "Functor arity cannot be negative");
   term_t *t = term_alloc(ctx, sizeof(term_t) + arity * sizeof(term_t *));
+  if (!t)
+    return NULL;
   t->type = FUNC;
   t->name = intern_name(ctx, name);
   t->arity = arity;
@@ -90,6 +103,8 @@ term_t *make_string(trilog_ctx_t *ctx, const char *str) {
   assert(str != NULL && "String cannot be NULL");
 
   term_t *t = term_alloc(ctx, sizeof(term_t)); // no args
+  if (!t)
+    return NULL;
   t->type = STRING;
   t->name = intern_name(ctx, "");
 

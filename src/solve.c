@@ -69,7 +69,10 @@ bool son(trilog_ctx_t *ctx, goal_stmt_t *cn, int *clause_idx, env_t *env,
     int term_save = ctx->term_pool_offset; // reclaim on failed unification
     var_id_map_t map = {0};
     term_t *renamed_head = rename_vars_mapped(ctx, c->head, &map);
-    assert(renamed_head != NULL && "Failed to rename clause head");
+    if (!renamed_head) {
+      ctx->term_pool_offset = term_save;
+      return false;
+    }
 
     debug(ctx, "\n--- Trying clause %d ---\n", i);
     debug(ctx, "CLAUSE HEAD (renamed): ");
@@ -81,10 +84,15 @@ bool son(trilog_ctx_t *ctx, goal_stmt_t *cn, int *clause_idx, env_t *env,
 
       int n = c->body_count + cn->count - 1;
       *resolvent = goals_alloc(ctx, n > 0 ? n : 0);
+      if (n > 0 && !resolvent->goals)
+        return false;
 
-      for (int j = 0; j < c->body_count; j++)
-        resolvent->goals[resolvent->count++] =
-            rename_vars_mapped(ctx, c->body[j], &map);
+      for (int j = 0; j < c->body_count; j++) {
+        term_t *rg = rename_vars_mapped(ctx, c->body[j], &map);
+        if (!rg)
+          return false;
+        resolvent->goals[resolvent->count++] = rg;
+      }
 
       for (int j = 1; j < cn->count; j++)
         resolvent->goals[resolvent->count++] = cn->goals[j];
@@ -249,12 +257,15 @@ A:
     term_t *catcher = first_goal->args[1];
     term_t *recovery = deref(env, first_goal->args[2]);
     int emark = env->count;
+    int floor_save = ctx->term_pool_floor;
+    ctx->term_pool_floor = ctx->term_pool_offset;
 
     goal_stmt_t sub_goals = goals_alloc(ctx, 1);
     sub_goals.goals[sub_goals.count++] = sub_goal;
 
     if (solve(ctx, &sub_goals, env)) {
       // goal succeeded — continue with remaining goals
+      ctx->term_pool_floor = floor_save;
       int nrem = cn.count - 1;
       goal_stmt_t new_cn = goals_alloc(ctx, nrem > 0 ? nrem : 0);
       for (int i = 1; i < cn.count; i++)
@@ -262,6 +273,8 @@ A:
       cn = new_cn;
       goto A;
     }
+
+    ctx->term_pool_floor = floor_save;
 
     if (ctx->thrown_ball) {
       // exception was thrown — try to catch it
@@ -410,6 +423,10 @@ B:
         for (int j = 0; j < env_mark; j++)
           env->bindings[j].value = substitute(ctx, env, env->bindings[j].value);
         env->count = ctx->bind_count = env_mark;
+        // protect substituted terms from backtracking: adjust the
+        // nearest stack frame's term_mark so rollback won't reclaim them
+        if (sp > 1)
+          stack[sp - 1].term_mark = ctx->term_pool_offset;
       }
 
       cn = resolvent;

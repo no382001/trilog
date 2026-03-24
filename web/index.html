@@ -93,7 +93,7 @@
     <div class="usage-item"><span class="label">clauses</span><div class="usage-bar"><div class="usage-bar-fill" id="ub-cls"></div></div><span class="usage-val" id="uv-cls"></span></div>
     <div class="usage-item"><span class="label">binds</span><div class="usage-bar"><div class="usage-bar-fill" id="ub-bind"></div></div><span class="usage-val" id="uv-bind"></span></div>
     <div class="usage-item"><span class="label">stack</span><div class="usage-bar"><div class="usage-bar-fill" id="ub-stk"></div></div><span class="usage-val" id="uv-stk"></span></div>
-    <span id="m0-badge"><b>M0+</b> 32KB SRAM</span>
+    <span id="m0-badge"><b>M0+</b> RP2040</span>
   </div>
   <div id="statusbar">reading input &mdash; type <span>end_of_file.</span> on its own line to finish, or <span>?</span> for help (output shown when done)</div>
 
@@ -304,6 +304,11 @@
                 eval_(trimmed).then(result => {
                   termWrite(result);
                   updateStats();
+                  updateUsage();
+                  prompt();
+                  evalBusy = false;
+                }).catch(err => {
+                  termWrite('\x1b[31mError: ' + err.message + '\x1b[0m\r\n');
                   updateUsage();
                   prompt();
                   evalBusy = false;

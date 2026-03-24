@@ -87,22 +87,22 @@ WEB_DIR := web
 WEB_LIB_SRCS := $(filter-out src/main.c, $(SRCS))
 WEB_ENTRY := $(WEB_DIR)/main_web.c
 
-# arm cortex-m0+ constraints (32kb sram target)
+# arm cortex-m0+ constraints (rp2040, 264kb sram)
 WEB_M0_FLAGS := \
     -DMAX_NAME=32 \
     -DMAX_LIST_LIT=128 \
-    -DMAX_CLAUSES=128 \
-    -DMAX_BINDINGS=512 \
-    -DMAX_GOALS=32 \
-    -DMAX_STACK=64 \
+    -DMAX_CLAUSES=256 \
+    -DMAX_BINDINGS=1024 \
+    -DMAX_GOALS=64 \
+    -DMAX_STACK=128 \
     -DMAX_ERROR_MSG=128 \
     -DMAX_CUSTOM_BUILTINS=8 \
-    -DMAX_STRING_POOL=4096 \
+    -DMAX_STRING_POOL=8192 \
     -DMAX_FILE_PATH=128 \
     -DMAX_MAKE_FILES=4 \
     -DMAX_OPEN_STREAMS=4 \
     -DMAX_CLAUSE_VARS=32 \
-    -DTERM_POOL_BYTES=16384
+    -DTERM_POOL_BYTES=131072
 
 .PHONY: web
 web: $(WEB_DIR)/trilog.js

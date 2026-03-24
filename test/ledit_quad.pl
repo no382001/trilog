@@ -146,155 +146,131 @@
 % ===== Initialization =====
 
 :- (retract(l_value(line, _)) -> true ; true).
-:- (retract(l_value(newnum, _)) -> true ; true).
 :- (retract(l_value(delete, _)) -> true ; true).
-:- (retract(l_line(0, _)) -> true ; true).
 :- l_initialize.
 
 ?- l_value(line, L).
-   L = [0],[].
-
-?- l_value(newnum, N).
-   N = 1.
+   L = ['*** top_of_file ***'],[].
 
 ?- l_value(delete, D).
    D = [].
 
-?- l_line(0, T).
-   T = '*** top_of_file ***'.
-
-% ===== Line numbering =====
-
-:- l_set(newnum, 100).
-
-?- l_newnum(N).
-   N = 100.
-
-?- l_value(newnum, N2).
-   N2 = 101.
-
 % ===== Navigation =====
-
-% Set up a buffer: lines 1,2,3 with current at line 2
-:- (retract(l_line(1, _)) -> true ; true), assert(l_line(1, 'line one')).
-:- (retract(l_line(2, _)) -> true ; true), assert(l_line(2, 'line two')).
-:- (retract(l_line(3, _)) -> true ; true), assert(l_line(3, 'line three')).
 
 % --- l_backward ---
 
-:- l_set(line, ([2, 1, 0], [3])).
+:- l_set(line, (['line two', 'line one', '*** top_of_file ***'], ['line three'])).
 
 ?- l_backward, l_value(line, L).
-   L = [1, 0],[2, 3].
+   L = ['line one', '*** top_of_file ***'],['line two', 'line three'].
 
-% backward at top fails (only line 0)
-:- l_set(line, ([0], [1, 2, 3])).
+% backward at top fails
+:- l_set(line, (['*** top_of_file ***'], ['line one', 'line two', 'line three'])).
 
 ?- l_backward.
    false.
 
 % --- l_forward ---
 
-:- l_set(line, ([1, 0], [2, 3])).
+:- l_set(line, (['line one', '*** top_of_file ***'], ['line two', 'line three'])).
 
 ?- l_forward, l_value(line, L).
-   L = [2, 1, 0],[3].
+   L = ['line two', 'line one', '*** top_of_file ***'],['line three'].
 
 % forward at end fails
-:- l_set(line, ([3, 2, 1, 0], [])).
+:- l_set(line, (['line three', 'line two', 'line one', '*** top_of_file ***'], [])).
 
 ?- l_forward.
    false.
 
 % --- l_do backward with count ---
 
-:- l_set(line, ([3, 2, 1, 0], [])).
+:- l_set(line, (['line three', 'line two', 'line one', '*** top_of_file ***'], [])).
 
 ?- l_do([b, ' ', '2']), l_value(line, L).
-   L = [1, 0],[2, 3].
+   L = ['line one', '*** top_of_file ***'],['line two', 'line three'].
 
 % --- l_do forward with count ---
 
-:- l_set(line, ([0], [1, 2, 3])).
+:- l_set(line, (['*** top_of_file ***'], ['line one', 'line two', 'line three'])).
 
 ?- l_do([f, ' ', '2']), l_value(line, L).
-   L = [2, 1, 0],[3].
+   L = ['line two', 'line one', '*** top_of_file ***'],['line three'].
 
-% --- rewind (uses l_reverse internally) ---
-% Test via directive since l_do([r]) does retract+assert after l_reverse
+% --- rewind ---
 
-:- l_set(line, ([3, 2, 1, 0], [])).
+:- l_set(line, (['line three', 'line two', 'line one', '*** top_of_file ***'], [])).
 :- l_do([r]).
 
 ?- l_value(line, L).
-   L = [0],[1, 2, 3].
+   L = ['*** top_of_file ***'],['line one', 'line two', 'line three'].
 
 % rewind from middle
-:- l_set(line, ([2, 1, 0], [3])).
+:- l_set(line, (['line two', 'line one', '*** top_of_file ***'], ['line three'])).
 :- l_do([r]).
 
 ?- l_value(line, L).
-   L = [0],[1, 2, 3].
+   L = ['*** top_of_file ***'],['line one', 'line two', 'line three'].
 
-% --- wind (uses l_reverse internally) ---
+% --- wind ---
 
-:- l_set(line, ([0], [1, 2, 3])).
+:- l_set(line, (['*** top_of_file ***'], ['line one', 'line two', 'line three'])).
 :- l_do([w]).
 
 ?- l_value(line, L).
-   L = [3, 2, 1, 0],[].
+   L = ['line three', 'line two', 'line one', '*** top_of_file ***'],[].
 
 % wind from middle
-:- l_set(line, ([1, 0], [2, 3])).
+:- l_set(line, (['line one', '*** top_of_file ***'], ['line two', 'line three'])).
 :- l_do([w]).
 
 ?- l_value(line, L).
-   L = [3, 2, 1, 0],[].
+   L = ['line three', 'line two', 'line one', '*** top_of_file ***'],[].
 
 % ===== Delete =====
 
 % Single delete from current position (Below is non-empty)
-:- l_set(line, ([2, 1, 0], [3])).
+:- l_set(line, (['line two', 'line one', '*** top_of_file ***'], ['line three'])).
 :- l_set(delete, []).
 
 ?- l_deletebuf, l_delete, l_value(line, L), l_value(delete, D).
-   L = [3, 1, 0],[], D = [2].
+   L = ['line three', 'line one', '*** top_of_file ***'],[], D = ['line two'].
 
 % Delete at end (Below=[]) -- l_delete succeeds in modifying state then fails
 % to advance, so we catch it with -> to still verify state
-:- l_set(line, ([3, 2, 1, 0], [])).
+:- l_set(line, (['line three', 'line two', 'line one', '*** top_of_file ***'], [])).
 :- l_set(delete, []).
 :- l_deletebuf.
 :- (l_delete -> true ; true).
 
 ?- l_value(line, L).
-   L = [2, 1, 0],[].
+   L = ['line two', 'line one', '*** top_of_file ***'],[].
 
 ?- l_value(delete, D).
-   D = [3].
+   D = ['line three'].
 
 % Delete via l_do (with count, from position with Below)
-:- l_set(line, ([2, 1, 0], [3])).
+:- l_set(line, (['line two', 'line one', '*** top_of_file ***'], ['line three'])).
 :- l_set(delete, []).
 :- l_do([d, ' ', '2']).
 
 ?- l_value(line, L).
-   L = [1, 0],[].
+   L = ['line one', '*** top_of_file ***'],[].
 
-% Delete at line 0 prints ? (via l_do, succeeds but does nothing)
-:- l_set(line, ([0], [])).
+% Delete at top-of-file (via l_do, succeeds but does nothing)
+:- l_set(line, (['*** top_of_file ***'], [])).
 
 ?- l_do([d]).
    true.
 
-% --- Delete all (via directive since it uses l_reverse internally) ---
+% --- Delete all ---
 
-:- l_set(line, ([3, 2, 1, 0], [])).
+:- l_set(line, (['line three', 'line two', 'line one', '*** top_of_file ***'], [])).
 :- l_set(delete, []).
 :- l_do(['D']).
 
 ?- l_value(line, L).
-   L = [0],[].
+   L = ['*** top_of_file ***'],[].
 
 % ===== Yank =====
 
@@ -305,41 +281,37 @@
    true.
 
 % Yank restores deleted lines
-:- l_set(line, ([2, 1, 0], [3])).
+:- l_set(line, (['line two', 'line one', '*** top_of_file ***'], ['line three'])).
 :- l_set(delete, []).
-:- l_set(newnum, 200).
 :- l_deletebuf.
 
 ?- l_delete, l_value(delete, D).
-   D = [2].
+   D = ['line two'].
 
-% Now yank it back (via directive since yank uses l_reverse-like patterns)
+% Now yank it back
 :- l_do([y]).
 
-?- l_value(line, ([N, 3, 1, 0], [])), l_line(N, T).
-   N = 200, T = 'line two'.
+?- l_value(line, L).
+   L = ['line two', 'line three', 'line one', '*** top_of_file ***'],[].
 
 % ===== Change =====
 
-:- (retract(l_line(10, _)) -> true ; true), assert(l_line(10, 'hello world')).
-:- l_set(line, ([10, 0], [])).
+:- l_set(line, (['hello world', '*** top_of_file ***'], [])).
 
 % l_change_once replaces first occurrence
-?- l_change_once(hello, goodbye), l_line(10, T).
+?- l_change_once(hello, goodbye), l_value(line, ([T|_], _)).
    T = 'goodbye world'.
 
 % l_changes replaces all occurrences
-:- (retract(l_line(10, _)) -> true ; true), assert(l_line(10, 'aaa bbb aaa')).
-:- l_set(line, ([10, 0], [])).
+:- l_set(line, (['aaa bbb aaa', '*** top_of_file ***'], [])).
 
-?- l_changes(aaa, zzz), l_line(10, T).
+?- l_changes(aaa, zzz), l_value(line, ([T|_], _)).
    T = 'zzz bbb zzz'.
 
 % change with no match leaves line unchanged
-:- (retract(l_line(10, _)) -> true ; true), assert(l_line(10, hello)).
-:- l_set(line, ([10, 0], [])).
+:- l_set(line, ([hello, '*** top_of_file ***'], [])).
 
-?- l_change_once(xyz, abc), l_line(10, T).
+?- l_change_once(xyz, abc), l_value(line, ([T|_], _)).
    T = hello.
 
 % ===== l_continuation =====
@@ -359,5 +331,5 @@
 
 % ===== l_listing (line ordering assembly) =====
 
-?- reverse([2, 1, 0], [3], [_|L3]), !.
-   L3 = [1, 2, 3].
+?- reverse([b, a, top], [c], [_|L3]), !.
+   L3 = [a, b, c].
