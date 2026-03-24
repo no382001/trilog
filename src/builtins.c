@@ -1207,6 +1207,7 @@ static builtin_result_t builtin_assertz(trilog_ctx_t *ctx, term_t *goal,
     c->head = arg;
   }
   ctx->alloc_permanent = false;
+  c->source_file = -1;
   ctx->db_count++;
   ctx->db_dirty = true;
   return BUILTIN_OK;
@@ -1229,6 +1230,7 @@ static builtin_result_t builtin_asserta(trilog_ctx_t *ctx, term_t *goal,
   } else {
     c->head = arg;
   }
+  c->source_file = -1;
   ctx->alloc_permanent = false;
   ctx->db_dirty = true;
   return BUILTIN_OK;

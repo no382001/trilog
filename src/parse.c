@@ -919,16 +919,37 @@ bool trilog_load_file(trilog_ctx_t *ctx, const char *filename) {
     return false;
   }
 
-  // track top-level files for make/0
+  // track top-level files for make/0 and handle re-consult
+  // compare by basename so that "/path/to/core.pl" and "core.pl" match
   if (ctx->include_depth == 0) {
-    bool already_tracked = false;
+    const char *base = strrchr(filename, '/');
+    base = base ? base + 1 : filename;
+    int file_idx = -1;
     for (int i = 0; i < ctx->make_file_count; i++) {
-      if (strcmp(ctx->make_files[i].path, filename) == 0) {
-        already_tracked = true;
+      const char *tbase = strrchr(ctx->make_files[i].path, '/');
+      tbase = tbase ? tbase + 1 : ctx->make_files[i].path;
+      if (strcmp(tbase, base) == 0) {
+        file_idx = i;
         break;
       }
     }
-    if (!already_tracked) {
+    if (file_idx >= 0) {
+      // re-consult: skip if file hasn't changed (avoids leaking perm pool)
+      long long cur_mtime = io_file_mtime(ctx, filename);
+      if (cur_mtime != -1LL && cur_mtime == ctx->make_files[file_idx].mtime) {
+        io_file_close(ctx, f);
+        return true;
+      }
+      // file changed: remove old clauses and reload
+      int dst = 0;
+      for (int src = 0; src < ctx->db_count; src++) {
+        if (ctx->database[src].source_file != file_idx)
+          ctx->database[dst++] = ctx->database[src];
+      }
+      ctx->db_count = dst;
+      ctx->make_files[file_idx].mtime = cur_mtime;
+      ctx->current_source_file = file_idx;
+    } else {
       if (ctx->make_file_count == 0) {
         // first file ever (or first after a make reset): snapshot state
         ctx->make_db_mark = ctx->db_count;
@@ -940,6 +961,7 @@ bool trilog_load_file(trilog_ctx_t *ctx, const char *filename) {
         strncpy(ctx->make_files[idx].path, filename, MAX_FILE_PATH - 1);
         ctx->make_files[idx].path[MAX_FILE_PATH - 1] = '\0';
         ctx->make_files[idx].mtime = io_file_mtime(ctx, filename);
+        ctx->current_source_file = idx;
       }
     }
   }
@@ -964,6 +986,7 @@ bool trilog_load_file(trilog_ctx_t *ctx, const char *filename) {
   strncpy(ctx->load_dir, old_load_dir, sizeof(ctx->load_dir) - 1);
   io_file_close(ctx, f);
   ctx->include_depth--;
+  ctx->current_source_file = -1;
   return ok;
 }
 
@@ -1076,6 +1099,7 @@ void parse_clause(trilog_ctx_t *ctx, char *line) {
   ctx->input_ptr++;
   ctx->alloc_permanent = false;
 
+  c->source_file = ctx->current_source_file;
   ctx->db_count++;
 
   if (ctx->debug_enabled) {

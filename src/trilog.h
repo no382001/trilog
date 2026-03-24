@@ -221,6 +221,7 @@ typedef struct {
   term_t *head;
   term_t **body; // allocated from perm pool
   int body_count;
+  int source_file; // index into make_files, or -1 for dynamic/repl
 } clause_t;
 
 typedef struct {
@@ -289,6 +290,7 @@ struct trilog_ctx {
   int make_term_mark;
   int make_string_mark;
   int include_depth;
+  int current_source_file; // file index being loaded (-1 for repl/dynamic)
 
   // per-clause variable table: maps name -> var_id within one clause/query.
   // reset at the start of each clause or top-level query parse.

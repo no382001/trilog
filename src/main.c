@@ -200,7 +200,9 @@ int main(int argc, char *argv[]) {
     strncpy(line, expression, sizeof(line) - 1);
     bool should_exit = false;
     process_line(ctx, line, &should_exit, false);
-    return parse_has_error(ctx) ? 1 : 0;
+    int rc = parse_has_error(ctx) ? 1 : 0;
+    free(ctx);
+    return rc;
   }
 
   if (quad_file) {
