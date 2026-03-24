@@ -1,6 +1,6 @@
 #include "platform_impl.h"
 
-bool unify(abclog_ctx_t *ctx, term_t *a, term_t *b, env_t *env) {
+bool unify(trilog_ctx_t *ctx, term_t *a, term_t *b, env_t *env) {
   assert(ctx != NULL && "Context is NULL");
   assert(env != NULL && "Environment is NULL");
 

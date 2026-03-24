@@ -2,14 +2,14 @@
 
 // freestanding mode: user must provide these macros before including this
 // header hosted mode: we use stdlib normally
-#ifndef ABCLOG_FREESTANDING
+#ifndef TRILOG_FREESTANDING
 
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
 
-#else // ABCLOG_FREESTANDING
+#else // TRILOG_FREESTANDING
 
 #ifndef bool
 typedef _Bool bool;
@@ -36,7 +36,7 @@ typedef __builtin_va_list va_list;
 // vsnprintf, snprintf
 // assert (or define NDEBUG to disable)
 
-#endif // ABCLOG_FREESTANDING
+#endif // TRILOG_FREESTANDING
 
 #define MAX_NAME 64
 #define MAX_ARGS 8
@@ -54,9 +54,9 @@ typedef __builtin_va_list va_list;
 #define MAX_CLAUSE_VARS 64
 
 #define TERM_POOL_BYTES (4 * 1024 * 1024)
-#define ABCLOG_CTX_SIZE(pool_bytes) (sizeof(abclog_ctx_t) + (pool_bytes))
+#define TRILOG_CTX_SIZE(pool_bytes) (sizeof(trilog_ctx_t) + (pool_bytes))
 
-typedef struct abclog_ctx abclog_ctx_t;
+typedef struct trilog_ctx trilog_ctx_t;
 typedef struct term term_t;
 typedef struct env env_t;
 
@@ -68,7 +68,7 @@ typedef enum {
   BUILTIN_ERROR = 3, // runtime error: ctx->runtime_error is set
 } builtin_result_t;
 
-typedef builtin_result_t (*builtin_handler_t)(abclog_ctx_t *ctx, term_t *goal,
+typedef builtin_result_t (*builtin_handler_t)(trilog_ctx_t *ctx, term_t *goal,
                                               env_t *env);
 
 typedef struct {
@@ -81,33 +81,33 @@ typedef struct {
 // yield callback: called periodically during solving.
 // receives current stats snapshot + stack depth.
 // return true to continue, false to abort the query.
-typedef bool (*solve_yield_cb_t)(abclog_ctx_t *ctx, int depth, void *userdata);
+typedef bool (*solve_yield_cb_t)(trilog_ctx_t *ctx, int depth, void *userdata);
 
-typedef void (*io_write_callback_t)(abclog_ctx_t *ctx, const char *str,
+typedef void (*io_write_callback_t)(trilog_ctx_t *ctx, const char *str,
                                     void *userdata);
-typedef void (*io_write_term_callback_t)(abclog_ctx_t *ctx, term_t *t,
+typedef void (*io_write_term_callback_t)(trilog_ctx_t *ctx, term_t *t,
                                          env_t *env, void *userdata);
-typedef void (*io_writef_callback_t)(abclog_ctx_t *ctx, const char *fmt,
+typedef void (*io_writef_callback_t)(trilog_ctx_t *ctx, const char *fmt,
                                      va_list args, void *userdata);
-typedef int (*io_read_char_callback_t)(abclog_ctx_t *ctx, void *userdata);
-typedef char *(*io_read_line_callback_t)(abclog_ctx_t *ctx, char *buf, int size,
+typedef int (*io_read_char_callback_t)(trilog_ctx_t *ctx, void *userdata);
+typedef char *(*io_read_line_callback_t)(trilog_ctx_t *ctx, char *buf, int size,
                                          void *userdata);
 
 // file i/o hooks (opaque handle = void*)
-typedef void *(*io_file_open_callback_t)(abclog_ctx_t *ctx, const char *path,
+typedef void *(*io_file_open_callback_t)(trilog_ctx_t *ctx, const char *path,
                                          const char *mode, void *userdata);
-typedef void (*io_file_close_callback_t)(abclog_ctx_t *ctx, void *handle,
+typedef void (*io_file_close_callback_t)(trilog_ctx_t *ctx, void *handle,
                                          void *userdata);
-typedef char *(*io_file_read_line_callback_t)(abclog_ctx_t *ctx, void *handle,
+typedef char *(*io_file_read_line_callback_t)(trilog_ctx_t *ctx, void *handle,
                                               char *buf, int size,
                                               void *userdata);
-typedef bool (*io_file_write_callback_t)(abclog_ctx_t *ctx, void *handle,
+typedef bool (*io_file_write_callback_t)(trilog_ctx_t *ctx, void *handle,
                                          const char *str, void *userdata);
-typedef bool (*io_file_exists_callback_t)(abclog_ctx_t *ctx, const char *path,
+typedef bool (*io_file_exists_callback_t)(trilog_ctx_t *ctx, const char *path,
                                           void *userdata);
-typedef long long (*io_file_mtime_callback_t)(abclog_ctx_t *ctx,
+typedef long long (*io_file_mtime_callback_t)(trilog_ctx_t *ctx,
                                               const char *path, void *userdata);
-typedef double (*io_clock_monotonic_callback_t)(abclog_ctx_t *ctx,
+typedef double (*io_clock_monotonic_callback_t)(trilog_ctx_t *ctx,
                                                 void *userdata);
 
 typedef struct {
@@ -199,7 +199,7 @@ typedef struct {
   int column;
 } parse_error_t;
 
-struct abclog_ctx {
+struct trilog_ctx {
   clause_t database[MAX_CLAUSES];
   int db_count;
   binding_t bindings[MAX_BINDINGS]; // centralized trail
@@ -304,172 +304,172 @@ static inline bool term_as_int(const term_t *t, int *out) {
   return true;
 }
 
-void ctx_reset_terms(abclog_ctx_t *ctx);
-void *term_alloc(abclog_ctx_t *ctx, size_t size);
+void ctx_reset_terms(trilog_ctx_t *ctx);
+void *term_alloc(trilog_ctx_t *ctx, size_t size);
 // Allocate a goal array of n slots from the term pool.
-static inline goal_stmt_t goals_alloc(abclog_ctx_t *ctx, int n) {
+static inline goal_stmt_t goals_alloc(trilog_ctx_t *ctx, int n) {
   goal_stmt_t g;
   g.goals =
       (n > 0) ? (term_t **)term_alloc(ctx, (size_t)n * sizeof(term_t *)) : NULL;
   g.count = 0;
   return g;
 }
-const char *intern_name(abclog_ctx_t *ctx, const char *name);
+const char *intern_name(trilog_ctx_t *ctx, const char *name);
 
-static inline void abclog_ctx_init(abclog_ctx_t *ctx, int pool_bytes) {
-  memset(ctx, 0, ABCLOG_CTX_SIZE(pool_bytes));
+static inline void trilog_ctx_init(trilog_ctx_t *ctx, int pool_bytes) {
+  memset(ctx, 0, TRILOG_CTX_SIZE(pool_bytes));
   ctx->term_pool_size = pool_bytes;
   ctx->term_pool_perm = pool_bytes;
 }
 
-void debug(abclog_ctx_t *ctx, const char *fmt, ...);
-void print_term_raw(abclog_ctx_t *ctx, term_t *t);
-void debug_term_raw(abclog_ctx_t *ctx, term_t *t);
+void debug(trilog_ctx_t *ctx, const char *fmt, ...);
+void print_term_raw(trilog_ctx_t *ctx, term_t *t);
+void debug_term_raw(trilog_ctx_t *ctx, term_t *t);
 
-term_t *make_term(abclog_ctx_t *ctx, term_type type, const char *name,
+term_t *make_term(trilog_ctx_t *ctx, term_type type, const char *name,
                   term_t **args, int arity);
-term_t *make_const(abclog_ctx_t *ctx, const char *name);
+term_t *make_const(trilog_ctx_t *ctx, const char *name);
 // for VAR terms, arity field stores the var_id (unique integer per variable).
 // name may be NULL for internal renamed variables (not shown in output).
-term_t *make_var(abclog_ctx_t *ctx, const char *name, int var_id);
-term_t *make_func(abclog_ctx_t *ctx, const char *name, term_t **args,
+term_t *make_var(trilog_ctx_t *ctx, const char *name, int var_id);
+term_t *make_func(trilog_ctx_t *ctx, const char *name, term_t **args,
                   int arity);
-term_t *make_string(abclog_ctx_t *ctx, const char *str);
+term_t *make_string(trilog_ctx_t *ctx, const char *str);
 
-void skip_ws(abclog_ctx_t *ctx);
-term_t *parse_term(abclog_ctx_t *ctx);
-term_t *parse_list(abclog_ctx_t *ctx);
-void parse_clause(abclog_ctx_t *ctx, char *line);
+void skip_ws(trilog_ctx_t *ctx);
+term_t *parse_term(trilog_ctx_t *ctx);
+term_t *parse_list(trilog_ctx_t *ctx);
+void parse_clause(trilog_ctx_t *ctx, char *line);
 void strip_line_comment(char *line);
 bool has_complete_clause(const char *buf);
-bool abclog_load_file(abclog_ctx_t *ctx, const char *filename);
-bool abclog_load_string(abclog_ctx_t *ctx, const char *src);
+bool trilog_load_file(trilog_ctx_t *ctx, const char *filename);
+bool trilog_load_string(trilog_ctx_t *ctx, const char *src);
 
 term_t *lookup(env_t *env, int var_id);
-void bind(abclog_ctx_t *ctx, env_t *env, term_t *var, term_t *value);
+void bind(trilog_ctx_t *ctx, env_t *env, term_t *var, term_t *value);
 term_t *deref(env_t *env, term_t *t);
-term_t *substitute(abclog_ctx_t *ctx, env_t *env, term_t *t);
+term_t *substitute(trilog_ctx_t *ctx, env_t *env, term_t *t);
 
-bool unify(abclog_ctx_t *ctx, term_t *a, term_t *b, env_t *env);
+bool unify(trilog_ctx_t *ctx, term_t *a, term_t *b, env_t *env);
 
 // rename_vars_mapped: rename all VARs in t, mapping old var_ids to fresh ones.
 // the map is shared across multiple calls for the same clause instance so that
 // the same variable in head and body gets the same renamed id.
-term_t *rename_vars_mapped(abclog_ctx_t *ctx, term_t *t, var_id_map_t *map);
+term_t *rename_vars_mapped(trilog_ctx_t *ctx, term_t *t, var_id_map_t *map);
 // Convenience wrapper: creates a fresh map for single-term rename.
-term_t *rename_vars(abclog_ctx_t *ctx, term_t *t);
+term_t *rename_vars(trilog_ctx_t *ctx, term_t *t);
 
-bool son(abclog_ctx_t *ctx, goal_stmt_t *cn, int *clause_idx, env_t *env,
+bool son(trilog_ctx_t *ctx, goal_stmt_t *cn, int *clause_idx, env_t *env,
          int env_mark, goal_stmt_t *resolvent);
 
-typedef bool (*solution_callback_t)(abclog_ctx_t *ctx, env_t *env,
+typedef bool (*solution_callback_t)(trilog_ctx_t *ctx, env_t *env,
                                     void *userdata, bool has_more);
 
-bool solve(abclog_ctx_t *ctx, goal_stmt_t *initial_goals, env_t *env);
-bool solve_all(abclog_ctx_t *ctx, goal_stmt_t *initial_goals, env_t *env,
+bool solve(trilog_ctx_t *ctx, goal_stmt_t *initial_goals, env_t *env);
+bool solve_all(trilog_ctx_t *ctx, goal_stmt_t *initial_goals, env_t *env,
                solution_callback_t callback, void *userdata);
 
-bool abclog_exec_query(abclog_ctx_t *ctx, char *query);
-bool abclog_exec_query_multi(abclog_ctx_t *ctx, char *query,
+bool trilog_exec_query(trilog_ctx_t *ctx, char *query);
+bool trilog_exec_query_multi(trilog_ctx_t *ctx, char *query,
                              solution_callback_t cb, void *ud);
 
-void print_term(abclog_ctx_t *ctx, term_t *t, env_t *env, bool quoted);
-void print_bindings(abclog_ctx_t *ctx, env_t *env);
+void print_term(trilog_ctx_t *ctx, term_t *t, env_t *env, bool quoted);
+void print_bindings(trilog_ctx_t *ctx, env_t *env);
 
-void parse_error(abclog_ctx_t *ctx, const char *fmt, ...);
-void parse_error_clear(abclog_ctx_t *ctx);
-bool parse_has_error(abclog_ctx_t *ctx);
-void parse_error_print(abclog_ctx_t *ctx);
+void parse_error(trilog_ctx_t *ctx, const char *fmt, ...);
+void parse_error_clear(trilog_ctx_t *ctx);
+bool parse_has_error(trilog_ctx_t *ctx);
+void parse_error_print(trilog_ctx_t *ctx);
 
-builtin_result_t try_builtin(abclog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t try_builtin(trilog_ctx_t *ctx, term_t *goal, env_t *env);
 
 // errors (errors.c)
-void ctx_runtime_error(abclog_ctx_t *ctx, const char *fmt, ...);
-void throw_error(abclog_ctx_t *ctx, term_t *error_type, const char *context);
-void throw_instantiation_error(abclog_ctx_t *ctx, const char *context);
-void throw_type_error(abclog_ctx_t *ctx, const char *expected, term_t *got,
+void ctx_runtime_error(trilog_ctx_t *ctx, const char *fmt, ...);
+void throw_error(trilog_ctx_t *ctx, term_t *error_type, const char *context);
+void throw_instantiation_error(trilog_ctx_t *ctx, const char *context);
+void throw_type_error(trilog_ctx_t *ctx, const char *expected, term_t *got,
                       const char *context);
-void throw_evaluation_error(abclog_ctx_t *ctx, const char *kind,
+void throw_evaluation_error(trilog_ctx_t *ctx, const char *kind,
                             const char *context);
-void throw_evaluable_error(abclog_ctx_t *ctx, const char *name, int arity,
+void throw_evaluable_error(trilog_ctx_t *ctx, const char *name, int arity,
                            const char *context);
-void throw_permission_error(abclog_ctx_t *ctx, const char *operation,
+void throw_permission_error(trilog_ctx_t *ctx, const char *operation,
                             const char *object_type, term_t *object,
                             const char *context);
-void throw_existence_error(abclog_ctx_t *ctx, const char *object_type,
+void throw_existence_error(trilog_ctx_t *ctx, const char *object_type,
                            term_t *object, const char *context);
 
 // arithmetic (arith.c)
-bool eval_arith(abclog_ctx_t *ctx, term_t *t, env_t *env, int *result,
+bool eval_arith(trilog_ctx_t *ctx, term_t *t, env_t *env, int *result,
                 const char *pred);
-builtin_result_t builtin_is(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_lt(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_gt(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_le(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_ge(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_arith_eq(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_arith_ne(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_succ(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_plus(abclog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_is(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_lt(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_gt(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_le(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_ge(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_arith_eq(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_arith_ne(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_succ(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_plus(trilog_ctx_t *ctx, term_t *goal, env_t *env);
 
 // streams (streams.c)
-builtin_result_t builtin_nl1(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_write2(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_writeln2(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_writeq2(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_with_output_to(abclog_ctx_t *ctx, term_t *goal,
+builtin_result_t builtin_nl1(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_write2(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_writeln2(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_writeq2(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_with_output_to(trilog_ctx_t *ctx, term_t *goal,
                                         env_t *env);
-builtin_result_t builtin_term_to_atom(abclog_ctx_t *ctx, term_t *goal,
+builtin_result_t builtin_term_to_atom(trilog_ctx_t *ctx, term_t *goal,
                                       env_t *env);
-builtin_result_t builtin_atom_to_term(abclog_ctx_t *ctx, term_t *goal,
+builtin_result_t builtin_atom_to_term(trilog_ctx_t *ctx, term_t *goal,
                                       env_t *env);
-builtin_result_t builtin_open(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_close(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_read_line_to_atom(abclog_ctx_t *ctx, term_t *goal,
+builtin_result_t builtin_open(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_close(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_read_line_to_atom(trilog_ctx_t *ctx, term_t *goal,
                                            env_t *env);
-builtin_result_t builtin_get_char(abclog_ctx_t *ctx, term_t *goal, env_t *env);
-builtin_result_t builtin_read_term(abclog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_get_char(trilog_ctx_t *ctx, term_t *goal, env_t *env);
+builtin_result_t builtin_read_term(trilog_ctx_t *ctx, term_t *goal, env_t *env);
 
 // i/o hook management
-void io_hooks_init_default(abclog_ctx_t *ctx);
-void io_hooks_set(abclog_ctx_t *ctx, io_hooks_t *hooks);
+void io_hooks_init_default(trilog_ctx_t *ctx);
+void io_hooks_set(trilog_ctx_t *ctx, io_hooks_t *hooks);
 
 // i/o functions (use hooks internally)
-void io_write_str(abclog_ctx_t *ctx, const char *str);
-void io_write_term(abclog_ctx_t *ctx, term_t *t, env_t *env);
-void io_write_term_quoted(abclog_ctx_t *ctx, term_t *t, env_t *env);
-void io_writef(abclog_ctx_t *ctx, const char *fmt, ...);
-void io_writef_err(abclog_ctx_t *ctx, const char *fmt, ...);
-int io_read_char(abclog_ctx_t *ctx);
-char *io_read_line(abclog_ctx_t *ctx, char *buf, int size);
+void io_write_str(trilog_ctx_t *ctx, const char *str);
+void io_write_term(trilog_ctx_t *ctx, term_t *t, env_t *env);
+void io_write_term_quoted(trilog_ctx_t *ctx, term_t *t, env_t *env);
+void io_writef(trilog_ctx_t *ctx, const char *fmt, ...);
+void io_writef_err(trilog_ctx_t *ctx, const char *fmt, ...);
+int io_read_char(trilog_ctx_t *ctx);
+char *io_read_line(trilog_ctx_t *ctx, char *buf, int size);
 
 // file i/o wrappers
-void *io_file_open(abclog_ctx_t *ctx, const char *path, const char *mode);
-void io_file_close(abclog_ctx_t *ctx, void *handle);
-char *io_file_read_line(abclog_ctx_t *ctx, void *handle, char *buf, int size);
-bool io_file_write(abclog_ctx_t *ctx, void *handle, const char *str);
-bool io_file_exists(abclog_ctx_t *ctx, const char *path);
-long long io_file_mtime(abclog_ctx_t *ctx, const char *path);
-double io_clock_monotonic(abclog_ctx_t *ctx);
+void *io_file_open(trilog_ctx_t *ctx, const char *path, const char *mode);
+void io_file_close(trilog_ctx_t *ctx, void *handle);
+char *io_file_read_line(trilog_ctx_t *ctx, void *handle, char *buf, int size);
+bool io_file_write(trilog_ctx_t *ctx, void *handle, const char *str);
+bool io_file_exists(trilog_ctx_t *ctx, const char *path);
+long long io_file_mtime(trilog_ctx_t *ctx, const char *path);
+double io_clock_monotonic(trilog_ctx_t *ctx);
 
 // toplevel helpers (shared by CLI, web, embedders)
 typedef struct {
   bool first;
   bool done; // last answer was terminated with .
 } toplevel_state_t;
-bool toplevel_emit_all_cb(abclog_ctx_t *ctx, env_t *env, void *ud,
+bool toplevel_emit_all_cb(trilog_ctx_t *ctx, env_t *env, void *ud,
                           bool has_more);
-void toplevel_query(abclog_ctx_t *ctx, char *query);
+void toplevel_query(trilog_ctx_t *ctx, char *query);
 
 // solve yield: set a callback invoked every `interval` steps during solving
-void abclog_set_yield(abclog_ctx_t *ctx, solve_yield_cb_t cb, int interval,
+void trilog_set_yield(trilog_ctx_t *ctx, solve_yield_cb_t cb, int interval,
                       void *userdata);
 
 // ffi: Register custom builtins
-bool ffi_register_builtin(abclog_ctx_t *ctx, const char *name, int arity,
+bool ffi_register_builtin(trilog_ctx_t *ctx, const char *name, int arity,
                           builtin_handler_t handler, void *userdata);
-void ffi_clear_builtins(abclog_ctx_t *ctx);
-custom_builtin_t *ffi_get_builtin_userdata(abclog_ctx_t *ctx, term_t *goal);
+void ffi_clear_builtins(trilog_ctx_t *ctx);
+custom_builtin_t *ffi_get_builtin_userdata(trilog_ctx_t *ctx, term_t *goal);
 
 // quad tests
 typedef struct {
@@ -479,7 +479,7 @@ typedef struct {
   double total_time;
 } quad_results_t;
 
-quad_results_t abclog_run_quad_file(abclog_ctx_t *ctx, const char *filename);
-quad_results_t abclog_run_quad_file_junit(abclog_ctx_t *ctx,
+quad_results_t trilog_run_quad_file(trilog_ctx_t *ctx, const char *filename);
+quad_results_t trilog_run_quad_file_junit(trilog_ctx_t *ctx,
                                           const char *filename,
                                           const char *junit_dir);

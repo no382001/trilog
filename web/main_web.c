@@ -8,7 +8,7 @@
 #define INPUT_QUEUE_MAX 16
 #define INPUT_LINE_MAX  4096
 
-static abclog_ctx_t *g_ctx = NULL;
+static trilog_ctx_t *g_ctx = NULL;
 static char g_out[WEB_OUT_SIZE];
 static int  g_out_pos = 0;
 
@@ -18,7 +18,7 @@ static int  g_input_head = 0;
 static int  g_input_tail = 0;
 static bool g_reading    = false;
 
-static void web_write_str(abclog_ctx_t *ctx, const char *str, void *ud) {
+static void web_write_str(trilog_ctx_t *ctx, const char *str, void *ud) {
   (void)ctx; (void)ud;
   int len = (int)strlen(str);
   int rem = WEB_OUT_SIZE - 1 - g_out_pos;
@@ -28,7 +28,7 @@ static void web_write_str(abclog_ctx_t *ctx, const char *str, void *ud) {
   g_out[g_out_pos] = '\0';
 }
 
-static void web_writef(abclog_ctx_t *ctx, const char *fmt, va_list args,
+static void web_writef(trilog_ctx_t *ctx, const char *fmt, va_list args,
                        void *ud) {
   (void)ctx; (void)ud;
   int rem = WEB_OUT_SIZE - 1 - g_out_pos;
@@ -38,7 +38,7 @@ static void web_writef(abclog_ctx_t *ctx, const char *fmt, va_list args,
   g_out[g_out_pos] = '\0';
 }
 
-static char *web_read_line(abclog_ctx_t *ctx, char *buf, int size, void *ud) {
+static char *web_read_line(trilog_ctx_t *ctx, char *buf, int size, void *ud) {
   (void)ctx; (void)ud;
   g_reading = true;
   while (g_input_head == g_input_tail)
@@ -51,7 +51,7 @@ static char *web_read_line(abclog_ctx_t *ctx, char *buf, int size, void *ud) {
 }
 
 EMSCRIPTEN_KEEPALIVE
-void abclog_web_push_line(const char *line) {
+void trilog_web_push_line(const char *line) {
   int next = (g_input_tail + 1) % INPUT_QUEUE_MAX;
   if (next == g_input_head) return; // full, drop
   strncpy(g_input_queue[g_input_tail], line, INPUT_LINE_MAX - 2);
@@ -63,11 +63,11 @@ void abclog_web_push_line(const char *line) {
 }
 
 EMSCRIPTEN_KEEPALIVE
-int abclog_web_is_reading(void) { return g_reading ? 1 : 0; }
+int trilog_web_is_reading(void) { return g_reading ? 1 : 0; }
 
 // return and clear any buffered output produced so far (usable while blocked).
 EMSCRIPTEN_KEEPALIVE
-const char *abclog_web_take_output(void) {
+const char *trilog_web_take_output(void) {
   static char tmp[WEB_OUT_SIZE];
   memcpy(tmp, g_out, (size_t)(g_out_pos + 1));
   g_out_pos = 0;
@@ -76,11 +76,11 @@ const char *abclog_web_take_output(void) {
 }
 
 EMSCRIPTEN_KEEPALIVE
-void abclog_web_init(void) {
+void trilog_web_init(void) {
   if (g_ctx) { free(g_ctx); g_ctx = NULL; }
-  g_ctx = malloc(ABCLOG_CTX_SIZE(TERM_POOL_BYTES));
+  g_ctx = malloc(TRILOG_CTX_SIZE(TERM_POOL_BYTES));
   if (!g_ctx) return;
-  abclog_ctx_init(g_ctx, TERM_POOL_BYTES);
+  trilog_ctx_init(g_ctx, TERM_POOL_BYTES);
   io_hooks_init_default(g_ctx);
 
   io_hooks_t hooks = {0};
@@ -90,13 +90,13 @@ void abclog_web_init(void) {
   hooks.read_line  = web_read_line;
   io_hooks_set(g_ctx, &hooks);
 
-  abclog_load_file(g_ctx, "/core.pl");
+  trilog_load_file(g_ctx, "/core.pl");
 }
 
 // yield callback: fires every N steps, lets JS poll stats in real-time.
 // uses emscripten_sleep(0) to yield to the browser event loop so JS can
 // read the stats buffer and update visualizations.
-static bool web_yield_cb(abclog_ctx_t *ctx, int depth, void *ud) {
+static bool web_yield_cb(trilog_ctx_t *ctx, int depth, void *ud) {
   (void)ud;
   (void)depth;
   (void)ctx;
@@ -105,12 +105,12 @@ static bool web_yield_cb(abclog_ctx_t *ctx, int depth, void *ud) {
 }
 
 EMSCRIPTEN_KEEPALIVE
-void abclog_web_set_yield(int interval) {
+void trilog_web_set_yield(int interval) {
   if (!g_ctx) return;
   if (interval <= 0) {
-    abclog_set_yield(g_ctx, NULL, 0, NULL);
+    trilog_set_yield(g_ctx, NULL, 0, NULL);
   } else {
-    abclog_set_yield(g_ctx, web_yield_cb, interval, NULL);
+    trilog_set_yield(g_ctx, web_yield_cb, interval, NULL);
   }
 }
 
@@ -120,7 +120,7 @@ void abclog_web_set_yield(int interval) {
 static int g_stats_buf[6];
 
 EMSCRIPTEN_KEEPALIVE
-int *abclog_web_get_stats(void) {
+int *trilog_web_get_stats(void) {
   if (!g_ctx) return g_stats_buf;
   g_stats_buf[0] = g_ctx->stats.son_calls;
   g_stats_buf[1] = g_ctx->stats.unify_calls;
@@ -132,7 +132,7 @@ int *abclog_web_get_stats(void) {
 }
 
 EMSCRIPTEN_KEEPALIVE
-const char *abclog_web_eval(const char *query) {
+const char *trilog_web_eval(const char *query) {
   if (!g_ctx) return "error: not initialized\n";
 
   g_out_pos = 0;

@@ -10,7 +10,7 @@ typedef struct {
   int pos;
 } bcap_t;
 
-static void bcap_write_str(abclog_ctx_t *ctx, const char *str, void *ud) {
+static void bcap_write_str(trilog_ctx_t *ctx, const char *str, void *ud) {
   (void)ctx;
   bcap_t *c = ud;
   int len = (int)strlen(str);
@@ -24,7 +24,7 @@ static void bcap_write_str(abclog_ctx_t *ctx, const char *str, void *ud) {
   }
 }
 
-static void bcap_writef(abclog_ctx_t *ctx, const char *fmt, va_list args,
+static void bcap_writef(trilog_ctx_t *ctx, const char *fmt, va_list args,
                         void *ud) {
   (void)ctx;
   bcap_t *c = ud;
@@ -38,7 +38,7 @@ static void bcap_writef(abclog_ctx_t *ctx, const char *fmt, va_list args,
   }
 }
 
-static void bcap_start(abclog_ctx_t *ctx, bcap_t *c) {
+static void bcap_start(trilog_ctx_t *ctx, bcap_t *c) {
   c->saved = ctx->io_hooks;
   c->pos = 0;
   c->buf[0] = '\0';
@@ -48,11 +48,11 @@ static void bcap_start(abclog_ctx_t *ctx, bcap_t *c) {
   ctx->io_hooks.userdata = c;
 }
 
-static void bcap_end(abclog_ctx_t *ctx, bcap_t *c) { ctx->io_hooks = c->saved; }
+static void bcap_end(trilog_ctx_t *ctx, bcap_t *c) { ctx->io_hooks = c->saved; }
 
 /* ── Stream Term Construction ────────────────────────── */
 
-static term_t *make_stream_term(abclog_ctx_t *ctx, int id) {
+static term_t *make_stream_term(trilog_ctx_t *ctx, int id) {
   char buf[16];
   snprintf(buf, sizeof(buf), "%d", id);
   term_t *n = make_const(ctx, buf);
@@ -71,17 +71,17 @@ static bool get_stream_id(env_t *env, term_t *t, int *id) {
 
 typedef struct {
   io_hooks_t saved;
-  abclog_ctx_t *ctx;
+  trilog_ctx_t *ctx;
   void *file_handle;
 } scap_t;
 
-static void scap_write_str(abclog_ctx_t *ctx, const char *str, void *ud) {
+static void scap_write_str(trilog_ctx_t *ctx, const char *str, void *ud) {
   (void)ctx;
   scap_t *c = ud;
   io_file_write(c->ctx, c->file_handle, str);
 }
 
-static void scap_writef(abclog_ctx_t *ctx, const char *fmt, va_list args,
+static void scap_writef(trilog_ctx_t *ctx, const char *fmt, va_list args,
                         void *ud) {
   (void)ctx;
   scap_t *c = ud;
@@ -90,7 +90,7 @@ static void scap_writef(abclog_ctx_t *ctx, const char *fmt, va_list args,
   io_file_write(c->ctx, c->file_handle, buf);
 }
 
-static void scap_start(abclog_ctx_t *ctx, scap_t *c, void *file_handle) {
+static void scap_start(trilog_ctx_t *ctx, scap_t *c, void *file_handle) {
   c->saved = ctx->io_hooks;
   c->ctx = ctx;
   c->file_handle = file_handle;
@@ -100,12 +100,12 @@ static void scap_start(abclog_ctx_t *ctx, scap_t *c, void *file_handle) {
   ctx->io_hooks.userdata = c;
 }
 
-static void scap_end(abclog_ctx_t *ctx, scap_t *c) { ctx->io_hooks = c->saved; }
+static void scap_end(trilog_ctx_t *ctx, scap_t *c) { ctx->io_hooks = c->saved; }
 
 /* ── Stream Resolution ───────────────────────────────── */
 
 // resolve stream arg: NULL = user_output, (void*)-1 = error, else file handle
-static void *resolve_output_stream(abclog_ctx_t *ctx, env_t *env, term_t *arg) {
+static void *resolve_output_stream(trilog_ctx_t *ctx, env_t *env, term_t *arg) {
   arg = deref(env, arg);
   if (arg && arg->type == CONST &&
       (strcmp(arg->name, "user_output") == 0 || strcmp(arg->name, "user") == 0))
@@ -120,7 +120,7 @@ static void *resolve_output_stream(abclog_ctx_t *ctx, env_t *env, term_t *arg) {
 
 /* ── Stream Builtins ─────────────────────────────────── */
 
-builtin_result_t builtin_nl1(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
+builtin_result_t builtin_nl1(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   void *h = resolve_output_stream(ctx, env, goal->args[0]);
   if (h == (void *)-1)
     return BUILTIN_FAIL;
@@ -131,7 +131,7 @@ builtin_result_t builtin_nl1(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
   return BUILTIN_OK;
 }
 
-builtin_result_t builtin_write2(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
+builtin_result_t builtin_write2(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   void *h = resolve_output_stream(ctx, env, goal->args[0]);
   if (h == (void *)-1)
     return BUILTIN_FAIL;
@@ -147,7 +147,7 @@ builtin_result_t builtin_write2(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
   return BUILTIN_OK;
 }
 
-builtin_result_t builtin_writeln2(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
+builtin_result_t builtin_writeln2(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   void *h = resolve_output_stream(ctx, env, goal->args[0]);
   if (h == (void *)-1)
     return BUILTIN_FAIL;
@@ -165,7 +165,7 @@ builtin_result_t builtin_writeln2(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
   return BUILTIN_OK;
 }
 
-builtin_result_t builtin_writeq2(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
+builtin_result_t builtin_writeq2(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   void *h = resolve_output_stream(ctx, env, goal->args[0]);
   if (h == (void *)-1)
     return BUILTIN_FAIL;
@@ -181,7 +181,7 @@ builtin_result_t builtin_writeq2(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
   return BUILTIN_OK;
 }
 
-builtin_result_t builtin_with_output_to(abclog_ctx_t *ctx, term_t *goal,
+builtin_result_t builtin_with_output_to(trilog_ctx_t *ctx, term_t *goal,
                                         env_t *env) {
   term_t *sink = deref(env, goal->args[0]);
   term_t *g = deref(env, goal->args[1]);
@@ -234,7 +234,7 @@ builtin_result_t builtin_with_output_to(abclog_ctx_t *ctx, term_t *goal,
   return unify(ctx, sink->args[0], result, env) ? BUILTIN_OK : BUILTIN_FAIL;
 }
 
-builtin_result_t builtin_term_to_atom(abclog_ctx_t *ctx, term_t *goal,
+builtin_result_t builtin_term_to_atom(trilog_ctx_t *ctx, term_t *goal,
                                       env_t *env) {
   term_t *term_arg = deref(env, goal->args[0]);
   term_t *atom_arg = deref(env, goal->args[1]);
@@ -289,7 +289,7 @@ builtin_result_t builtin_term_to_atom(abclog_ctx_t *ctx, term_t *goal,
                                                              : BUILTIN_FAIL;
 }
 
-builtin_result_t builtin_atom_to_term(abclog_ctx_t *ctx, term_t *goal,
+builtin_result_t builtin_atom_to_term(trilog_ctx_t *ctx, term_t *goal,
                                       env_t *env) {
   term_t *atom_arg = deref(env, goal->args[0]);
   const char *str =
@@ -352,7 +352,7 @@ builtin_result_t builtin_atom_to_term(abclog_ctx_t *ctx, term_t *goal,
   return unify(ctx, goal->args[2], bindings, env) ? BUILTIN_OK : BUILTIN_FAIL;
 }
 
-builtin_result_t builtin_open(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
+builtin_result_t builtin_open(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   term_t *path_t = deref(env, goal->args[0]);
   term_t *mode_t = deref(env, goal->args[1]);
   if (!path_t || !mode_t || mode_t->type != CONST)
@@ -393,7 +393,7 @@ builtin_result_t builtin_open(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
              : BUILTIN_FAIL;
 }
 
-builtin_result_t builtin_close(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
+builtin_result_t builtin_close(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   int id;
   if (!get_stream_id(env, goal->args[0], &id))
     return BUILTIN_FAIL;
@@ -404,7 +404,7 @@ builtin_result_t builtin_close(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
   return BUILTIN_OK;
 }
 
-builtin_result_t builtin_read_line_to_atom(abclog_ctx_t *ctx, term_t *goal,
+builtin_result_t builtin_read_line_to_atom(trilog_ctx_t *ctx, term_t *goal,
                                            env_t *env) {
   char line[1024];
   char *r;
@@ -434,7 +434,7 @@ builtin_result_t builtin_read_line_to_atom(abclog_ctx_t *ctx, term_t *goal,
   return unify(ctx, goal->args[1], result, env) ? BUILTIN_OK : BUILTIN_FAIL;
 }
 
-builtin_result_t builtin_get_char(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
+builtin_result_t builtin_get_char(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   int c = io_read_char(ctx);
   term_t *result;
   if (c == -1) {
@@ -446,7 +446,7 @@ builtin_result_t builtin_get_char(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
   return unify(ctx, goal->args[0], result, env) ? BUILTIN_OK : BUILTIN_FAIL;
 }
 
-builtin_result_t builtin_read_term(abclog_ctx_t *ctx, term_t *goal,
+builtin_result_t builtin_read_term(trilog_ctx_t *ctx, term_t *goal,
                                    env_t *env) {
   int id;
   if (!get_stream_id(env, goal->args[0], &id))

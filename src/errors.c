@@ -2,7 +2,7 @@
 
 /* ── ISO Error Term Construction ─────────────────────── */
 
-void throw_error(abclog_ctx_t *ctx, term_t *error_type, const char *context) {
+void throw_error(trilog_ctx_t *ctx, term_t *error_type, const char *context) {
   term_t *ctx_atom = make_const(ctx, context);
   term_t *args[2] = {error_type, ctx_atom};
   term_t *err = make_func(ctx, "error", args, 2);
@@ -12,11 +12,11 @@ void throw_error(abclog_ctx_t *ctx, term_t *error_type, const char *context) {
            context);
 }
 
-void throw_instantiation_error(abclog_ctx_t *ctx, const char *context) {
+void throw_instantiation_error(trilog_ctx_t *ctx, const char *context) {
   throw_error(ctx, make_const(ctx, "instantiation_error"), context);
 }
 
-void throw_type_error(abclog_ctx_t *ctx, const char *expected, term_t *got,
+void throw_type_error(trilog_ctx_t *ctx, const char *expected, term_t *got,
                       const char *context) {
   term_t *targs[2] = {make_const(ctx, expected), got};
   term_t *te = make_func(ctx, "type_error", targs, 2);
@@ -29,14 +29,14 @@ void throw_type_error(abclog_ctx_t *ctx, const char *expected, term_t *got,
              expected, got->name, context);
 }
 
-void throw_evaluation_error(abclog_ctx_t *ctx, const char *kind,
+void throw_evaluation_error(trilog_ctx_t *ctx, const char *kind,
                             const char *context) {
   term_t *kargs[1] = {make_const(ctx, kind)};
   term_t *ee = make_func(ctx, "evaluation_error", kargs, 1);
   throw_error(ctx, ee, context);
 }
 
-void throw_evaluable_error(abclog_ctx_t *ctx, const char *name, int arity,
+void throw_evaluable_error(trilog_ctx_t *ctx, const char *name, int arity,
                            const char *context) {
   char arity_buf[16];
   snprintf(arity_buf, sizeof(arity_buf), "%d", arity);
@@ -52,7 +52,7 @@ void throw_evaluable_error(abclog_ctx_t *ctx, const char *name, int arity,
            name, arity);
 }
 
-void throw_permission_error(abclog_ctx_t *ctx, const char *operation,
+void throw_permission_error(trilog_ctx_t *ctx, const char *operation,
                             const char *object_type, term_t *object,
                             const char *context) {
   term_t *pargs[3] = {make_const(ctx, operation), make_const(ctx, object_type),
@@ -61,14 +61,14 @@ void throw_permission_error(abclog_ctx_t *ctx, const char *operation,
   throw_error(ctx, pe, context);
 }
 
-void throw_existence_error(abclog_ctx_t *ctx, const char *object_type,
+void throw_existence_error(trilog_ctx_t *ctx, const char *object_type,
                            term_t *object, const char *context) {
   term_t *eargs[2] = {make_const(ctx, object_type), object};
   term_t *ee = make_func(ctx, "existence_error", eargs, 2);
   throw_error(ctx, ee, context);
 }
 
-void ctx_runtime_error(abclog_ctx_t *ctx, const char *fmt, ...) {
+void ctx_runtime_error(trilog_ctx_t *ctx, const char *fmt, ...) {
   if (ctx->has_runtime_error)
     return; // keep first error
   ctx->has_runtime_error = true;

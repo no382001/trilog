@@ -7,7 +7,7 @@
 
 #define CORE_PATH_MAX 8192
 
-static void try_load_core(abclog_ctx_t *ctx, const char *argv0) {
+static void try_load_core(trilog_ctx_t *ctx, const char *argv0) {
   char exe[CORE_PATH_MAX];
   char dir[CORE_PATH_MAX];
 
@@ -28,7 +28,7 @@ static void try_load_core(abclog_ctx_t *ctx, const char *argv0) {
   strcat(path, "/core.pl");
 
   if (io_file_exists(ctx, path))
-    abclog_load_file(ctx, path);
+    trilog_load_file(ctx, path);
 }
 
 static int read_key(void) {
@@ -44,7 +44,7 @@ static int read_key(void) {
   return c;
 }
 
-static void print_usage(abclog_ctx_t *ctx, const char *prog) {
+static void print_usage(trilog_ctx_t *ctx, const char *prog) {
   io_writef_err(
       ctx,
       "Usage: %s [-d] [-f <file>] [-e <expression>] [-q <file>] [-j <dir>]\n",
@@ -67,7 +67,7 @@ typedef struct {
   toplevel_state_t base;
 } interactive_state_t;
 
-static bool interactive_cb(abclog_ctx_t *ctx, env_t *env, void *ud,
+static bool interactive_cb(trilog_ctx_t *ctx, env_t *env, void *ud,
                            bool has_more) {
   interactive_state_t *st = ud;
   st->want_more = false;
@@ -90,10 +90,10 @@ static bool interactive_cb(abclog_ctx_t *ctx, env_t *env, void *ud,
   return st->want_more;
 }
 
-static void exec_query(abclog_ctx_t *ctx, char *query, bool interactive) {
+static void exec_query(trilog_ctx_t *ctx, char *query, bool interactive) {
   interactive_state_t st = {.interactive = interactive,
                             .base = {.first = true}};
-  bool found = abclog_exec_query_multi(ctx, query, interactive_cb, &st);
+  bool found = trilog_exec_query_multi(ctx, query, interactive_cb, &st);
   if (!ctx->has_runtime_error && (!found || st.want_more))
     io_write_str(ctx, "   false.\n");
   else if (found && !st.base.done)
@@ -101,7 +101,7 @@ static void exec_query(abclog_ctx_t *ctx, char *query, bool interactive) {
   ctx->has_runtime_error = false;
 }
 
-static void process_line(abclog_ctx_t *ctx, char *line, bool *should_exit,
+static void process_line(trilog_ctx_t *ctx, char *line, bool *should_exit,
                          bool interactive) {
   line[strcspn(line, "\n")] = 0;
   if (strlen(line) == 0)
@@ -125,17 +125,17 @@ static void process_line(abclog_ctx_t *ctx, char *line, bool *should_exit,
   exec_query(ctx, query, interactive);
 }
 
-static bool load_file(abclog_ctx_t *ctx, const char *filename) {
-  return abclog_load_file(ctx, filename);
+static bool load_file(trilog_ctx_t *ctx, const char *filename) {
+  return trilog_load_file(ctx, filename);
 }
 
 int main(int argc, char *argv[]) {
-  abclog_ctx_t *ctx = malloc(ABCLOG_CTX_SIZE(TERM_POOL_BYTES));
+  trilog_ctx_t *ctx = malloc(TRILOG_CTX_SIZE(TERM_POOL_BYTES));
   if (!ctx) {
-    fprintf(stderr, "Fatal: failed to allocate abclog context\n");
+    fprintf(stderr, "Fatal: failed to allocate trilog context\n");
     return 1;
   }
-  abclog_ctx_init(ctx, TERM_POOL_BYTES);
+  trilog_ctx_init(ctx, TERM_POOL_BYTES);
 
   io_hooks_init_default(ctx);
   try_load_core(ctx, argv[0]);
@@ -190,9 +190,9 @@ int main(int argc, char *argv[]) {
   if (quad_file) {
     quad_results_t res;
     if (junit_dir)
-      res = abclog_run_quad_file_junit(ctx, quad_file, junit_dir);
+      res = trilog_run_quad_file_junit(ctx, quad_file, junit_dir);
     else
-      res = abclog_run_quad_file(ctx, quad_file);
+      res = trilog_run_quad_file(ctx, quad_file);
 
     free(ctx);
     return res.failed > 0 ? 1 : 0;

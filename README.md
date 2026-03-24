@@ -1,4 +1,4 @@
-# abclog
+# trilog
 
 A lightweight, embeddable Prolog interpreter written in C11.
 
@@ -11,10 +11,10 @@ make
 ## Usage
 
 ```sh
-./abclog                  # interactive REPL
-./abclog -f file.pl       # load file
-./abclog -e "goal."       # evaluate and exit
-./abclog -q tests.pl      # run quad tests
+./trilog                  # interactive REPL
+./trilog -f file.pl       # load file
+./trilog -e "goal."       # evaluate and exit
+./trilog -q tests.pl      # run quad tests
 ```
 
 ## Language
@@ -79,8 +79,8 @@ Integer arithmetic. Operators: `+ - * / // mod max min >> << /\ \/ xor`. Unary: 
 The context uses a flexible array member for its term pool and must be heap-allocated:
 
 ```c
-abclog_ctx_t *ctx = malloc(ABCLOG_CTX_SIZE(TERM_POOL_BYTES));
-abclog_ctx_init(ctx, TERM_POOL_BYTES);
+trilog_ctx_t *ctx = malloc(TRILOG_CTX_SIZE(TERM_POOL_BYTES));
+trilog_ctx_init(ctx, TERM_POOL_BYTES);
 io_hooks_init_default(ctx);
 // ... use ctx ...
 free(ctx);
@@ -91,7 +91,7 @@ free(ctx);
 ### Custom builtins (FFI)
 
 ```c
-builtin_result_t my_handler(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
+builtin_result_t my_handler(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
     term_t *arg = deref(env, goal->args[0]);
     // ... inspect/unify args ...
     return BUILTIN_OK; // or BUILTIN_FAIL / BUILTIN_ERROR
@@ -128,16 +128,16 @@ Only set the callbacks you need; unset ones fall back to the defaults (`stdio`/`
 
 ### Freestanding (no libc)
 
-Define `ABCLOG_FREESTANDING` before including `abclog.h`. The header then expects no standard includes — you provide the required primitives as macros:
+Define `TRILOG_FREESTANDING` before including `trilog.h`. The header then expects no standard includes — you provide the required primitives as macros:
 
 ```c
-#define ABCLOG_FREESTANDING
+#define TRILOG_FREESTANDING
 #define strcmp   my_strcmp
 #define strlen   my_strlen
 #define memcpy   my_memcpy
 #define vsnprintf my_vsnprintf
 // ... etc.
-#include "abclog.h"
+#include "trilog.h"
 ```
 
 All output must be handled through I/O hooks; there is no fallback to `printf`. See `examples/freestanding.c` for a build smoke-test.

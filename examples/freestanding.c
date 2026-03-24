@@ -1,10 +1,10 @@
 // freestanding compile+link smoke-test.
-// proves the abclog library can build without libc (embedded, WASM, etc.).
+// proves the trilog library can build without libc (embedded, WASM, etc.).
 // not intended to be run — the build succeeding is the test.
 //
 // build:  make freestanding
 //
-// ABCLOG_FREESTANDING and NDEBUG are passed via compiler flags.
+// TRILOG_FREESTANDING and NDEBUG are passed via compiler flags.
 
 typedef __builtin_va_list va_list;
 #define va_start __builtin_va_start

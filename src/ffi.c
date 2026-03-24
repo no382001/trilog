@@ -1,6 +1,6 @@
 #include "platform_impl.h"
 
-bool ffi_register_builtin(abclog_ctx_t *ctx, const char *name, int arity,
+bool ffi_register_builtin(trilog_ctx_t *ctx, const char *name, int arity,
                           builtin_handler_t handler, void *userdata) {
   if (!ctx || !name || !handler)
     return false;
@@ -22,13 +22,13 @@ bool ffi_register_builtin(abclog_ctx_t *ctx, const char *name, int arity,
   return true;
 }
 
-void ffi_clear_builtins(abclog_ctx_t *ctx) {
+void ffi_clear_builtins(trilog_ctx_t *ctx) {
   if (!ctx)
     return;
   ctx->custom_builtin_count = 0;
 }
 
-custom_builtin_t *ffi_get_builtin_userdata(abclog_ctx_t *ctx, term_t *goal) {
+custom_builtin_t *ffi_get_builtin_userdata(trilog_ctx_t *ctx, term_t *goal) {
   if (!ctx || !goal)
     return NULL;
 

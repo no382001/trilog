@@ -1,16 +1,16 @@
-#include "../src/abclog.h"
+#include "../src/trilog.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
-static builtin_result_t custom_hello(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
+static builtin_result_t custom_hello(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   (void)goal;
   (void)env;
   io_write_str(ctx, "Hello from custom builtin!\n");
   return BUILTIN_OK;
 }
 
-static builtin_result_t custom_double(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
+static builtin_result_t custom_double(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   // double(X, Y) - unifies Y with 2*X
   if (goal->arity != 2)
     return BUILTIN_FAIL;
@@ -37,7 +37,7 @@ typedef struct {
   const char *prefix;
 } counter_data_t;
 
-static builtin_result_t custom_count(abclog_ctx_t *ctx, term_t *goal, env_t *env) {
+static builtin_result_t custom_count(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   (void)goal;
   (void)env;
 
@@ -60,7 +60,7 @@ typedef struct {
   FILE *output_file;
 } custom_io_data_t;
 
-static void custom_write_str(abclog_ctx_t *ctx, const char *str, void *userdata) {
+static void custom_write_str(trilog_ctx_t *ctx, const char *str, void *userdata) {
   (void)ctx;
   custom_io_data_t *data = (custom_io_data_t *)userdata;
   if (data && data->output_file) {
@@ -71,10 +71,10 @@ static void custom_write_str(abclog_ctx_t *ctx, const char *str, void *userdata)
 }
 
 int main() {
-  abclog_ctx_t *ctx = malloc(ABCLOG_CTX_SIZE(TERM_POOL_BYTES));
+  trilog_ctx_t *ctx = malloc(TRILOG_CTX_SIZE(TERM_POOL_BYTES));
   if (!ctx)
     return 1;
-  abclog_ctx_init(ctx, TERM_POOL_BYTES);
+  trilog_ctx_init(ctx, TERM_POOL_BYTES);
   io_hooks_init_default(ctx);
 
   ffi_register_builtin(ctx, "hello", 0, custom_hello, NULL);
@@ -126,7 +126,7 @@ int main() {
     solve(ctx, &goals, &env);
   }
 
-  FILE *log_file = fopen("/tmp/abclog_output.log", "w");
+  FILE *log_file = fopen("/tmp/trilog_output.log", "w");
   custom_io_data_t io_data = {.output_file = log_file};
 
   io_hooks_t custom_hooks = {0};

@@ -12,7 +12,7 @@ static bool lco_safe(env_t *env, int from, int to) {
   return true;
 }
 
-bool son(abclog_ctx_t *ctx, goal_stmt_t *cn, int *clause_idx, env_t *env,
+bool son(trilog_ctx_t *ctx, goal_stmt_t *cn, int *clause_idx, env_t *env,
          int env_mark, goal_stmt_t *resolvent) {
   assert(ctx != NULL && "Context is NULL");
   assert(cn != NULL && "Current node is NULL");
@@ -102,7 +102,7 @@ bool son(abclog_ctx_t *ctx, goal_stmt_t *cn, int *clause_idx, env_t *env,
   return false;
 }
 
-static bool has_more_alternatives(abclog_ctx_t *ctx, term_t *goal, env_t *env,
+static bool has_more_alternatives(trilog_ctx_t *ctx, term_t *goal, env_t *env,
                                   int from_clause) {
   goal = deref(env, goal);
   int goal_arity = (goal->type == FUNC) ? goal->arity : 0;
@@ -117,7 +117,7 @@ static bool has_more_alternatives(abclog_ctx_t *ctx, term_t *goal, env_t *env,
   return false;
 }
 
-bool solve_all(abclog_ctx_t *ctx, goal_stmt_t *initial_goals, env_t *env,
+bool solve_all(trilog_ctx_t *ctx, goal_stmt_t *initial_goals, env_t *env,
                solution_callback_t callback, void *userdata) {
   assert(ctx != NULL && "Context is NULL");
   assert(initial_goals != NULL && "Initial goals is NULL");
@@ -441,6 +441,6 @@ C:
   goto B;
 }
 
-bool solve(abclog_ctx_t *ctx, goal_stmt_t *initial_goals, env_t *env) {
+bool solve(trilog_ctx_t *ctx, goal_stmt_t *initial_goals, env_t *env) {
   return solve_all(ctx, initial_goals, env, NULL, NULL);
 }
