@@ -173,6 +173,7 @@
         const dSon   = s[0] - prevStats[0];
         const dUnify = s[1] - prevStats[1];
         const dBt    = s[3] - prevStats[3];
+        if (!dSon && !dUnify && !dBt) return;
         prevStats = [...s];
 
         series.son.pts.push(dSon);
