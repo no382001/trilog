@@ -78,6 +78,9 @@ bpair(3, 4).
 ?- X is foo + 1.
    error(type_error(evaluable, foo/0)).
 
+?- X is "hello".
+   error(type_error(evaluable, "hello")).
+
 % --- comparison: less than ---
 
 ?- 3 < 5.

@@ -107,6 +107,8 @@ bool eval_arith(abclog_ctx_t *ctx, term_t *t, env_t *env, int *result,
   if (t->type == CONST || t->type == FUNC) {
     int arity = (t->type == FUNC) ? t->arity : 0;
     throw_evaluable_error(ctx, t->name, arity, pred);
+  } else {
+    throw_type_error(ctx, "evaluable", t, pred);
   }
   return false;
 }

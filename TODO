@@ -1,16 +1,9 @@
-streaming findall solutions
-lazy list
-[x] int ids instead of string names
-[x] bump allocator
-[x] arithmetic: bitwise ops (>>, <<, \/, /\)
-- readline/history in repl
+towards some iso compliance:
+    https://www.complang.tuwien.ac.at/ulrich/iso-prolog/prologue
+    - `"hello"` is a native STRING type, not a list of char codes (should throw type_error(evaluable, '.'/2) not type_error(evaluable, "hello"))
 
-[x] anonymous variable _ unification bug
-[x] trailing unparseable input in a query is silently ignored instead of erroring (e.g. ?- X is 5 \/ 3 gives X = 5)
-[x] i dont think there are /**/ comments
+ease of use on the deafult linux target:
+    [] readline/history in repl
 
-https://www.complang.tuwien.ac.at/ulrich/iso-prolog/prologue
-
-[x] add instantiation errors and exceptions, in iso prolog fashion while we are at in
-
-- move quad to a pl file, separate TAP and jUnit outputs
+testing:
+    - move quad to a pl file, separate TAP and jUnit outputs
