@@ -481,7 +481,9 @@ static builtin_result_t builtin_flush_output(abclog_ctx_t *ctx, term_t *goal,
   (void)goal;
   (void)env;
   (void)ctx;
+#ifndef ABCLOG_FREESTANDING // TODO: I really dont like this here
   fflush(stdout);
+#endif
   return BUILTIN_OK;
 }
 

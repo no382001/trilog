@@ -55,14 +55,17 @@ static int stub_snprintf(char *b, size_t sz, const char *f, ...) {
 #define snprintf stub_snprintf
 #define assert(x) ((void)0)
 
+#include "../src/arith.c"
 #include "../src/builtins.c"
 #include "../src/debug.c"
 #include "../src/env.c"
+#include "../src/errors.c"
 #include "../src/ffi.c"
 #include "../src/io.c"
 #include "../src/parse.c"
 #include "../src/print.c"
 #include "../src/solve.c"
+#include "../src/streams.c"
 #include "../src/term.c"
 #include "../src/unify.c"
 
