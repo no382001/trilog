@@ -28,9 +28,9 @@ jobs:
       - name: upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: prolog-build
+          name: abclog-build
           path: |
-            prolog
+            abclog
             _build
 
   test:
@@ -47,11 +47,11 @@ jobs:
       - name: download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: prolog-build
+          name: abclog-build
 
       - name: run quad tests
         run: |
-          chmod +x ./prolog
+          chmod +x ./abclog
           make quad-junit
 
       - name: publish test results
