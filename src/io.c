@@ -1,5 +1,9 @@
 #include "platform_impl.h"
 
+//****
+//* default i/o hook implementations
+//****
+
 #ifndef TRILOG_FREESTANDING
 
 static void default_write_str(trilog_ctx_t *ctx, const char *str,
@@ -95,6 +99,10 @@ static double default_clock_monotonic(trilog_ctx_t *ctx, void *userdata) {
   return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
 }
 
+//****
+//* hook registration
+//****
+
 void io_hooks_init_default(trilog_ctx_t *ctx) {
   ctx->io_hooks.write_str = default_write_str;
   ctx->io_hooks.write_term = default_write_term;
@@ -112,7 +120,7 @@ void io_hooks_init_default(trilog_ctx_t *ctx) {
   ctx->io_hooks.userdata = NULL;
 }
 
-#endif // !TRILOG_FREESTANDING
+#endif // !trilog_freestanding
 
 void io_hooks_set(trilog_ctx_t *ctx, io_hooks_t *hooks) {
   if (hooks->write_str)
@@ -144,6 +152,10 @@ void io_hooks_set(trilog_ctx_t *ctx, io_hooks_t *hooks) {
 
   ctx->io_hooks.userdata = hooks->userdata;
 }
+
+//****
+//* i/o wrapper functions
+//****
 
 void io_write_str(trilog_ctx_t *ctx, const char *str) {
   if (ctx->io_hooks.write_str) {
@@ -183,7 +195,7 @@ int io_read_char(trilog_ctx_t *ctx) {
   if (ctx->io_hooks.read_char) {
     return ctx->io_hooks.read_char(ctx, ctx->io_hooks.userdata);
   }
-  return -1; // EOF
+  return -1; // eof
 }
 
 char *io_read_line(trilog_ctx_t *ctx, char *buf, int size) {
@@ -234,6 +246,10 @@ double io_clock_monotonic(trilog_ctx_t *ctx) {
     return ctx->io_hooks.clock_monotonic(ctx, ctx->io_hooks.userdata);
   return 0.0;
 }
+
+//****
+//* toplevel query helpers
+//****
 
 void trilog_set_yield(trilog_ctx_t *ctx, solve_yield_cb_t cb, int interval,
                       void *userdata) {

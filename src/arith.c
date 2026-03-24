@@ -1,6 +1,8 @@
 #include "platform_impl.h"
 
-/* ── Arithmetic Operator Table ───────────────────────── */
+//****
+//* arithmetic operator table
+//****
 
 typedef struct {
   const char *op;
@@ -15,7 +17,7 @@ static int arith_mod(int a, int b) {
   if (!b)
     return 0;
   int r = a % b;
-  // ISO: result has sign of divisor
+  // iso: result has sign of divisor
   if (r != 0 && (r ^ b) < 0)
     r += b;
   return r;
@@ -35,7 +37,9 @@ static const arith_op_t arith_ops[] = {
     {"/\\", arith_band}, {"xor", arith_xor}, {">>", arith_shr},
     {"<<", arith_shl},   {NULL, NULL}};
 
-/* ── Arithmetic Evaluator ────────────────────────────── */
+//****
+//* arithmetic evaluator
+//****
 
 bool eval_arith(trilog_ctx_t *ctx, term_t *t, env_t *env, int *result,
                 const char *pred) {
@@ -103,7 +107,7 @@ bool eval_arith(trilog_ctx_t *ctx, term_t *t, env_t *env, int *result,
     }
   }
 
-  // Unknown functor or non-numeric atom: type_error(evaluable, Name/Arity)
+  // unknown functor or non-numeric atom: type_error(evaluable, name/arity)
   if (t->type == CONST || t->type == FUNC) {
     int arity = (t->type == FUNC) ? t->arity : 0;
     throw_evaluable_error(ctx, t->name, arity, pred);
@@ -113,7 +117,9 @@ bool eval_arith(trilog_ctx_t *ctx, term_t *t, env_t *env, int *result,
   return false;
 }
 
-/* ── Arithmetic Builtins ─────────────────────────────── */
+//****
+//* arithmetic builtins
+//****
 
 builtin_result_t builtin_is(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   int result;

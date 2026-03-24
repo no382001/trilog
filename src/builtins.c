@@ -1,10 +1,18 @@
 #include "platform_impl.h"
 
+//****
+//* builtin handler table
+//****
+
 typedef struct {
   const char *name;
-  int arity; // -1 means any arity, 0 for CONST
+  int arity; // -1 means any arity, 0 for const
   builtin_result_t (*handler)(trilog_ctx_t *ctx, term_t *goal, env_t *env);
 } builtin_t;
+
+//****
+//* control flow and unification
+//****
 
 static builtin_result_t builtin_true(trilog_ctx_t *ctx, term_t *goal,
                                      env_t *env) {
@@ -72,7 +80,11 @@ static builtin_result_t builtin_struct_neq(trilog_ctx_t *ctx, term_t *goal,
                                                             : BUILTIN_OK;
 }
 
-// ISO standard order: var < number < atom < string < compound
+//****
+//* term ordering and comparison
+//****
+
+// iso standard order: var < number < atom < string < compound
 // within same type: var by id, number by value, atom/string lexicographic,
 // compound by arity then functor then args left-to-right
 static int term_order(term_t *a, term_t *b, env_t *env) {
@@ -91,7 +103,7 @@ static int term_order(term_t *a, term_t *b, env_t *env) {
 
   int ra = rank[a->type], rb = rank[b->type];
 
-  // split CONST into number vs atom
+  // split const into number vs atom
   int ia, ib;
   bool a_num = (a->type == CONST && term_as_int(a, &ia));
   bool b_num = (b->type == CONST && term_as_int(b, &ib));
@@ -192,6 +204,10 @@ static builtin_result_t builtin_stats(trilog_ctx_t *ctx, term_t *goal,
   return BUILTIN_OK;
 }
 
+//****
+//* solution collection (findall, bagof, setof)
+//****
+
 typedef struct {
   trilog_ctx_t *ctx;
   term_t *template;
@@ -227,7 +243,7 @@ static int collect_solutions(trilog_ctx_t *ctx, term_t *goal, env_t *env,
   term_t *query = deref(env, goal->args[1]);
   term_t *result_var = goal->args[2];
 
-  // strip existential quantifier: _^Goal -> Goal
+  // strip existential quantifier: _^goal -> goal
   while (query->type == FUNC && strcmp(query->name, "^") == 0 &&
          query->arity == 2)
     query = deref(env, query->args[1]);
@@ -257,7 +273,7 @@ static int collect_solutions(trilog_ctx_t *ctx, term_t *goal, env_t *env,
   int bind_save = ctx->bind_count;
   int floor_save = ctx->term_pool_floor;
   int bfloor_save = ctx->bind_floor;
-  ctx->bind_floor = MAX_BINDINGS; // disable LCO inside findall
+  ctx->bind_floor = MAX_BINDINGS; // disable lco inside findall
   env_t query_env = {.bindings = ctx->bindings, .count = ctx->bind_count};
   solve_all(ctx, &goals, &query_env, findall_callback, &state);
   ctx->bind_count = bind_save;
@@ -319,7 +335,7 @@ static builtin_result_t builtin_setof(trilog_ctx_t *ctx, term_t *goal,
   int bind_save = ctx->bind_count;
   int floor_save = ctx->term_pool_floor;
   int bfloor_save = ctx->bind_floor;
-  ctx->bind_floor = MAX_BINDINGS; // disable LCO inside setof
+  ctx->bind_floor = MAX_BINDINGS; // disable lco inside setof
   env_t query_env = {.bindings = ctx->bindings, .count = ctx->bind_count};
   solve_all(ctx, &goals, &query_env, findall_callback, &state);
   ctx->bind_count = bind_save;
@@ -363,12 +379,16 @@ static bool not_found_callback(trilog_ctx_t *ctx, env_t *env, void *userdata,
   return false;
 }
 
+//****
+//* exceptions and meta-predicates
+//****
+
 static builtin_result_t builtin_throw(trilog_ctx_t *ctx, term_t *goal,
                                       env_t *env) {
   term_t *ball = deref(env, goal->args[0]);
   ctx->thrown_ball = ball;
   ctx->has_runtime_error = true;
-  // extract readable string from error(Type, _) if ISO form
+  // extract readable string from error(type, _) if iso form
   if (ball->type == FUNC && strcmp(ball->name, "error") == 0 &&
       ball->arity == 2) {
     snprintf(ctx->runtime_error, MAX_ERROR_MSG, "%s", ball->args[0]->name);
@@ -431,6 +451,10 @@ static bool is_integer_str(const char *s) {
   return true;
 }
 
+//****
+//* type checking predicates
+//****
+
 static builtin_result_t builtin_var(trilog_ctx_t *ctx, term_t *goal,
                                     env_t *env) {
   (void)ctx;
@@ -468,6 +492,10 @@ static builtin_result_t builtin_is_list(trilog_ctx_t *ctx, term_t *goal,
   return is_nil(t) ? BUILTIN_OK : BUILTIN_FAIL;
 }
 
+//****
+//* i/o builtins
+//****
+
 static builtin_result_t builtin_nl(trilog_ctx_t *ctx, term_t *goal,
                                    env_t *env) {
   (void)goal;
@@ -481,7 +509,7 @@ static builtin_result_t builtin_flush_output(trilog_ctx_t *ctx, term_t *goal,
   (void)goal;
   (void)env;
   (void)ctx;
-#ifndef TRILOG_FREESTANDING // TODO: I really dont like this here
+#ifndef TRILOG_FREESTANDING // todo: i really dont like this here
   fflush(stdout);
 #endif
   return BUILTIN_OK;
@@ -513,6 +541,10 @@ static builtin_result_t builtin_writeq(trilog_ctx_t *ctx, term_t *goal,
   io_write_term_quoted(ctx, deref(env, goal->args[0]), env);
   return BUILTIN_OK;
 }
+
+//****
+//* file loading (consult, include)
+//****
 
 static const char *resolve_filename(trilog_ctx_t *ctx, term_t *arg, char *buf,
                                     size_t bufsz) {
@@ -549,7 +581,7 @@ static builtin_result_t builtin_include(trilog_ctx_t *ctx, term_t *goal,
   if (ctx->include_depth == 0) {
     io_writef(
         ctx,
-        "Error: include/1 is only valid as a file directive\n"); // TODO: should
+        "Error: include/1 is only valid as a file directive\n"); // todo: should
                                                                  // i throw
                                                                  // instead?
     return BUILTIN_FAIL;
@@ -605,6 +637,10 @@ static builtin_result_t builtin_string(trilog_ctx_t *ctx, term_t *goal,
   term_t *t = deref(env, goal->args[0]);
   return (t->type == STRING) ? BUILTIN_OK : BUILTIN_FAIL;
 }
+
+//****
+//* atom and string manipulation
+//****
 
 static builtin_result_t builtin_atom_length(trilog_ctx_t *ctx, term_t *goal,
                                             env_t *env) {
@@ -665,7 +701,7 @@ static builtin_result_t builtin_atom_concat(trilog_ctx_t *ctx, term_t *goal,
   return BUILTIN_FAIL;
 }
 
-// sub_atom(+Atom, ?Before, ?Length, ?After, ?SubAtom)
+// sub_atom(+atom, ?before, ?length, ?after, ?subatom)
 // generates or verifies substrings; backtracks over all solutions
 static builtin_result_t builtin_sub_atom(trilog_ctx_t *ctx, term_t *goal,
                                          env_t *env) {
@@ -682,12 +718,12 @@ static builtin_result_t builtin_sub_atom(trilog_ctx_t *ctx, term_t *goal,
   int len = (int)strlen(s);
 
   // try every (before, sub_len) combination — use choice point via solve_all
-  // but since we're a C builtin we enumerate and assert each solution
+  // but since we're a c builtin we enumerate and assert each solution
   // via a small helper: just try them all and return the first matching one.
-  // For full backtracking, a proper approach would need multi-solution support
+  // for full backtracking, a proper approach would need multi-solution support
   // in builtins; here we collect all matches and build a disjunction.
-  // Simple approach: iterate and unify greedily (returns first match only).
-  // Full backtracking over sub_atom requires the caller to use findall.
+  // simple approach: iterate and unify greedily (returns first match only).
+  // full backtracking over sub_atom requires the caller to use findall.
 
   term_t *bef_t = deref(env, goal->args[1]);
   term_t *lng_t = deref(env, goal->args[2]);
@@ -699,7 +735,7 @@ static builtin_result_t builtin_sub_atom(trilog_ctx_t *ctx, term_t *goal,
   if (term_as_int(lng_t, &lng_fixed) && lng_fixed < 0)
     return BUILTIN_FAIL;
 
-  // When Sub is bound, avoid interning every possible substring
+  // when sub is bound, avoid interning every possible substring
   const char *sub_str = NULL;
   if (sub_t->type != VAR)
     sub_str = term_atom_str(sub_t);
@@ -969,6 +1005,10 @@ static builtin_result_t builtin_number_chars(trilog_ctx_t *ctx, term_t *goal,
                                                               : BUILTIN_FAIL;
 }
 
+//****
+//* term decomposition (functor, arg, univ, copy_term)
+//****
+
 static builtin_result_t builtin_functor(trilog_ctx_t *ctx, term_t *goal,
                                         env_t *env) {
   term_t *term = deref(env, goal->args[0]);
@@ -999,7 +1039,7 @@ static builtin_result_t builtin_functor(trilog_ctx_t *ctx, term_t *goal,
                ? 1
                : -1;
   }
-  // compose: functor(X, Name, Arity)
+  // compose: functor(x, name, arity)
   if (n->type == VAR || a->type == VAR) {
     throw_instantiation_error(ctx, "functor/3");
     return BUILTIN_ERROR;
@@ -1139,6 +1179,10 @@ static builtin_result_t builtin_copy_term(trilog_ctx_t *ctx, term_t *goal,
   return unify(ctx, goal->args[1], copy, env) ? BUILTIN_OK : BUILTIN_FAIL;
 }
 
+//****
+//* database modification (assert, retract)
+//****
+
 static void flatten_body(env_t *env, term_t *body, clause_t *c) {
   while (body->type == FUNC && strcmp(body->name, ",") == 0 &&
          body->arity == 2 && c->body_count < MAX_GOALS - 1) {
@@ -1190,7 +1234,7 @@ static builtin_result_t builtin_asserta(trilog_ctx_t *ctx, term_t *goal,
   return BUILTIN_OK;
 }
 
-// Build a conjunction term from a clause body array (for retract matching).
+// build a conjunction term from a clause body array (for retract matching).
 static term_t *body_to_term(trilog_ctx_t *ctx, term_t **body, int n) {
   if (n == 0)
     return make_const(ctx, "true");
@@ -1278,6 +1322,10 @@ static term_t *array_to_list(trilog_ctx_t *ctx, term_t **arr, int n) {
   }
   return list;
 }
+
+//****
+//* sorting and reloading
+//****
 
 static builtin_result_t builtin_msort(trilog_ctx_t *ctx, term_t *goal,
                                       env_t *env) {
@@ -1377,7 +1425,7 @@ static builtin_result_t builtin_dynamic(trilog_ctx_t *ctx, term_t *goal,
   return BUILTIN_OK;
 }
 
-// abolish/1: remove all clauses for a predicate indicator Name/Arity
+// abolish/1: remove all clauses for a predicate indicator name/arity
 static builtin_result_t builtin_abolish(trilog_ctx_t *ctx, term_t *goal,
                                         env_t *env) {
   term_t *ind = deref(env, goal->args[0]);
@@ -1452,6 +1500,10 @@ static builtin_result_t builtin_current_prolog_flag(trilog_ctx_t *ctx,
   return unify(ctx, goal->args[1], make_const(ctx, val), env) ? BUILTIN_OK
                                                               : BUILTIN_FAIL;
 }
+
+//****
+//* dispatch table
+//****
 
 static const builtin_t builtins[] = {
     {"true", 0, builtin_true},

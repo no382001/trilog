@@ -11,13 +11,13 @@ static builtin_result_t custom_hello(trilog_ctx_t *ctx, term_t *goal, env_t *env
 }
 
 static builtin_result_t custom_double(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
-  // double(X, Y) - unifies Y with 2*X
+  // double(x, y) - unifies y with 2*x
   if (goal->arity != 2)
     return BUILTIN_FAIL;
 
   term_t *x = deref(env, goal->args[0]);
 
-  // parse X as integer
+  // parse x as integer
   char *end;
   long val = strtol(x->name, &end, 10);
   if (*end != '\0')

@@ -9,7 +9,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#else // TRILOG_FREESTANDING
+#else // trilog_freestanding
 
 #ifndef bool
 typedef _Bool bool;
@@ -34,9 +34,13 @@ typedef __builtin_va_list va_list;
 // memcpy, memset
 // isspace, isdigit, isalpha, isalnum
 // vsnprintf, snprintf
-// assert (or define NDEBUG to disable)
+// assert (or define ndebug to disable)
 
-#endif // TRILOG_FREESTANDING
+#endif // trilog_freestanding
+
+//****
+//* configuration limits
+//****
 
 #define MAX_NAME 64
 #define MAX_ARGS 8
@@ -55,6 +59,10 @@ typedef __builtin_va_list va_list;
 
 #define TERM_POOL_BYTES (4 * 1024 * 1024)
 #define TRILOG_CTX_SIZE(pool_bytes) (sizeof(trilog_ctx_t) + (pool_bytes))
+
+//****
+//* core types
+//****
 
 typedef struct trilog_ctx trilog_ctx_t;
 typedef struct term term_t;
@@ -127,6 +135,10 @@ typedef struct {
   void *userdata;
 } io_hooks_t;
 
+//****
+//* term representation
+//****
+
 typedef enum { CONST, VAR, FUNC, STRING } term_type;
 
 // escape sequence table used by both the parser (decode) and printer (encode).
@@ -141,9 +153,9 @@ static const str_escape_t STR_ESCAPES[] = {
 struct term {
   term_type type;
   const char *name;
-  int arity; // is repurposed for var_id VAR
+  int arity; // is repurposed for var_id var
   char *string_data;
-  struct term *args[]; // FAM: arity elements follow
+  struct term *args[]; // fam: arity elements follow
 };
 
 #define AS_FUNC(t) (t)
@@ -151,9 +163,13 @@ struct term {
 #define AS_VAR(t) (t)
 #define AS_STRING(t) (t)
 
+//****
+//* bindings and environment
+//****
+
 typedef struct {
-  int var_id;       // variable identity (matches term_t.arity for VAR terms)
-  const char *name; // display name only; NULL for internal renamed vars
+  int var_id;       // variable identity (matches term_t.arity for var terms)
+  const char *name; // display name only; null for internal renamed vars
   term_t *value;
 } binding_t;
 
@@ -199,6 +215,10 @@ typedef struct {
   int column;
 } parse_error_t;
 
+//****
+//* context
+//****
+
 struct trilog_ctx {
   clause_t database[MAX_CLAUSES];
   int db_count;
@@ -214,7 +234,7 @@ struct trilog_ctx {
   int term_pool_offset; // temp: grows up from 0
   int term_pool_perm;   // perm: grows down from term_pool_size
   int term_pool_floor;  // backtrack cannot reclaim below this
-  int bind_floor;       // LCO cannot reclaim bindings below this
+  int bind_floor;       // lco cannot reclaim bindings below this
   bool alloc_permanent; // when true, allocate from perm end
   bool db_dirty;        // set when assert/retract modifies the database
 
@@ -258,21 +278,25 @@ struct trilog_ctx {
     int backtracks;
   } stats;
 
-  // open file streams (handles from io_file_open); NULL = free slot
+  // open file streams (handles from io_file_open); null = free slot
   void *open_streams[MAX_OPEN_STREAMS];
 
   // solve yield callback
   solve_yield_cb_t solve_yield_cb;
   void *solve_yield_ud;
-  int solve_yield_interval; // call every N steps (0 = disabled)
+  int solve_yield_interval; // call every n steps (0 = disabled)
   int solve_step_counter;
 
   bool has_runtime_error;
   char runtime_error[MAX_ERROR_MSG];
   term_t *thrown_ball; // exception term set by throw/1
 
-  _Alignas(8) char term_pool[]; // FAM - must be last field
+  _Alignas(8) char term_pool[]; // fam - must be last field
 };
+
+//****
+//* inline helpers
+//****
 
 static inline bool is_cons(const term_t *t) {
   return t && t->type == FUNC && t->name[0] == '.' && t->name[1] == '\0' &&
@@ -304,9 +328,13 @@ static inline bool term_as_int(const term_t *t, int *out) {
   return true;
 }
 
+//****
+//* forward declarations
+//****
+
 void ctx_reset_terms(trilog_ctx_t *ctx);
 void *term_alloc(trilog_ctx_t *ctx, size_t size);
-// Allocate a goal array of n slots from the term pool.
+// allocate a goal array of n slots from the term pool.
 static inline goal_stmt_t goals_alloc(trilog_ctx_t *ctx, int n) {
   goal_stmt_t g;
   g.goals =
@@ -329,8 +357,8 @@ void debug_term_raw(trilog_ctx_t *ctx, term_t *t);
 term_t *make_term(trilog_ctx_t *ctx, term_type type, const char *name,
                   term_t **args, int arity);
 term_t *make_const(trilog_ctx_t *ctx, const char *name);
-// for VAR terms, arity field stores the var_id (unique integer per variable).
-// name may be NULL for internal renamed variables (not shown in output).
+// for var terms, arity field stores the var_id (unique integer per variable).
+// name may be null for internal renamed variables (not shown in output).
 term_t *make_var(trilog_ctx_t *ctx, const char *name, int var_id);
 term_t *make_func(trilog_ctx_t *ctx, const char *name, term_t **args,
                   int arity);
@@ -352,11 +380,11 @@ term_t *substitute(trilog_ctx_t *ctx, env_t *env, term_t *t);
 
 bool unify(trilog_ctx_t *ctx, term_t *a, term_t *b, env_t *env);
 
-// rename_vars_mapped: rename all VARs in t, mapping old var_ids to fresh ones.
+// rename_vars_mapped: rename all vars in t, mapping old var_ids to fresh ones.
 // the map is shared across multiple calls for the same clause instance so that
 // the same variable in head and body gets the same renamed id.
 term_t *rename_vars_mapped(trilog_ctx_t *ctx, term_t *t, var_id_map_t *map);
-// Convenience wrapper: creates a fresh map for single-term rename.
+// convenience wrapper: creates a fresh map for single-term rename.
 term_t *rename_vars(trilog_ctx_t *ctx, term_t *t);
 
 bool son(trilog_ctx_t *ctx, goal_stmt_t *cn, int *clause_idx, env_t *env,
@@ -452,7 +480,7 @@ bool io_file_exists(trilog_ctx_t *ctx, const char *path);
 long long io_file_mtime(trilog_ctx_t *ctx, const char *path);
 double io_clock_monotonic(trilog_ctx_t *ctx);
 
-// toplevel helpers (shared by CLI, web, embedders)
+// toplevel helpers (shared by cli, web, embedders)
 typedef struct {
   bool first;
   bool done; // last answer was terminated with .
@@ -465,7 +493,7 @@ void toplevel_query(trilog_ctx_t *ctx, char *query);
 void trilog_set_yield(trilog_ctx_t *ctx, solve_yield_cb_t cb, int interval,
                       void *userdata);
 
-// ffi: Register custom builtins
+// ffi: register custom builtins
 bool ffi_register_builtin(trilog_ctx_t *ctx, const char *name, int arity,
                           builtin_handler_t handler, void *userdata);
 void ffi_clear_builtins(trilog_ctx_t *ctx);

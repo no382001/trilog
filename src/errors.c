@@ -1,6 +1,8 @@
 #include "platform_impl.h"
 
-/* ── ISO Error Term Construction ─────────────────────── */
+//****
+//* iso error term construction
+//****
 
 void throw_error(trilog_ctx_t *ctx, term_t *error_type, const char *context) {
   term_t *ctx_atom = make_const(ctx, context);

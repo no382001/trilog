@@ -1,6 +1,8 @@
 #include "platform_impl.h"
 
-/* ── Buffer Capture (output to string) ───────────────── */
+//****
+//* buffer capture (output to string)
+//****
 
 #define BCAP_SIZE 4096
 
@@ -50,7 +52,9 @@ static void bcap_start(trilog_ctx_t *ctx, bcap_t *c) {
 
 static void bcap_end(trilog_ctx_t *ctx, bcap_t *c) { ctx->io_hooks = c->saved; }
 
-/* ── Stream Term Construction ────────────────────────── */
+//****
+//* stream term construction
+//****
 
 static term_t *make_stream_term(trilog_ctx_t *ctx, int id) {
   char buf[16];
@@ -67,7 +71,9 @@ static bool get_stream_id(env_t *env, term_t *t, int *id) {
   return term_as_int(t->args[0], id);
 }
 
-/* ── Stream Write Capture (redirect to file handle) ──── */
+//****
+//* stream write capture (redirect to file handle)
+//****
 
 typedef struct {
   io_hooks_t saved;
@@ -102,9 +108,11 @@ static void scap_start(trilog_ctx_t *ctx, scap_t *c, void *file_handle) {
 
 static void scap_end(trilog_ctx_t *ctx, scap_t *c) { ctx->io_hooks = c->saved; }
 
-/* ── Stream Resolution ───────────────────────────────── */
+//****
+//* stream resolution
+//****
 
-// resolve stream arg: NULL = user_output, (void*)-1 = error, else file handle
+// resolve stream arg: null = user_output, (void*)-1 = error, else file handle
 static void *resolve_output_stream(trilog_ctx_t *ctx, env_t *env, term_t *arg) {
   arg = deref(env, arg);
   if (arg && arg->type == CONST &&
@@ -118,7 +126,9 @@ static void *resolve_output_stream(trilog_ctx_t *ctx, env_t *env, term_t *arg) {
   return ctx->open_streams[id];
 }
 
-/* ── Stream Builtins ─────────────────────────────────── */
+//****
+//* stream builtins
+//****
 
 builtin_result_t builtin_nl1(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   void *h = resolve_output_stream(ctx, env, goal->args[0]);

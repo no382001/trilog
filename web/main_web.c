@@ -93,8 +93,8 @@ void trilog_web_init(void) {
   trilog_load_file(g_ctx, "/core.pl");
 }
 
-// yield callback: fires every N steps, lets JS poll stats in real-time.
-// uses emscripten_sleep(0) to yield to the browser event loop so JS can
+// yield callback: fires every n steps, lets js poll stats in real-time.
+// uses emscripten_sleep(0) to yield to the browser event loop so js can
 // read the stats buffer and update visualizations.
 static bool web_yield_cb(trilog_ctx_t *ctx, int depth, void *ud) {
   (void)ud;
@@ -114,7 +114,7 @@ void trilog_web_set_yield(int interval) {
   }
 }
 
-// stats snapshot: returns pointer to a static int array JS can read.
+// stats snapshot: returns pointer to a static int array js can read.
 // layout: [son_calls, unify_calls, unify_fails, backtracks,
 //          terms_allocated, terms_peak]
 static int g_stats_buf[6];

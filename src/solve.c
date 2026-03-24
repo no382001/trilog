@@ -1,7 +1,11 @@
 #include "platform_impl.h"
 
-// Check if LCO can safely reclaim bindings in [from, to).
-// Unsafe when a named (query) var points to an unbound renamed var —
+//****
+//* last-call optimization
+//****
+
+// check if lco can safely reclaim bindings in [from, to).
+// unsafe when a named (query) var points to an unbound renamed var —
 // reclaiming would lose the name and prevent print_bindings from showing it.
 static bool lco_safe(env_t *env, int from, int to) {
   for (int i = from; i < to; i++) {
@@ -11,6 +15,10 @@ static bool lco_safe(env_t *env, int from, int to) {
   }
   return true;
 }
+
+//****
+//* clause selection (son)
+//****
 
 bool son(trilog_ctx_t *ctx, goal_stmt_t *cn, int *clause_idx, env_t *env,
          int env_mark, goal_stmt_t *resolvent) {
@@ -102,6 +110,10 @@ bool son(trilog_ctx_t *ctx, goal_stmt_t *cn, int *clause_idx, env_t *env,
   return false;
 }
 
+//****
+//* solver main loop
+//****
+
 static bool has_more_alternatives(trilog_ctx_t *ctx, term_t *goal, env_t *env,
                                   int from_clause) {
   goal = deref(env, goal);
@@ -141,7 +153,7 @@ bool solve_all(trilog_ctx_t *ctx, goal_stmt_t *initial_goals, env_t *env,
   bool found_any = false;
 
 A:
-  // yield callback: fire every N steps so embedders can inspect stats
+  // yield callback: fire every n steps so embedders can inspect stats
   if (ctx->solve_yield_cb &&
       ++ctx->solve_step_counter >= ctx->solve_yield_interval) {
     ctx->solve_step_counter = 0;
@@ -187,7 +199,7 @@ A:
     goto A;
   }
 
-  // inline call/1: call(G) -> G
+  // inline call/1: call(g) -> g
   if (first_goal->type == FUNC && strcmp(first_goal->name, "call") == 0 &&
       first_goal->arity == 1) {
     term_t *arg = deref(env, first_goal->args[0]);
@@ -214,7 +226,7 @@ A:
     goto A;
   }
 
-  // inline ,/2 (conjunction): ','(A,B) -> A, B
+  // inline ,/2 (conjunction): ','(a,b) -> a, b
   if (first_goal->type == FUNC && strcmp(first_goal->name, ",") == 0 &&
       first_goal->arity == 2) {
     term_t *left = deref(env, first_goal->args[0]);
@@ -228,7 +240,7 @@ A:
     goto A;
   }
 
-  // inline catch/3: catch(Goal, Catcher, Recovery)
+  // inline catch/3: catch(goal, catcher, recovery)
   if (first_goal->type == FUNC && strcmp(first_goal->name, "catch") == 0 &&
       first_goal->arity == 3) {
     term_t *sub_goal = deref(env, first_goal->args[0]);
@@ -257,7 +269,7 @@ A:
       env->count = ctx->bind_count = emark;
 
       if (unify(ctx, catcher, ball, env)) {
-        // caught - execute Recovery
+        // caught - execute recovery
         goal_stmt_t new_cn = goals_alloc(ctx, cn.count);
         new_cn.goals[new_cn.count++] = recovery;
         for (int i = 1; i < cn.count; i++)
@@ -285,7 +297,7 @@ A:
 
     if (left->type == FUNC && strcmp(left->name, "->") == 0 &&
         left->arity == 2) {
-      // if-then-else: ;(->(Cond, Then), Else)
+      // if-then-else: ;(->(cond, then), else)
       term_t *cond = deref(env, left->args[0]);
       term_t *then_branch = deref(env, left->args[1]);
       int emark = env->count;
@@ -293,14 +305,14 @@ A:
       goal_stmt_t cond_goals = goals_alloc(ctx, 1);
       cond_goals.goals[cond_goals.count++] = cond;
       if (solve(ctx, &cond_goals, env)) {
-        // Cond succeeded — commit to Then branch
+        // cond succeeded — commit to then branch
         goal_stmt_t new_cn = goals_alloc(ctx, cn.count);
         new_cn.goals[new_cn.count++] = then_branch;
         for (int i = 1; i < cn.count; i++)
           new_cn.goals[new_cn.count++] = cn.goals[i];
         cn = new_cn;
       } else {
-        // Cond failed — take Else branch
+        // cond failed — take else branch
         env->count = ctx->bind_count = emark;
         goal_stmt_t new_cn = goals_alloc(ctx, cn.count);
         new_cn.goals[new_cn.count++] = right;
@@ -311,8 +323,8 @@ A:
       goto A;
     }
 
-    // plain disjunction: ;(A, B)
-    // push choice point for B, then try A
+    // plain disjunction: ;(a, b)
+    // push choice point for b, then try a
     {
       goal_stmt_t alt_cn = goals_alloc(ctx, cn.count);
       alt_cn.goals[alt_cn.count++] = right;
@@ -336,7 +348,7 @@ A:
     }
   }
 
-  // inline ->/2 (standalone if-then, no else — fails if Cond fails)
+  // inline ->/2 (standalone if-then, no else — fails if cond fails)
   if (first_goal->type == FUNC && strcmp(first_goal->name, "->") == 0 &&
       first_goal->arity == 2) {
     term_t *cond = deref(env, first_goal->args[0]);
@@ -383,9 +395,9 @@ B:
       } else if (ctx->bind_count > env_mark && resolvent.count > 0 &&
                  env_mark > ctx->bind_floor &&
                  lco_safe(env, env_mark, ctx->bind_count)) {
-        // LCO: no more alternatives — substitute bindings into resolvent
+        // lco: no more alternatives — substitute bindings into resolvent
         // and reclaim binding slots from this deterministic clause.
-        // Also patch existing binding values that reference vars in the
+        // also patch existing binding values that reference vars in the
         // reclaimed range, so the binding chain doesn't break.
         for (int j = 0; j < resolvent.count; j++)
           resolvent.goals[j] = substitute(ctx, env, resolvent.goals[j]);
@@ -435,7 +447,7 @@ C:
   debug(ctx, "*** Restored: clause_idx=%d, env_mark=%d, cut_point=%d ***\n",
         clause_idx, env_mark, cut_point);
   // clause_idx == 0 means this was a disjunction choice point (not a clause
-  // retry), so go to A to allow inline handlers (,/2, ->/2, etc.) to run.
+  // retry), so go to a to allow inline handlers (,/2, ->/2, etc.) to run.
   if (clause_idx == 0)
     goto A;
   goto B;

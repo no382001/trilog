@@ -48,7 +48,7 @@ bool unify(trilog_ctx_t *ctx, term_t *a, term_t *b, env_t *env) {
     return result;
   }
 
-  // unify a string with a list: "abc" = [H|T] or "abc" = [a,b,c]
+  // unify a string with a list: "abc" = [h|t] or "abc" = [a,b,c]
   if (a->type == STRING && is_nil(b)) {
     bool result = (a->string_data[0] == '\0');
     debug(ctx, "  -> %s (string vs [])\n", result ? "OK" : "FAIL");

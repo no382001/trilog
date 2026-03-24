@@ -1,5 +1,9 @@
 #include "platform_impl.h"
 
+//****
+//* operator classification
+//****
+
 // operators that print infix (arity 2) or prefix (arity 1)
 static bool is_infix_op(const char *name) {
   static const char *ops[] = {
@@ -38,7 +42,7 @@ static bool needs_quoting(const char *name) {
   // starts with uppercase or underscore → variable-like, must quote
   if (isupper((unsigned char)name[0]) || name[0] == '_')
     return true;
-  // contains whitespace or Prolog comment/string delimiters → must quote
+  // contains whitespace or prolog comment/string delimiters → must quote
   for (const char *p = name; *p; p++) {
     if (isspace((unsigned char)*p) || *p == '%' || *p == '\'' || *p == '"')
       return true;
@@ -64,6 +68,10 @@ static void print_atom(trilog_ctx_t *ctx, const char *name, bool quoted) {
     io_write_str(ctx, name);
   }
 }
+
+//****
+//* term printing
+//****
 
 void print_term(trilog_ctx_t *ctx, term_t *t, env_t *env, bool quoted) {
   assert(env != ((void *)0) && "Environment is NULL");
@@ -130,7 +138,7 @@ void print_term(trilog_ctx_t *ctx, term_t *t, env_t *env, bool quoted) {
     return;
   }
 
-  // infix binary operator: X op Y
+  // infix binary operator: x op y
   if (t->type == FUNC && t->arity == 2 && is_infix_op(t->name)) {
     print_term(ctx, t->args[0], env, quoted);
     io_write_str(ctx, t->name);
@@ -138,7 +146,7 @@ void print_term(trilog_ctx_t *ctx, term_t *t, env_t *env, bool quoted) {
     return;
   }
 
-  // prefix unary operator: op X
+  // prefix unary operator: op x
   if (t->type == FUNC && t->arity == 1 && is_prefix_op(t->name)) {
     io_write_str(ctx, t->name);
     io_write_str(ctx, "(");
@@ -158,6 +166,10 @@ void print_term(trilog_ctx_t *ctx, term_t *t, env_t *env, bool quoted) {
     io_write_str(ctx, ")");
   }
 }
+
+//****
+//* binding output
+//****
 
 void print_bindings(trilog_ctx_t *ctx, env_t *env) {
   bool printed = false;

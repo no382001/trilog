@@ -20,7 +20,7 @@ static inline long long trilog_file_mtime(const char *path) {
   return (stat(path, &st) == 0) ? (long long)st.st_mtime : -1LL;
 }
 
-#else // TRILOG_FREESTANDING
+#else // trilog_freestanding
 
 // user may define trilog_file_mtime(path) -> long long before including this
 // header; if not defined, make/0 treats every file as always-changed

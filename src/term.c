@@ -1,5 +1,9 @@
 #include "platform_impl.h"
 
+//****
+//* allocation and interning
+//****
+
 void *term_alloc(trilog_ctx_t *ctx, size_t size) {
   size = (size + 7) & ~7; // 8-byte align
   if (ctx->alloc_permanent) {
@@ -47,6 +51,10 @@ const char *intern_name(trilog_ctx_t *ctx, const char *name) {
   return dest;
 }
 
+//****
+//* term constructors
+//****
+
 term_t *make_const(trilog_ctx_t *ctx, const char *name) {
   assert(name != NULL && "Constant name cannot be NULL");
   term_t *t = term_alloc(ctx, sizeof(term_t)); // no args
@@ -60,7 +68,7 @@ term_t *make_var(trilog_ctx_t *ctx, const char *name, int var_id) {
   t->type = VAR;
   if (name)
     t->name = intern_name(ctx, name);
-  t->arity = var_id; // var_id stored in arity field for VAR terms
+  t->arity = var_id; // var_id stored in arity field for var terms
   return t;
 }
 
@@ -111,12 +119,16 @@ term_t *make_term(trilog_ctx_t *ctx, term_type type, const char *name,
     return make_var(ctx, name, arity);
   if (type == FUNC)
     return make_func(ctx, name, args, arity);
-  // STRING fallback
+  // string fallback
   term_t *t = term_alloc(ctx, sizeof(term_t));
   t->type = STRING;
   t->name = intern_name(ctx, "");
   return t;
 }
+
+//****
+//* variable renaming
+//****
 
 term_t *rename_vars_mapped(trilog_ctx_t *ctx, term_t *t, var_id_map_t *map) {
   if (!t)

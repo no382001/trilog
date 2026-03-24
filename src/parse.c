@@ -1,5 +1,9 @@
 #include "platform_impl.h"
 
+//****
+//* error reporting
+//****
+
 void parse_error(trilog_ctx_t *ctx, const char *fmt, ...) {
   if (ctx->error.has_error)
     return;
@@ -51,6 +55,10 @@ void parse_error_print(trilog_ctx_t *ctx) {
   }
 }
 
+//****
+//* whitespace and comment skipping
+//****
+
 void skip_ws(trilog_ctx_t *ctx) {
   assert(ctx != NULL && "Context is NULL");
   assert(ctx->input_ptr != NULL && "Input pointer is NULL");
@@ -69,6 +77,10 @@ void skip_ws(trilog_ctx_t *ctx) {
     }
   }
 }
+
+//****
+//* operator definitions and precedence
+//****
 
 typedef struct {
   const char *text;
@@ -134,6 +146,10 @@ static int try_parse_op(trilog_ctx_t *ctx, char *op_out, int max_len) {
 
   return 0;
 }
+
+//****
+//* list parsing
+//****
 
 term_t *parse_list(trilog_ctx_t *ctx) {
   assert(ctx != NULL && "Context is NULL");
@@ -220,6 +236,10 @@ term_t *parse_list(trilog_ctx_t *ctx) {
   return result;
 }
 
+//****
+//* primary term parsing
+//****
+
 static term_t *parse_primary(trilog_ctx_t *ctx) {
   assert(ctx != NULL && "Context is NULL");
   assert(ctx->input_ptr != NULL && "Input pointer is NULL");
@@ -283,7 +303,7 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
           break;
         }
       } else if (*ctx->input_ptr == '\\' && ctx->input_ptr[1]) {
-        // ISO 6.4.2.1 escape sequences
+        // iso 6.4.2.1 escape sequences
         ctx->input_ptr++;
         char esc = *ctx->input_ptr++;
         if (i < MAX_NAME - 1) {
@@ -327,7 +347,7 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
       return NULL;
     }
 
-    // quoted atom followed by '(' is a functor call (ISO 6.3.3)
+    // quoted atom followed by '(' is a functor call (iso 6.3.3)
     skip_ws(ctx);
     if (*ctx->input_ptr == '(') {
       ctx->input_ptr++;
@@ -481,7 +501,7 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
       term_t *args[1] = {inner};
       return make_func(ctx, "\\+", args, 1);
     } else {
-      // unary bitwise complement: \Expr
+      // unary bitwise complement: \expr
       ctx->input_ptr++;
       skip_ws(ctx);
       term_t *inner = parse_primary(ctx);
@@ -496,7 +516,7 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
       return make_func(ctx, "\\", args, 1);
     }
   } else {
-    // Not a valid start of term
+    // not a valid start of term
     return NULL;
   }
 
@@ -571,6 +591,10 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
   return make_const(ctx, name);
 }
 
+//****
+//* infix operator parsing
+//****
+
 static term_t *parse_infix(trilog_ctx_t *ctx, term_t *left, int min_prec) {
   while (1) {
     skip_ws(ctx);
@@ -597,7 +621,7 @@ static term_t *parse_infix(trilog_ctx_t *ctx, term_t *left, int min_prec) {
       return NULL;
     }
 
-    // Look ahead for higher precedence operator
+    // look ahead for higher precedence operator
     skip_ws(ctx);
     char next_op[8] = {0};
     int next_len = try_parse_op(ctx, next_op, sizeof(next_op));
@@ -630,13 +654,17 @@ term_t *parse_term(trilog_ctx_t *ctx) {
 }
 
 // parse_arg: parses a functor argument or list element.
-// Stops before ',' so functor args and list elements are delimited correctly.
+// stops before ',' so functor args and list elements are delimited correctly.
 static term_t *parse_arg(trilog_ctx_t *ctx) {
   term_t *left = parse_primary(ctx);
   if (!left)
     return NULL;
   return parse_infix(ctx, left, 10); // 10 > ',' prec (9), so comma stops arg
 }
+
+//****
+//* comment stripping and clause detection
+//****
 
 void strip_line_comment(char *line) {
   bool in_dq = false, in_sq = false;
@@ -700,6 +728,10 @@ bool has_complete_clause(const char *buf) {
   }
   return false;
 }
+
+//****
+//* query execution
+//****
 
 static bool parse_goals(trilog_ctx_t *ctx, char *query, goal_stmt_t *goals) {
   parse_error_clear(ctx);
@@ -826,6 +858,10 @@ bool trilog_exec_query_multi(trilog_ctx_t *ctx, char *query,
   ctx->db_dirty = false;
   return found;
 }
+
+//****
+//* file and string loading
+//****
 
 static void exec_directive(trilog_ctx_t *ctx, char *buf) {
   trilog_exec_query(ctx, buf + 2); // skip "?-" or ":-"
@@ -957,6 +993,10 @@ bool trilog_load_string(trilog_ctx_t *ctx, const char *src) {
   ctx->include_depth--;
   return true;
 }
+
+//****
+//* clause parsing
+//****
 
 void parse_clause(trilog_ctx_t *ctx, char *line) {
   assert(ctx != NULL && "Context is NULL");

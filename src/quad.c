@@ -1,5 +1,9 @@
 #include "platform_impl.h"
 
+//****
+//* configuration and types
+//****
+
 #define QUAD_BUF_SIZE 16384
 #define MAX_QUAD_ANSWERS 64
 #define MAX_ANSWER_LEN 1024
@@ -54,6 +58,10 @@ static void cap_writef(trilog_ctx_t *ctx, const char *fmt, va_list args,
   }
 }
 
+//****
+//* solution collection
+//****
+
 typedef struct {
   char answers[MAX_QUAD_ANSWERS][MAX_ANSWER_LEN];
   int count;
@@ -82,7 +90,11 @@ static bool collect_cb(trilog_ctx_t *ctx, env_t *env, void *ud, bool has_more) {
   return has_more && col->count < MAX_QUAD_ANSWERS;
 }
 
-// remove the terminating . (depth-0 dot followed by whitespace/EOF)
+//****
+//* answer parsing
+//****
+
+// remove the terminating . (depth-0 dot followed by whitespace/eof)
 static void strip_terminating_dot(char *buf) {
   bool in_string = false;
   int depth = 0;
@@ -115,7 +127,7 @@ static void strip_terminating_dot(char *buf) {
 
 // parse answer description into individual expected answers.
 // answer alternatives are separated by ; at the start of a line.
-// example: "   X = a\n;  X = b" → ["X = a", "X = b"]
+// example: "   x = a\n;  x = b" → ["x = a", "x = b"]
 static int parse_expected(const char *desc, char out[][MAX_ANSWER_LEN],
                           int max) {
   int count = 0;
@@ -172,6 +184,10 @@ static int parse_expected(const char *desc, char out[][MAX_ANSWER_LEN],
 
   return count;
 }
+
+//****
+//* test execution
+//****
 
 static bool run_one_test(trilog_ctx_t *ctx, const char *query_raw,
                          const char *answer_raw, int test_num,
@@ -294,7 +310,7 @@ static bool run_one_test(trilog_ctx_t *ctx, const char *query_raw,
     rec->elapsed_sec = elapsed;
   }
 
-  // output TAP
+  // output tap
   if (pass) {
     res->passed++;
     io_writef(ctx, "ok %d - ?- %s (%.3fms)\n", test_num, display,
@@ -373,7 +389,11 @@ static bool run_one_test(trilog_ctx_t *ctx, const char *query_raw,
   return pass;
 }
 
-// escape XML special characters into a buffer
+//****
+//* junit xml output
+//****
+
+// escape xml special characters into a buffer
 static void xml_escape(const char *src, char *dst, int dstlen) {
   int o = 0;
   for (const char *p = src; *p && o < dstlen - 1; p++) {
@@ -449,6 +469,10 @@ static void write_junit_xml(trilog_ctx_t *ctx, const char *filename,
   io_file_write(ctx, xf, "</testsuite>\n");
   io_file_close(ctx, xf);
 }
+
+//****
+//* quad file parsing and running
+//****
 
 static quad_results_t run_quad_file_impl(trilog_ctx_t *ctx,
                                          const char *filename,
@@ -537,7 +561,7 @@ static quad_results_t run_quad_file_impl(trilog_ctx_t *ctx,
   io_writef(ctx, "# %s: %d tests, %d passed, %d failed (%.3fs)\n", filename,
             res.total, res.passed, res.failed, res.total_time);
 
-  // write JUnit XML if requested
+  // write junit xml if requested
   if (junit_dir && records) {
     // extract suite name from filename (basename without extension)
     const char *base = filename;

@@ -7,6 +7,10 @@
 
 #define CORE_PATH_MAX 8192
 
+//****
+//* core library loading
+//****
+
 static void try_load_core(trilog_ctx_t *ctx, const char *argv0) {
   char exe[CORE_PATH_MAX];
   char dir[CORE_PATH_MAX];
@@ -30,6 +34,10 @@ static void try_load_core(trilog_ctx_t *ctx, const char *argv0) {
   if (io_file_exists(ctx, path))
     trilog_load_file(ctx, path);
 }
+
+//****
+//* terminal and usage
+//****
 
 static int read_key(void) {
   struct termios old, raw;
@@ -59,6 +67,10 @@ static void print_usage(trilog_ctx_t *ctx, const char *prog) {
   io_writef_err(ctx, "  debug.        Toggle debug mode\n");
   io_writef_err(ctx, "  halt.         Exit the interpreter\n");
 }
+
+//****
+//* interactive query handling
+//****
 
 typedef struct {
   bool interactive;
@@ -128,6 +140,10 @@ static void process_line(trilog_ctx_t *ctx, char *line, bool *should_exit,
 static bool load_file(trilog_ctx_t *ctx, const char *filename) {
   return trilog_load_file(ctx, filename);
 }
+
+//****
+//* entry point
+//****
 
 int main(int argc, char *argv[]) {
   trilog_ctx_t *ctx = malloc(TRILOG_CTX_SIZE(TERM_POOL_BYTES));
