@@ -14,35 +14,35 @@
 
 % ===== Pure utilities =====
 
-% --- l_reverse/3 ---
+% --- reverse/3 (from core.pl) ---
 
-?- l_reverse([], [], L).
+?- reverse([], [], L).
    L = [].
 
-?- l_reverse([1, 2, 3], [], L).
+?- reverse([1, 2, 3], [], L).
    L = [3, 2, 1].
 
-?- l_reverse([a, b], [c, d], L).
+?- reverse([a, b], [c, d], L).
    L = [b, a, c, d].
 
-?- l_reverse([x], [], L).
+?- reverse([x], [], L).
    L = [x].
 
-% --- l_member/2 ---
+% --- member/2 (from core.pl) ---
 
-?- l_member(a, [a, b, c]).
+?- member(a, [a, b, c]).
    true.
 
-?- l_member(b, [a, b, c]).
+?- member(b, [a, b, c]).
    true.
 
-?- l_member(c, [a, b, c]).
+?- member(c, [a, b, c]).
    true.
 
-?- l_member(d, [a, b, c]).
+?- member(d, [a, b, c]).
    false.
 
-?- l_member(x, []).
+?- member(x, []).
    false.
 
 % --- l_skip_spaces/2 ---
@@ -359,5 +359,5 @@
 
 % ===== l_listing (line ordering assembly) =====
 
-?- l_reverse([2, 1, 0], [3], [_|L3]), !.
+?- reverse([2, 1, 0], [3], [_|L3]), !.
    L3 = [1, 2, 3].

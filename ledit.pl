@@ -94,11 +94,7 @@ l_continuation(X, X) :- l_set(command, X).
 
 % --- Utilities ---
 
-l_member(E, [E|_]).
-l_member(E, [_|L]) :- l_member(E, L).
 
-l_reverse([], L, L) :- !.
-l_reverse([X|L1], L2, L3) :- l_reverse(L1, [X|L2], L3).
 
 l_for(0, _) :- !.
 l_for(N, P) :-
@@ -183,13 +179,13 @@ l_do([p|L]) :- !,
 % rewind
 l_do([r|_]) :- !,
     l_value(line, ([X, Y|L1], L2)),
-    l_reverse(L1, [Y, X|L2], [_|L3]),
+    reverse(L1, [Y, X|L2], [_|L3]),
     l_set(line, ([0], L3)).
 
 % wind
 l_do([w|_]) :- !,
     l_value(line, (L1, [X|L2])),
-    l_reverse(L2, [X|L1], L3),
+    reverse(L2, [X|L1], L3),
     l_set(line, (L3, [])).
 
 % delete (line 0 check)
@@ -225,8 +221,8 @@ l_do(['D'|_]) :- !,
 
 l_deleteall :-
     l_value(line, (L1, L2)),
-    l_reverse(L1, L2, [_|L3]),
-    l_reverse(L3, [], L4),
+    reverse(L1, L2, [_|L3]),
+    reverse(L3, [], L4),
     l_set(delete, L4),
     l_set(line, ([0], [])), !.
 
@@ -394,7 +390,7 @@ l_do_save_file(Fname) :-
 
 l_listing(S) :-
     l_value(line, (L1, L2)),
-    l_reverse(L1, L2, [_|L3]),
+    reverse(L1, L2, [_|L3]),
     l_list_tags(L3, S).
 
 l_list_tags([], _).

@@ -7,8 +7,10 @@ member(X, [_|T]) :- member(X, T).
 length([], 0).
 length([_|T], N) :- length(T, N1), N is N1 + 1.
 
-reverse([], []).
-reverse([H|T], R) :- reverse(T, RT), append(RT, [H], R).
+reverse(L, R) :- reverse(L, [], R).
+
+reverse([], Acc, Acc).
+reverse([H|T], Acc, R) :- reverse(T, [H|Acc], R).
 
 last(X, [X]).
 last(X, [_|T]) :- last(X, T).
