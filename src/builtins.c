@@ -192,9 +192,10 @@ static builtin_result_t builtin_stats(trilog_ctx_t *ctx, term_t *goal,
                                       env_t *env) {
   (void)goal;
   (void)env;
-  io_writef(ctx, "terms: %d allocated, %d peak, %d bytes used\n",
-            ctx->stats.terms_allocated, ctx->stats.terms_peak,
-            ctx->term_pool_offset);
+  io_writef(ctx, "term pool: %d / %d bytes (peak %d)\n", ctx->term_pool_offset,
+            ctx->term_pool_perm, ctx->term_pool_peak);
+  io_writef(ctx, "perm pool: %d / %d bytes\n",
+            ctx->term_pool_size - ctx->term_pool_perm, ctx->term_pool_size);
   io_writef(ctx, "unify: %d calls, %d fails\n", ctx->stats.unify_calls,
             ctx->stats.unify_fails);
   io_writef(ctx, "solve: %d son calls, %d backtracks\n", ctx->stats.son_calls,

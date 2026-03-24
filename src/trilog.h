@@ -262,6 +262,7 @@ struct trilog_ctx {
 
   int term_pool_size;   // total bytes
   int term_pool_offset; // temp: grows up from 0
+  int term_pool_peak;   // high-water mark for temp pool
   int term_pool_perm;   // perm: grows down from term_pool_size
   int term_pool_floor;  // backtrack cannot reclaim below this
   int bind_floor;       // lco cannot reclaim bindings below this
@@ -409,6 +410,7 @@ term_t *lookup(env_t *env, int var_id);
 void bind(trilog_ctx_t *ctx, env_t *env, term_t *var, term_t *value);
 term_t *deref(env_t *env, term_t *t);
 term_t *substitute(trilog_ctx_t *ctx, env_t *env, term_t *t);
+bool term_refs_range(env_t *env, term_t *t, int from, int to);
 
 bool unify(trilog_ctx_t *ctx, term_t *a, term_t *b, env_t *env);
 

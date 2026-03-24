@@ -72,6 +72,33 @@ static term_t *copy_to_perm(trilog_ctx_t *ctx, term_t *t) {
   return NULL;
 }
 
+// check if a term lives in the temp pool (would be reclaimed on rollback)
+static bool term_is_temp(trilog_ctx_t *ctx, term_t *t) {
+  char *p = (char *)t;
+  return p >= ctx->term_pool && p < ctx->term_pool + ctx->term_pool_perm;
+}
+
+// check if a term (in its current form) contains any VAR whose var_id
+// is bound in [from, to) — i.e. would be affected by reclaiming that range.
+bool term_refs_range(env_t *env, term_t *t, int from, int to) {
+  if (!t)
+    return false;
+  if (t->type == VAR) {
+    for (int i = from; i < to; i++) {
+      if (env->bindings[i].var_id == t->arity)
+        return true;
+    }
+    return false;
+  }
+  if (t->type != FUNC)
+    return false;
+  for (int i = 0; i < t->arity; i++) {
+    if (term_refs_range(env, t->args[i], from, to))
+      return true;
+  }
+  return false;
+}
+
 term_t *substitute(trilog_ctx_t *ctx, env_t *env, term_t *t) {
   assert(ctx != NULL && "Context is NULL");
   assert(env != NULL && "Environment is NULL");
@@ -83,7 +110,7 @@ term_t *substitute(trilog_ctx_t *ctx, env_t *env, term_t *t) {
     return NULL;
 
   if (t->type == CONST || t->type == VAR || t->type == STRING) {
-    if (ctx->alloc_permanent)
+    if (ctx->alloc_permanent && term_is_temp(ctx, t))
       return copy_to_perm(ctx, t);
     return t;
   }
@@ -101,7 +128,7 @@ term_t *substitute(trilog_ctx_t *ctx, env_t *env, term_t *t) {
       changed = true;
   }
   if (!changed) {
-    if (ctx->alloc_permanent)
+    if (ctx->alloc_permanent && term_is_temp(ctx, t))
       return copy_to_perm(ctx, t);
     return t;
   }

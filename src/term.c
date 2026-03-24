@@ -24,6 +24,8 @@ void *term_alloc(trilog_ctx_t *ctx, size_t size) {
   void *ptr = ctx->term_pool + ctx->term_pool_offset;
   memset(ptr, 0, size);
   ctx->term_pool_offset += (int)size;
+  if (ctx->term_pool_offset > ctx->term_pool_peak)
+    ctx->term_pool_peak = ctx->term_pool_offset;
   return ptr;
 }
 
