@@ -5,13 +5,12 @@
 //****
 
 // check if lco can safely reclaim bindings in [from, to).
-// unsafe when a named (query) var points to an unbound renamed var —
-// reclaiming would lose the name and prevent print_bindings from showing it.
+// unsafe when any named (query) var is in the range — reclaiming would
+// lose assignments needed by print_bindings at solution time.
 static bool lco_safe(env_t *env, int from, int to) {
   for (int i = from; i < to; i++) {
-    term_t *v = deref(env, env->bindings[i].value);
-    if (v->type == VAR && env->bindings[i].name)
-      return false; // named var → unbound var: would lose the name
+    if (env->bindings[i].name)
+      return false; // named query var: must keep for print_bindings
   }
   return true;
 }
@@ -128,11 +127,24 @@ static bool has_more_alternatives(trilog_ctx_t *ctx, term_t *goal, env_t *env,
     return false; // builtin match
   goal = deref(env, goal);
   int goal_arity = (goal->type == FUNC) ? goal->arity : 0;
+  // first-argument indexing: if the goal's first arg is ground (not a var
+  // and not bound by the current unification), skip clauses whose first arg
+  // is a different ground term.  check WITHOUT deref to see the pre-unify
+  // structure — a renamed var arg would still be VAR type (only bindings
+  // make it resolve to something else).
+  term_t *goal_a0 = NULL;
+  if (goal_arity > 0 && goal->args[0]->type != VAR)
+    goal_a0 = goal->args[0];
   for (int i = from_clause; i < ctx->db_count; i++) {
     clause_t *c = &ctx->database[i];
-    // cheap arity/name check before trying unify
     int head_arity = (c->head->type == FUNC) ? c->head->arity : 0;
     if (goal->name == c->head->name && goal_arity == head_arity) {
+      if (goal_a0 && head_arity > 0) {
+        term_t *ha0 = c->head->args[0];
+        if (ha0->type != VAR &&
+            !(ha0->type == goal_a0->type && ha0->name == goal_a0->name))
+          continue;
+      }
       return true;
     }
   }
@@ -430,6 +442,26 @@ B:
         if (ctx->term_pool_offset > pre_patch && sp > 1)
           stack[sp - 1].term_mark = ctx->term_pool_offset;
         env->count = ctx->bind_count = env_mark;
+      } else if (clause_idx >= 0 && ctx->bind_count == env_mark &&
+                 resolvent.count > 0 && sp <= 1 && cn.count == 1) {
+        // deterministic tail call with no new bindings, no choice points.
+        // the matched goal was the sole remaining goal (tail position).
+        // reset temp pool to the initial level and rebuild the resolvent
+        // fresh from the perm-pool clause body.
+        clause_t *c = &ctx->database[clause_idx - 1];
+        int base_term = stack[0].term_mark;
+        if (base_term < ctx->term_pool_floor)
+          base_term = ctx->term_pool_floor;
+        int base_env = stack[0].env_mark;
+        if (base_env < ctx->bind_floor)
+          base_env = ctx->bind_floor;
+        env->count = ctx->bind_count = base_env;
+        ctx->term_pool_offset = base_term;
+        var_id_map_t map = {0};
+        resolvent = goals_alloc(ctx, c->body_count);
+        for (int j = 0; j < c->body_count; j++)
+          resolvent.goals[resolvent.count++] =
+              rename_vars_mapped(ctx, c->body[j], &map);
       }
 
       cn = resolvent;
