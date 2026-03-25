@@ -335,6 +335,9 @@ A:
         for (int i = 1; i < cn.count; i++)
           new_cn.goals[new_cn.count++] = cn.goals[i];
         cn = new_cn;
+      } else if (ctx->thrown_ball) {
+        // cond threw — propagate, don't take else branch
+        return false;
       } else {
         // cond failed — take else branch
         env->count = ctx->bind_count = emark;
@@ -390,6 +393,8 @@ A:
         new_cn.goals[new_cn.count++] = cn.goals[i];
       cn = new_cn;
       goto A;
+    } else if (ctx->thrown_ball) {
+      return false;
     } else {
       env->count = ctx->bind_count = emark;
       goto C;

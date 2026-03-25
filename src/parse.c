@@ -288,14 +288,15 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
 
   if (*ctx->input_ptr == '\'') {
     ctx->input_ptr++; // skip opening quote
-    char name[MAX_NAME];
+    int avail = MAX_STRING_POOL - ctx->string_pool_offset - 1;
+    char *name = ctx->string_pool + ctx->string_pool_offset;
     int i = 0;
     bool closed = false;
     while (*ctx->input_ptr) {
       if (*ctx->input_ptr == '\'') {
         if (ctx->input_ptr[1] == '\'') { // '' is escaped single-quote
           ctx->input_ptr += 2;
-          if (i < MAX_NAME - 1)
+          if (i < avail)
             name[i++] = '\'';
         } else {
           ctx->input_ptr++; // closing quote
@@ -306,7 +307,7 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
         // iso 6.4.2.1 escape sequences
         ctx->input_ptr++;
         char esc = *ctx->input_ptr++;
-        if (i < MAX_NAME - 1) {
+        if (i < avail) {
           switch (esc) {
           case '\\':
             name[i++] = '\\';
@@ -335,7 +336,7 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
           }
         }
       } else {
-        if (i < MAX_NAME - 1)
+        if (i < avail)
           name[i++] = *ctx->input_ptr;
         ctx->input_ptr++;
       }
@@ -346,6 +347,9 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
       parse_error_eof(ctx);
       return NULL;
     }
+
+    // commit to string pool before parsing args (which may overwrite scratch)
+    name = (char *)intern_name(ctx, name);
 
     // quoted atom followed by '(' is a functor call (iso 6.3.3)
     skip_ws(ctx);
@@ -439,8 +443,10 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
     return list;
   }
 
-  char name[MAX_NAME] = {0};
+  int avail = MAX_STRING_POOL - ctx->string_pool_offset - 1;
+  char *name = ctx->string_pool + ctx->string_pool_offset;
   int i = 0;
+  name[0] = '\0';
 
   if (*ctx->input_ptr == '!') {
     name[i++] = *ctx->input_ptr++;
@@ -476,12 +482,12 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
         }
       }
       ctx->input_ptr++;
-      snprintf(name + i, MAX_NAME - i, "%d", (int)ch);
+      snprintf(name + i, avail - i + 1, "%d", (int)ch);
       i = strlen(name);
     } else {
       while (isdigit(*ctx->input_ptr)) {
-        if (i >= MAX_NAME - 1) {
-          parse_error(ctx, "number too long (max %d digits)", MAX_NAME - 1);
+        if (i >= avail) {
+          parse_error(ctx, "number too long");
           return NULL;
         }
         name[i++] = *ctx->input_ptr++;
@@ -489,8 +495,8 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
     }
   } else if (isalpha(*ctx->input_ptr) || *ctx->input_ptr == '_') {
     while (isalnum(*ctx->input_ptr) || *ctx->input_ptr == '_') {
-      if (i >= MAX_NAME - 1) {
-        parse_error(ctx, "name too long (max %d chars)", MAX_NAME - 1);
+      if (i >= avail) {
+        parse_error(ctx, "name too long");
         return NULL;
       }
       name[i++] = *ctx->input_ptr++;
@@ -529,6 +535,9 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
     return NULL;
   }
 
+  name[i] = '\0';
+  // commit to string pool before parsing args (which may overwrite scratch)
+  name = (char *)intern_name(ctx, name);
   debug(ctx, "DEBUG parse_primary: parsed name = '%s'\n", name);
 
   skip_ws(ctx);

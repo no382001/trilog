@@ -36,7 +36,7 @@ ledit :- ledit('').
 ledit(File) :-
     l_initialize,
     ( File \== '' -> l_do_get_file(File), l_do([r]) ; true ),
-    l_loop.
+    catch(l_loop, l_quit, true).
 
 % --- Database helpers ---
 
@@ -131,7 +131,7 @@ l_forward :-
 % --- Commands ---
 
 % quit
-l_do([q|_]) :- !.
+l_do([q|_]) :- !, throw(l_quit).
 
 % add
 l_do([a|_]) :- !,

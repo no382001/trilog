@@ -55,7 +55,8 @@ const char *intern_name(trilog_ctx_t *ctx, const char *name) {
   }
 
   char *dest = &ctx->string_pool[ctx->string_pool_offset];
-  memcpy(dest, name, len + 1);
+  if (dest != name)
+    memcpy(dest, name, len + 1);
   ctx->string_pool_offset += len + 1;
   return dest;
 }
