@@ -23,12 +23,8 @@ void throw_type_error(trilog_ctx_t *ctx, const char *expected, term_t *got,
   term_t *targs[2] = {make_const(ctx, expected), got};
   term_t *te = make_func(ctx, "type_error", targs, 2);
   throw_error(ctx, te, context);
-  if (got->type == STRING)
-    snprintf(ctx->runtime_error, MAX_ERROR_MSG, "type_error(%s, \"%s\") in %s",
-             expected, got->string_data, context);
-  else
-    snprintf(ctx->runtime_error, MAX_ERROR_MSG, "type_error(%s, %s) in %s",
-             expected, got->name, context);
+  snprintf(ctx->runtime_error, MAX_ERROR_MSG, "type_error(%s, %s) in %s",
+           expected, got->name, context);
 }
 
 void throw_evaluation_error(trilog_ctx_t *ctx, const char *kind,

@@ -1,4 +1,5 @@
-% string tests
+% string tests (double_quotes = codes)
+% "abc" parses as [97, 98, 99] — a list of character codes
 
 % --- simple strings ---
 
@@ -9,7 +10,7 @@ sstr("hello").
 
 sstr2("").
 
-?- sstr2("").
+?- sstr2([]).
    true.
 
 sstr3("hello world").
@@ -45,21 +46,21 @@ sstr8("hello\\world").
    true.
 
 ?- X = "\"".
-   X = "\"".
+   X = [34].
 
 % --- escape encoding/decoding ---
 
 ?- X = "\n".
-   X = "\n".
+   X = [10].
 
 ?- X = "\t".
-   X = "\t".
+   X = [9].
 
 ?- X = "\r".
-   X = "\r".
+   X = [13].
 
 ?- X = "\\".
-   X = "\\".
+   X = [92].
 
 ?- length("\n", N).
    N = 1.
@@ -68,27 +69,27 @@ sstr8("hello\\world").
    N = 1.
 
 ?- X = "a\nb".
-   X = "a\nb".
+   X = [97, 10, 98].
 
 ?- [_|T] = "\n".
-   T = "".
+   T = [].
 
 % --- string unification with variables ---
 
 sstr9("hello").
 
 ?- sstr9(X).
-   X = "hello".
+   X = [104, 101, 108, 108, 111].
 
 sstr10(X) :- X = "test".
 
 ?- sstr10(Y).
-   Y = "test".
+   Y = [116, 101, 115, 116].
 
 spair("foo", "bar").
 
 ?- spair(X, Y).
-   X = "foo", Y = "bar".
+   X = [102, 111, 111], Y = [98, 97, 114].
 
 % --- string comparison ---
 
@@ -115,17 +116,17 @@ sperson("Alice", 30).
    true.
 
 ?- sperson(X, 30).
-   X = "Alice".
+   X = [65, 108, 105, 99, 101].
 
 sgreeting("hello", "world").
 
 ?- sgreeting(X, Y).
-   X = "hello", Y = "world".
+   X = [104, 101, 108, 108, 111], Y = [119, 111, 114, 108, 100].
 
 sdata(user("Bob")).
 
 ?- sdata(user(X)).
-   X = "Bob".
+   X = [66, 111, 98].
 
 % --- strings in lists ---
 
@@ -137,12 +138,12 @@ slist(["a", "b", "c"]).
 slist2(["foo", "bar"]).
 
 ?- slist2(X).
-   X = ["foo", "bar"].
+   X = [[102, 111, 111], [98, 97, 114]].
 
 slist3(["first", "second"]).
 
 ?- slist3([X, Y]).
-   X = "first", Y = "second".
+   X = [102, 105, 114, 115, 116], Y = [115, 101, 99, 111, 110, 100].
 
 % --- mixed types ---
 
@@ -159,7 +160,7 @@ smtest2 :- "42" = 42.
 smdata("text", 42, atom).
 
 ?- smdata(X, Y, Z).
-   X = "text", Y = 42, Z = atom.
+   X = [116, 101, 120, 116], Y = 42, Z = atom.
 
 % --- edge cases ---
 
@@ -190,27 +191,27 @@ scolor("green").
 scolor("blue").
 
 ?- once(scolor(X)).
-   X = "red".
+   X = [114, 101, 100].
 
 smsg("hello").
 smsg("goodbye").
 
 ?- once(smsg(X)).
-   X = "hello".
+   X = [104, 101, 108, 108, 111].
 
-% --- string-as-list unification ---
+% --- strings are char code lists ---
 
 ?- [L|Ls] = "abc".
-   L = a, Ls = "bc".
+   L = 97, Ls = [98, 99].
 
-?- "abc" = [a, b, c].
+?- "abc" = [97, 98, 99].
    true.
 
 ?- [H|_] = "hello".
-   H = h.
+   H = 104.
 
 ?- [_|T] = "hello".
-   T = "ello".
+   T = [101, 108, 108, 111].
 
 ?- "" = [].
    true.
@@ -219,22 +220,22 @@ smsg("goodbye").
    false.
 
 ?- [L|Ls] = "x".
-   L = x, Ls = "".
+   L = 120, Ls = [].
 
-?- "abc" = [a, b, d].
+?- "abc" = [97, 98, 100].
    false.
 
 ?- [A, B, C|Rest] = "prolog".
-   A = p, B = r, C = o, Rest = "log".
+   A = 112, B = 114, C = 111, Rest = [108, 111, 103].
 
-?- [h, e, l, l, o] = "hello".
+?- [104, 101, 108, 108, 111] = "hello".
    true.
 
 ?- once(member(X, "abc")).
-   X = a.
+   X = 97.
 
 ?- findall(X, member(X, "abc"), Cs).
-   Cs = [a, b, c].
+   Cs = [97, 98, 99].
 
 ?- length("hello", N).
    N = 5.
@@ -243,13 +244,13 @@ smsg("goodbye").
    N = 0.
 
 ?- reverse("abc", X).
-   X = [c, b, a].
+   X = [99, 98, 97].
 
 ?- last(X, "hello").
-   X = o.
+   X = 111.
 
-?- member(h, "hello").
+?- member(104, "hello").
    true.
 
-?- member(z, "hello").
+?- member(122, "hello").
    false.

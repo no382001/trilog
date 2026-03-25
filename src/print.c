@@ -105,28 +105,6 @@ void print_term(trilog_ctx_t *ctx, term_t *t, env_t *env, bool quoted) {
     return;
   }
 
-  if (t->type == STRING) {
-    if (quoted) {
-      io_write_str(ctx, "\"");
-      for (const char *p = t->string_data; *p; p++) {
-        const str_escape_t *e = STR_ESCAPES;
-        while (e->raw && e->raw != *p)
-          e++;
-        if (e->raw) {
-          char esc[3] = {'\\', e->seq, '\0'};
-          io_write_str(ctx, esc);
-        } else {
-          char buf[2] = {*p, '\0'};
-          io_write_str(ctx, buf);
-        }
-      }
-      io_write_str(ctx, "\"");
-    } else {
-      io_write_str(ctx, t->string_data);
-    }
-    return;
-  }
-
   if (t->type == VAR) {
     if (t->name)
       io_write_str(ctx, t->name);

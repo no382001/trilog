@@ -53,8 +53,6 @@ static bool terms_identical(term_t *a, term_t *b, env_t *env) {
     return false;
   if (a->type == VAR)
     return a->arity == b->arity;
-  if (a->type == STRING)
-    return strcmp(a->string_data, b->string_data) == 0;
   if (a->name != b->name)
     return false;
   if (a->arity != b->arity)
@@ -84,8 +82,8 @@ static builtin_result_t builtin_struct_neq(trilog_ctx_t *ctx, term_t *goal,
 //* term ordering and comparison
 //****
 
-// iso standard order: var < number < atom < string < compound
-// within same type: var by id, number by value, atom/string lexicographic,
+// iso standard order: var < number < atom < compound
+// within same type: var by id, number by value, atom lexicographic,
 // compound by arity then functor then args left-to-right
 static int term_order(term_t *a, term_t *b, env_t *env) {
   a = deref(env, a);
@@ -98,7 +96,6 @@ static int term_order(term_t *a, term_t *b, env_t *env) {
       [CONST] = 2, // will split into number(1) vs atom(2) below
       [VAR] = 0,
       [FUNC] = 4,
-      [STRING] = 3,
   };
 
   int ra = rank[a->type], rb = rank[b->type];
@@ -121,9 +118,6 @@ static int term_order(term_t *a, term_t *b, env_t *env) {
 
   if (a_num && b_num)
     return ia < ib ? -1 : (ia > ib ? 1 : 0);
-
-  if (a->type == STRING)
-    return strcmp(a->string_data, b->string_data);
 
   if (a->type == CONST)
     return a->name == b->name ? 0 : strcmp(a->name, b->name);
@@ -550,9 +544,7 @@ static builtin_result_t builtin_writeq(trilog_ctx_t *ctx, term_t *goal,
 static const char *resolve_filename(trilog_ctx_t *ctx, term_t *arg, char *buf,
                                     size_t bufsz) {
   const char *filename = NULL;
-  if (arg->type == STRING)
-    filename = arg->string_data;
-  else if (arg->type == CONST)
+  if (arg->type == CONST)
     filename = arg->name;
   else
     return NULL;
@@ -600,8 +592,6 @@ static builtin_result_t builtin_include(trilog_ctx_t *ctx, term_t *goal,
 static const char *term_atom_str(const term_t *t) {
   if (!t)
     return NULL;
-  if (t->type == STRING)
-    return t->string_data;
   if (t->type == CONST)
     return t->name;
   return NULL;
@@ -630,13 +620,14 @@ static builtin_result_t builtin_atomic(trilog_ctx_t *ctx, term_t *goal,
                                        env_t *env) {
   (void)ctx;
   term_t *t = deref(env, goal->args[0]);
-  return (t->type == CONST || t->type == STRING) ? BUILTIN_OK : BUILTIN_FAIL;
+  return (t->type == CONST) ? BUILTIN_OK : BUILTIN_FAIL;
 }
 static builtin_result_t builtin_string(trilog_ctx_t *ctx, term_t *goal,
                                        env_t *env) {
   (void)ctx;
-  term_t *t = deref(env, goal->args[0]);
-  return (t->type == STRING) ? BUILTIN_OK : BUILTIN_FAIL;
+  (void)env;
+  (void)goal;
+  return BUILTIN_FAIL;
 }
 
 //****
@@ -1024,7 +1015,7 @@ static builtin_result_t builtin_functor(trilog_ctx_t *ctx, term_t *goal,
   if (term->type != VAR) {
     const char *fname;
     int ar;
-    if (term->type == CONST || term->type == STRING) {
+    if (term->type == CONST) {
       fname = term_atom_str(term);
       ar = 0;
     } else if (term->type == FUNC) {
@@ -1059,7 +1050,7 @@ static builtin_result_t builtin_functor(trilog_ctx_t *ctx, term_t *goal,
     throw_type_error(ctx, "atom", n, "functor/3");
     return BUILTIN_ERROR;
   }
-  if (n->type != CONST && n->type != STRING) {
+  if (n->type != CONST) {
     throw_type_error(ctx, "atomic", n, "functor/3");
     return BUILTIN_ERROR;
   }
@@ -1112,7 +1103,7 @@ static builtin_result_t builtin_univ(trilog_ctx_t *ctx, term_t *goal,
   term_t *list = deref(env, goal->args[1]);
   if (term->type != VAR) {
     term_t *result;
-    if (term->type == CONST || term->type == STRING) {
+    if (term->type == CONST) {
       term_t *args[2] = {term, make_const(ctx, "[]")};
       result = make_func(ctx, ".", args, 2);
     } else if (term->type == FUNC) {

@@ -427,7 +427,16 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
     ctx->input_ptr++; // skip closing quote
     str_buf[i] = '\0';
 
-    return make_string(ctx, str_buf);
+    // build list of character codes
+    term_t *list = make_const(ctx, "[]");
+    for (int j = (int)i - 1; j >= 0; j--) {
+      char code_buf[8];
+      snprintf(code_buf, sizeof(code_buf), "%d", (unsigned char)str_buf[j]);
+      term_t *code = make_const(ctx, code_buf);
+      term_t *cell[2] = {code, list};
+      list = make_func(ctx, ".", cell, 2);
+    }
+    return list;
   }
 
   char name[MAX_NAME] = {0};

@@ -1,6 +1,6 @@
 towards some form of iso compliance:
     https://www.complang.tuwien.ac.at/ulrich/iso-prolog/prologue
-    - `"hello"` is a native STRING type, not a list of char codes (should throw type_error(evaluable, '.'/2) not type_error(evaluable, "hello"))
+    [x] `"hello"` is a native STRING type, not a list of char codes (should throw type_error(evaluable, '.'/2) not type_error(evaluable, "hello"))
 
 ease of use on the default linux target:
     [] readline/history in repl
@@ -21,3 +21,6 @@ wasm demo:
 
 testing:
     - move quad to a pl file, separate TAP and jUnit outputs
+
+ledit:
+    - printing 20 lines will need 100k termpool, for what?

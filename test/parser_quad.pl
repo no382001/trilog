@@ -195,10 +195,10 @@ pbar7(b).
 ?- pfoo7(a), pbar7(b).
    true.
 
-pgreeting("hello.world").
+pgreeting([104, 101, 108, 108, 111, 46, 119, 111, 114, 108, 100]).
 
 ?- pgreeting(X).
-   X = "hello.world".
+   X = [104, 101, 108, 108, 111, 46, 119, 111, 114, 108, 100].
 
 pcolor(red).
 pcolor(green).

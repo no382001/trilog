@@ -168,7 +168,7 @@ typedef struct {
 //* term representation
 //****
 
-typedef enum { CONST, VAR, FUNC, STRING } term_type;
+typedef enum { CONST, VAR, FUNC } term_type;
 
 // escape sequence table used by both the parser (decode) and printer (encode).
 // each entry maps a raw byte to its two-character escape sequence.
@@ -182,15 +182,13 @@ static const str_escape_t STR_ESCAPES[] = {
 struct term {
   term_type type;
   const char *name;
-  int arity; // is repurposed for var_id var
-  char *string_data;
+  int arity;           // is repurposed for var_id var
   struct term *args[]; // fam: arity elements follow
 };
 
 #define AS_FUNC(t) (t)
 #define AS_CONST(t) (t)
 #define AS_VAR(t) (t)
-#define AS_STRING(t) (t)
 
 //****
 //* bindings and environment
@@ -395,7 +393,6 @@ term_t *make_const(trilog_ctx_t *ctx, const char *name);
 term_t *make_var(trilog_ctx_t *ctx, const char *name, int var_id);
 term_t *make_func(trilog_ctx_t *ctx, const char *name, term_t **args,
                   int arity);
-term_t *make_string(trilog_ctx_t *ctx, const char *str);
 
 void skip_ws(trilog_ctx_t *ctx);
 term_t *parse_term(trilog_ctx_t *ctx);

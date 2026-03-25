@@ -201,10 +201,9 @@ builtin_result_t builtin_with_output_to(trilog_ctx_t *ctx, term_t *goal,
 
   const char *sname = sink->name;
   bool is_atom = strcmp(sname, "atom") == 0;
-  bool is_string = strcmp(sname, "string") == 0;
   bool is_codes = strcmp(sname, "codes") == 0;
   bool is_chars = strcmp(sname, "chars") == 0;
-  if (!is_atom && !is_string && !is_codes && !is_chars)
+  if (!is_atom && !is_codes && !is_chars)
     return BUILTIN_FAIL;
 
   bcap_t cap;
@@ -218,9 +217,7 @@ builtin_result_t builtin_with_output_to(trilog_ctx_t *ctx, term_t *goal,
     return BUILTIN_FAIL;
 
   term_t *result;
-  if (is_string) {
-    result = make_string(ctx, cap.buf);
-  } else if (is_codes) {
+  if (is_codes) {
     int len = (int)strlen(cap.buf);
     result = make_const(ctx, "[]");
     for (int i = len - 1; i >= 0; i--) {
@@ -251,8 +248,7 @@ builtin_result_t builtin_term_to_atom(trilog_ctx_t *ctx, term_t *goal,
 
   // atom -> term direction
   if (term_arg->type == VAR && atom_arg->type != VAR) {
-    const char *str =
-        (atom_arg->type == STRING) ? atom_arg->string_data : atom_arg->name;
+    const char *str = atom_arg->name;
     if (!str)
       return BUILTIN_FAIL;
 
@@ -302,8 +298,7 @@ builtin_result_t builtin_term_to_atom(trilog_ctx_t *ctx, term_t *goal,
 builtin_result_t builtin_atom_to_term(trilog_ctx_t *ctx, term_t *goal,
                                       env_t *env) {
   term_t *atom_arg = deref(env, goal->args[0]);
-  const char *str =
-      (atom_arg->type == STRING) ? atom_arg->string_data : atom_arg->name;
+  const char *str = atom_arg->name;
   if (!str)
     return BUILTIN_FAIL;
 
@@ -368,8 +363,7 @@ builtin_result_t builtin_open(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   if (!path_t || !mode_t || mode_t->type != CONST)
     return BUILTIN_FAIL;
 
-  const char *path =
-      (path_t->type == STRING) ? path_t->string_data : path_t->name;
+  const char *path = path_t->name;
   if (!path)
     return BUILTIN_FAIL;
 
