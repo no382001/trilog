@@ -122,6 +122,7 @@ $(WEB_DIR)/trilog.js: $(WEB_LIB_SRCS) $(WEB_ENTRY) $(HDRS) core.pl ledit.pl
 
 .PHONY: serve-web
 serve-web:
+	$(MAKE) -B web
 	-kill $$(ss -tlnp 'sport = :8080' 2>/dev/null | grep -oP 'pid=\K[0-9]+') 2>/dev/null; sleep 0.2
 	php -S localhost:8080 -t $(WEB_DIR)
 

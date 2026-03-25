@@ -16,86 +16,187 @@
     }
     #terminal { flex: 1; padding: 8px; min-height: 0; overflow: hidden; }
     #statusbar { display: none; }
-    #stats-panel {
+
+    /* ---- metrics panel ---- */
+    #metrics-panel {
       background: #111;
       border-top: 1px solid #333;
-      padding: 6px 10px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      font: 12px "Cascadia Code", "Fira Code", monospace;
-      color: #888;
       flex-shrink: 0;
-    }
-    #stats-panel .stat { white-space: nowrap; }
-    #stats-panel .stat b { color: #d4d4d4; }
-    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 3px; vertical-align: middle; }
-    #stats-canvas {
-      flex: 1;
-      height: 48px;
-      min-width: 100px;
-    }
-    #usage-panel {
-      background: #111;
-      border-top: 1px solid #222;
-      padding: 6px 10px;
-      display: flex;
-      gap: 12px;
       font: 11px "Cascadia Code", "Fira Code", monospace;
       color: #666;
-      flex-shrink: 0;
+    }
+
+    /* row 1: activity counters */
+    #activity-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 5px 10px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    #activity-row .stat { white-space: nowrap; color: #777; }
+    #activity-row .stat b { color: #d4d4d4; }
+    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 3px; vertical-align: middle; }
+    #throughput { color: #569cd6; }
+    #m0-badge { margin-left: auto; color: #444; font-size: 10px; white-space: nowrap; }
+    #m0-badge b { color: #666; }
+
+    /* row 2: usage bars */
+    #usage-row {
+      display: flex;
+      align-items: center;
+      padding: 5px 10px;
+      border-bottom: 1px solid #1a1a1a;
+      flex-wrap: nowrap;
+      gap: 0;
     }
     .usage-item {
       display: flex;
       align-items: center;
-      gap: 6px;
-      white-space: nowrap;
+      gap: 5px;
+      padding-right: 16px;
+      flex-shrink: 0;
     }
-    .usage-item .label { color: #888; min-width: 50px; }
-    .usage-bar {
-      width: 60px;
-      height: 8px;
-      background: #222;
-      border-radius: 2px;
-      overflow: hidden;
+    .usage-label { color: #555; min-width: 46px; font-size: 10px; }
+    .usage-bar-wrap {
+      position: relative;
+      width: 72px;
+      height: 7px;
+      background: #1e1e1e;
+      border-radius: 1px;
     }
     .usage-bar-fill {
       height: 100%;
       background: #4ec994;
-      border-radius: 2px;
-      transition: width 0.15s, background 0.3s;
+      border-radius: 1px;
+      transition: width 0.12s, background 0.3s;
     }
     .usage-bar-fill.warn { background: #d7ba7d; }
     .usage-bar-fill.crit { background: #f44747; }
-    .usage-val { color: #555; }
-    #m0-badge {
-      color: #555;
-      font-size: 10px;
-      margin-left: auto;
-      white-space: nowrap;
+    .usage-peak-mark {
+      position: absolute;
+      top: 0;
+      width: 1px;
+      height: 100%;
+      background: #aaa;
+      opacity: 0.4;
+      transition: left 0.12s;
     }
-    #m0-badge b { color: #888; }
+    .usage-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0;
+    }
+    .usage-pct { color: #888; font-size: 10px; min-width: 28px; text-align: right; font-weight: bold; }
+    .usage-nums { color: #444; font-size: 9px; white-space: nowrap; }
+
+    /* row 3: utilization graph */
+    #graph-row {
+      display: flex;
+      align-items: stretch;
+      padding: 4px 10px;
+      gap: 8px;
+      height: 58px;
+    }
+    #stats-canvas { flex: 1; display: block; }
+    #graph-legend {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 3px;
+      font-size: 9px;
+      color: #444;
+      flex-shrink: 0;
+      min-width: 56px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .legend-line { width: 12px; height: 2px; border-radius: 1px; flex-shrink: 0; }
   </style>
 </head>
 <body>
   <div id="terminal"></div>
-  <div id="stats-panel">
-    <span class="stat"><span class="dot" style="background:#4ec994"></span>son <b id="st-son">0</b></span>
-    <span class="stat"><span class="dot" style="background:#569cd6"></span>unify <b id="st-unify">0</b></span>
-    <span class="stat">fail <b id="st-fail">0</b></span>
-    <span class="stat"><span class="dot" style="background:#f44747"></span>bt <b id="st-bt">0</b></span>
-    <span class="stat">terms <b id="st-terms">0</b></span>
-    <canvas id="stats-canvas"></canvas>
-  </div>
-  <div id="usage-panel">
-    <div class="usage-item"><span class="label">heap</span><div class="usage-bar"><div class="usage-bar-fill" id="ub-term"></div></div><span class="usage-val" id="uv-term"></span></div>
-    <div class="usage-item"><span class="label">strings</span><div class="usage-bar"><div class="usage-bar-fill" id="ub-str"></div></div><span class="usage-val" id="uv-str"></span></div>
-    <div class="usage-item"><span class="label">clauses</span><div class="usage-bar"><div class="usage-bar-fill" id="ub-cls"></div></div><span class="usage-val" id="uv-cls"></span></div>
-    <div class="usage-item"><span class="label">binds</span><div class="usage-bar"><div class="usage-bar-fill" id="ub-bind"></div></div><span class="usage-val" id="uv-bind"></span></div>
-    <div class="usage-item"><span class="label">stack</span><div class="usage-bar"><div class="usage-bar-fill" id="ub-stk"></div></div><span class="usage-val" id="uv-stk"></span></div>
-    <span id="m0-badge"><b>M0+</b> RP2040</span>
-  </div>
   <div id="statusbar">reading input &mdash; type <span>end_of_file.</span> on its own line to finish, or <span>?</span> for help (output shown when done)</div>
+
+  <div id="metrics-panel">
+    <!-- row 1: activity counters + throughput -->
+    <div id="activity-row">
+      <span class="stat"><span class="dot" style="background:#4ec994"></span>son <b id="st-son">0</b></span>
+      <span class="stat"><span class="dot" style="background:#569cd6"></span>unify <b id="st-unify">0</b></span>
+      <span class="stat">fail <b id="st-fail">0</b></span>
+      <span class="stat"><span class="dot" style="background:#f44747"></span>bt <b id="st-bt">0</b></span>
+      <span class="stat">terms <b id="st-terms">0</b></span>
+      <span class="stat" id="throughput">— infer/s</span>
+      <span id="m0-badge"><b>M0+</b> RP2040 · 264KB SRAM</span>
+    </div>
+    <!-- row 2: resource usage bars -->
+    <div id="usage-row">
+      <div class="usage-item">
+        <span class="usage-label">heap</span>
+        <div class="usage-bar-wrap">
+          <div class="usage-bar-fill" id="ub-term"></div>
+          <div class="usage-peak-mark" id="pk-term" style="left:0%"></div>
+        </div>
+        <div class="usage-right">
+          <span class="usage-pct" id="up-term">0%</span>
+          <span class="usage-nums" id="uv-term">0/192K</span>
+        </div>
+      </div>
+      <div class="usage-item">
+        <span class="usage-label">strings</span>
+        <div class="usage-bar-wrap">
+          <div class="usage-bar-fill" id="ub-str"></div>
+          <div class="usage-peak-mark" id="pk-str" style="left:0%"></div>
+        </div>
+        <div class="usage-right">
+          <span class="usage-pct" id="up-str">0%</span>
+          <span class="usage-nums" id="uv-str">0/8K</span>
+        </div>
+      </div>
+      <div class="usage-item">
+        <span class="usage-label">clauses</span>
+        <div class="usage-bar-wrap">
+          <div class="usage-bar-fill" id="ub-cls"></div>
+          <div class="usage-peak-mark" id="pk-cls" style="left:0%"></div>
+        </div>
+        <div class="usage-right">
+          <span class="usage-pct" id="up-cls">0%</span>
+          <span class="usage-nums" id="uv-cls">0/256</span>
+        </div>
+      </div>
+      <div class="usage-item">
+        <span class="usage-label">bindings</span>
+        <div class="usage-bar-wrap">
+          <div class="usage-bar-fill" id="ub-bind"></div>
+          <div class="usage-peak-mark" id="pk-bind" style="left:0%"></div>
+        </div>
+        <div class="usage-right">
+          <span class="usage-pct" id="up-bind">0%</span>
+          <span class="usage-nums" id="uv-bind">0/1024</span>
+        </div>
+      </div>
+      <div class="usage-item">
+        <span class="usage-label">stack pk</span>
+        <div class="usage-bar-wrap">
+          <div class="usage-bar-fill" id="ub-stk"></div>
+        </div>
+        <div class="usage-right">
+          <span class="usage-pct" id="up-stk">0%</span>
+          <span class="usage-nums" id="uv-stk">0/128</span>
+        </div>
+      </div>
+    </div>
+    <!-- row 3: utilization % graph -->
+    <div id="graph-row">
+      <canvas id="stats-canvas"></canvas>
+      <div id="graph-legend">
+        <div class="legend-item"><div class="legend-line" style="background:#4ec994"></div>heap %</div>
+        <div class="legend-item"><div class="legend-line" style="background:#569cd6"></div>binds %</div>
+        <div class="legend-item"><div class="legend-line" style="background:#f44747"></div>stack %</div>
+        <div class="legend-item"><div class="legend-line" style="background:#d7ba7d"></div>bt/son %</div>
+      </div>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
@@ -159,8 +260,8 @@
 
       init();
 
-      // --- stats graph setup ---
-      const setYield = Module.cwrap('trilog_web_set_yield', null, ['number']);
+      // --- stats / graph setup ---
+      const setYield = Module.cwrap('trilog_web_set_yield', null,   ['number']);
       const getStats = Module.cwrap('trilog_web_get_stats', 'number', []);
       const getUsage = Module.cwrap('trilog_web_get_usage', 'number', []);
       setYield(1);
@@ -168,12 +269,21 @@
       const canvas = document.getElementById('stats-canvas');
       const gctx   = canvas.getContext('2d');
       const MAX_PTS = 200;
-      const series  = {
-        son:   { pts: [], color: '#4ec994' },
-        unify: { pts: [], color: '#569cd6' },
-        bt:    { pts: [], color: '#f44747' },
+
+      // graph plots utilization % for the M0-critical resources
+      const series = {
+        heap:  { pts: [], color: '#4ec994' },
+        bind:  { pts: [], color: '#569cd6' },
+        stk:   { pts: [], color: '#f44747' },
+        btson: { pts: [], color: '#d7ba7d' },
       };
+
       let prevStats = [0, 0, 0, 0, 0, 0, 0];
+      // peak watermarks tracked in JS (stack peak already tracked in C)
+      const peaks = { term: 0, str: 0, cls: 0, bind: 0 };
+
+      let lastSonCount = 0;
+      let lastSonTime  = performance.now();
 
       function readStats() {
         const ptr = getStats();
@@ -203,50 +313,71 @@
         return n + 'B';
       }
 
-      function updateUsageBar(barId, valId, used, total, isBytes) {
-        const pct = total > 0 ? (used / total) * 100 : 0;
+      function fmtCount(n) {
+        if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+        if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+        return Math.round(n).toString();
+      }
+
+      function updateUsageBar(barId, peakId, pctId, valId, used, total, peakUsed, isBytes) {
+        const pct     = total > 0 ? (used  / total) * 100 : 0;
+        const peakPct = total > 0 ? (peakUsed / total) * 100 : 0;
         const bar = document.getElementById(barId);
         bar.style.width = Math.min(pct, 100) + '%';
         bar.className = 'usage-bar-fill' +
           (pct > 90 ? ' crit' : pct > 70 ? ' warn' : '');
-        document.getElementById(valId).textContent =
-          isBytes ? fmtBytes(used) + '/' + fmtBytes(total) : used + '/' + total;
+        if (peakId) {
+          const pk = document.getElementById(peakId);
+          pk.style.left = Math.min(peakPct, 100) + '%';
+        }
+        document.getElementById(pctId).textContent = Math.round(pct) + '%';
+        document.getElementById(valId).textContent = isBytes
+          ? fmtBytes(used) + '/' + fmtBytes(total)
+          : used + '/' + total;
       }
 
-      function updateUsage() {
-        const u = readUsage();
+      function updateUsage(u) {
         if (!u) return;
-        updateUsageBar('ub-term', 'uv-term', u[0], u[1], true);
-        updateUsageBar('ub-str',  'uv-str',  u[2], u[3], true);
-        updateUsageBar('ub-cls',  'uv-cls',  u[4], u[5], false);
-        updateUsageBar('ub-bind', 'uv-bind', u[6], u[7], false);
-        updateUsageBar('ub-stk',  'uv-stk',  u[8], u[9], false);
+        peaks.term = Math.max(peaks.term, u[0]);
+        peaks.str  = Math.max(peaks.str,  u[2]);
+        peaks.cls  = Math.max(peaks.cls,  u[4]);
+        peaks.bind = Math.max(peaks.bind, u[6]);
+        updateUsageBar('ub-term', 'pk-term', 'up-term', 'uv-term', u[0], u[1], peaks.term, true);
+        updateUsageBar('ub-str',  'pk-str',  'up-str',  'uv-str',  u[2], u[3], peaks.str,  true);
+        updateUsageBar('ub-cls',  'pk-cls',  'up-cls',  'uv-cls',  u[4], u[5], peaks.cls,  false);
+        updateUsageBar('ub-bind', 'pk-bind', 'up-bind', 'uv-bind', u[6], u[7], peaks.bind, false);
+        // stack: C already tracks peak in u[8]
+        updateUsageBar('ub-stk',  null,      'up-stk',  'uv-stk',  u[8], u[9], 0,          false);
       }
 
       function drawGraph() {
         const dpr = window.devicePixelRatio || 1;
         const w = canvas.clientWidth, h = canvas.clientHeight;
-        canvas.width = w * dpr; canvas.height = h * dpr;
+        if (w <= 0 || h <= 0) return;
+        canvas.width  = w * dpr;
+        canvas.height = h * dpr;
         gctx.scale(dpr, dpr);
         gctx.clearRect(0, 0, w, h);
 
-        let maxVal = 1;
-        for (const s of Object.values(series))
-          for (const v of s.pts) if (v > maxVal) maxVal = v;
+        // grid at 25 / 50 / 75 / 100 %
+        gctx.lineWidth = 1;
+        for (const pct of [25, 50, 75, 100]) {
+          const y = h - (pct / 100) * (h - 4) - 2;
+          gctx.strokeStyle = pct === 100 ? '#2d1a1a' : '#1e1e1e';
+          gctx.beginPath(); gctx.moveTo(0, y); gctx.lineTo(w, y); gctx.stroke();
+        }
 
         for (const s of Object.values(series)) {
           if (!s.pts.length) continue;
-          const n = s.pts.length;
+          const n    = s.pts.length;
           const step = n > 1 ? w / (n - 1) : 0;
           gctx.beginPath();
-          gctx.strokeStyle = s.color;
-          gctx.fillStyle = s.color;
-          gctx.lineWidth = 1.5;
+          gctx.strokeStyle = s.color + 'cc';
+          gctx.lineWidth   = 1.5;
           for (let i = 0; i < n; i++) {
             const x = i * step;
-            const y = h - (s.pts[i] / maxVal) * (h - 4) - 2;
+            const y = h - (Math.min(s.pts[i], 100) / 100) * (h - 4) - 2;
             if (i === 0) gctx.moveTo(x, y); else gctx.lineTo(x, y);
-            if (n < 20) gctx.fillRect(x - 2, y - 2, 4, 4);
           }
           gctx.stroke();
         }
@@ -255,28 +386,44 @@
       function updateStats() {
         const s = readStats();
         if (!s) return;
-        const dSon   = s[0] - prevStats[0];
-        const dUnify = s[1] - prevStats[1];
-        const dBt    = s[3] - prevStats[3];
-        if (!dSon && !dUnify && !dBt) {
-          updateUsage();
-          return;
+        const u = readUsage();
+
+        // throughput: son-calls per second
+        const now  = performance.now();
+        const dSon = s[0] - lastSonCount;
+        const dt   = (now - lastSonTime) / 1000;
+        if (dt > 0.1 && dSon > 0) {
+          document.getElementById('throughput').textContent = fmtCount(dSon / dt) + ' infer/s';
+          lastSonCount = s[0];
+          lastSonTime  = now;
         }
+
+        document.getElementById('st-son').textContent   = fmtCount(s[0]);
+        document.getElementById('st-unify').textContent = fmtCount(s[1]);
+        document.getElementById('st-fail').textContent  = fmtCount(s[2]);
+        document.getElementById('st-bt').textContent    = fmtCount(s[3]);
+        document.getElementById('st-terms').textContent = s[4];
+
+        if (u) {
+          const heapPct = u[1] > 0 ? (u[0] / u[1]) * 100 : 0;
+          const bindPct = u[7] > 0 ? (u[6] / u[7]) * 100 : 0;
+          const stkPct  = u[9] > 0 ? (u[8] / u[9]) * 100 : 0;
+          const dSon2   = s[0] - prevStats[0];
+          const dBt     = s[3] - prevStats[3];
+          const btSon   = dSon2 > 0 ? Math.min((dBt / dSon2) * 100, 100) : 0;
+
+          series.heap.pts.push(heapPct);
+          series.bind.pts.push(bindPct);
+          series.stk.pts.push(stkPct);
+          series.btson.pts.push(btSon);
+          for (const sr of Object.values(series))
+            if (sr.pts.length > MAX_PTS) sr.pts.shift();
+
+          updateUsage(u);
+          drawGraph();
+        }
+
         prevStats = [...s];
-
-        series.son.pts.push(dSon);
-        series.unify.pts.push(dUnify);
-        series.bt.pts.push(dBt);
-        for (const sr of Object.values(series))
-          if (sr.pts.length > MAX_PTS) sr.pts.shift();
-
-        document.getElementById('st-son').textContent   = s[0];
-        document.getElementById('st-unify').textContent  = s[1];
-        document.getElementById('st-fail').textContent   = s[2];
-        document.getElementById('st-bt').textContent     = s[3];
-        document.getElementById('st-terms').textContent  = s[4];
-        drawGraph();
-        updateUsage();
       }
 
       prompt();
@@ -292,7 +439,6 @@
             inputLine  = '';
 
             if (isReading()) {
-              // trilog is blocked in read_line_to_atom — feed the line in
               if (takeOutput) { const out = takeOutput(); if (out) termWrite(out); }
               pushLine(line);
             } else if (!evalBusy) {
@@ -301,15 +447,18 @@
                 history.unshift(trimmed);
                 histIdx  = -1;
                 evalBusy = true;
+                // reset JS-side peak watermarks for this query
+                peaks.term = peaks.str = peaks.cls = peaks.bind = 0;
+                lastSonCount = 0; lastSonTime = performance.now();
                 eval_(trimmed).then(result => {
                   termWrite(result);
                   updateStats();
-                  updateUsage();
+                  const u = readUsage(); updateUsage(u);
                   prompt();
                   evalBusy = false;
                 }).catch(err => {
                   termWrite('\x1b[31mError: ' + err.message + '\x1b[0m\r\n');
-                  updateUsage();
+                  const u = readUsage(); updateUsage(u);
                   prompt();
                   evalBusy = false;
                 });
