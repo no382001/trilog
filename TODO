@@ -5,12 +5,6 @@ towards some form of iso compliance:
 ease of use on the default linux target:
     [] readline/history in repl
 
-freestanding:
-    - better bsp
-        - get rid of the unity build
-    - dont rely on macros at all for platform specifics
-        - there should be an io stub for flush
-
 wasm demo:
     - add a site deployment
     [x] ledit should use core.pl for internals (removed l_member/2 and l_reverse/3, uses core.pl's member/2 and reverse/3)

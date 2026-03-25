@@ -62,14 +62,3 @@ jobs:
           path: _build/test-results/*.xml
           reporter: java-junit
           fail-on-error: false
-
-  freestanding:
-    runs-on: ubuntu-latest
-    steps:
-      - name: checkout code
-        uses: actions/checkout@v4
-
-      - name: build freestanding
-        run: |
-          mkdir -p _build
-          make freestanding

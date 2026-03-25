@@ -20,7 +20,7 @@ OBJS := $(SRCS:src/%.c=$(BUILD_DIR)/%.o)
 LIB_OBJS := $(filter-out $(BUILD_DIR)/main.o,$(OBJS))
 
 EXAMPLE_SRCS := $(wildcard $(EXAMPLES_DIR)/*.c)
-EXAMPLE_BINS := $(filter-out $(BUILD_DIR)/freestanding,$(EXAMPLE_SRCS:$(EXAMPLES_DIR)/%.c=$(BUILD_DIR)/%))
+EXAMPLE_BINS := $(EXAMPLE_SRCS:$(EXAMPLES_DIR)/%.c=$(BUILD_DIR)/%)
 
 all: format $(TARGET) $(EXAMPLE_BINS)
 
@@ -125,9 +125,3 @@ serve-web:
 	-kill $$(ss -tlnp 'sport = :8080' 2>/dev/null | grep -oP 'pid=\K[0-9]+') 2>/dev/null; sleep 0.2
 	php -S localhost:8080 -t $(WEB_DIR)
 
-.PHONY: freestanding
-freestanding: | $(BUILD_DIR)
-	$(CC) -std=c11 -Wall -Wextra -Wpedantic -Werror -g \
-		-DTRILOG_FREESTANDING -DNDEBUG \
-		-ffreestanding -nostdlib \
-		$(EXAMPLES_DIR)/freestanding.c -o $(BUILD_DIR)/freestanding
