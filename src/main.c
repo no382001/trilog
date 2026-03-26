@@ -7,7 +7,11 @@
 
 #define CORE_PATH_MAX 8192
 
-static void try_load_core(prolog_ctx_t *ctx, const char *argv0) {
+//****
+//* core library loading
+//****
+
+static void try_load_core(trilog_ctx_t *ctx, const char *argv0) {
   char exe[CORE_PATH_MAX];
   char dir[CORE_PATH_MAX];
 
@@ -27,10 +31,13 @@ static void try_load_core(prolog_ctx_t *ctx, const char *argv0) {
   path[sizeof(path) - 9] = '\0';
   strcat(path, "/core.pl");
 
-  struct stat st;
-  if (stat(path, &st) == 0)
-    prolog_load_file(ctx, path);
+  if (io_file_exists(ctx, path))
+    trilog_load_file(ctx, path);
 }
+
+//****
+//* terminal and usage
+//****
 
 static int read_key(void) {
   struct termios old, raw;
@@ -45,66 +52,68 @@ static int read_key(void) {
   return c;
 }
 
-static void print_usage(const char *prog) {
-  fprintf(stderr, "Usage: %s [-d] [-f <file>] [-e <expression>]\n", prog);
-  fprintf(stderr, "  -d            Enable debug mode\n");
-  fprintf(stderr, "  -f <file>     Load clauses from file\n");
-  fprintf(stderr, "  -e <expr>     Execute expression and exit\n");
-  fprintf(stderr, "  -h            Show this help\n");
-  fprintf(stderr, "\nInteractive commands:\n");
-  fprintf(stderr, "  debug.        Toggle debug mode\n");
-  fprintf(stderr, "  halt.         Exit the interpreter\n");
+static void print_usage(trilog_ctx_t *ctx, const char *prog) {
+  io_writef_err(
+      ctx,
+      "Usage: %s [-d] [-f <file>] [-e <expression>] [-q <file>] [-j <dir>]\n",
+      prog);
+  io_writef_err(ctx, "  -d            Enable debug mode\n");
+  io_writef_err(ctx, "  -f <file>     Load clauses from file\n");
+  io_writef_err(ctx, "  -e <expr>     Execute expression and exit\n");
+  io_writef_err(ctx, "  -q <file>     Run quad tests from file\n");
+  io_writef_err(ctx, "  -j <dir>      Write JUnit XML reports to directory\n");
+  io_writef_err(ctx, "  -h            Show this help\n");
+  io_writef_err(ctx, "\nInteractive commands:\n");
+  io_writef_err(ctx, "  debug.        Toggle debug mode\n");
+  io_writef_err(ctx, "  halt.         Exit the interpreter\n");
 }
+
+//****
+//* interactive query handling
+//****
 
 typedef struct {
   bool interactive;
-  bool want_more; // true if user typed ; on the last solution
-} toplevel_state_t;
+  bool want_more;
+  bool all;
+  toplevel_state_t base;
+} interactive_state_t;
 
-static void print_bindings(prolog_ctx_t *ctx, env_t *env) {
-  bool printed = false;
-  for (int i = 0; i < env->count; i++) {
-    char *name = env->bindings[i].name;
-    if (strchr(name, '#'))
-      continue;
-    if (name[0] == '_')
-      continue;
-    if (printed)
-      io_write_str(ctx, ", ");
-    io_writef(ctx, "%s = ", name);
-    io_write_term_quoted(ctx, env->bindings[i].value, env);
-    printed = true;
-  }
-  if (!printed)
-    io_write_str(ctx, "true");
-}
-
-static bool toplevel_cb(prolog_ctx_t *ctx, env_t *env, void *ud,
-                        bool has_more) {
-  toplevel_state_t *st = ud;
-  print_bindings(ctx, env);
+static bool interactive_cb(trilog_ctx_t *ctx, env_t *env, void *ud,
+                           bool has_more) {
+  interactive_state_t *st = ud;
   st->want_more = false;
 
-  if (!st->interactive || !has_more) {
-    io_write_str(ctx, "\n");
-    return false; // no choice points: stop here
-  }
+  if (!st->interactive || !has_more || st->all)
+    return toplevel_emit_all_cb(ctx, env, &st->base, has_more);
 
-  io_write_str(ctx, " ;");
+  // interactive: print answer, then wait for keypress
+  io_write_str(ctx, st->base.first ? "   " : ";  ");
+  st->base.first = false;
+  print_bindings(ctx, env);
+
   int c = read_key();
-  io_write_str(ctx, "\n");
-  st->want_more = (c == ';');
+  st->want_more = (c == ';' || c == 'a' || c == ' ');
+  st->all = (c == 'a');
+  if (!st->want_more) {
+    io_write_str(ctx, ".\n");
+    st->base.done = true;
+  }
   return st->want_more;
 }
 
-static void exec_query(prolog_ctx_t *ctx, char *query, bool interactive) {
-  toplevel_state_t st = {.interactive = interactive, .want_more = false};
-  bool found = prolog_exec_query_multi(ctx, query, toplevel_cb, &st);
-  if (!found || st.want_more)
-    io_write_str(ctx, "false\n");
+static void exec_query(trilog_ctx_t *ctx, char *query, bool interactive) {
+  interactive_state_t st = {.interactive = interactive,
+                            .base = {.first = true}};
+  bool found = trilog_exec_query_multi(ctx, query, interactive_cb, &st);
+  if (!ctx->has_runtime_error && (!found || st.want_more))
+    io_write_str(ctx, "   false.\n");
+  else if (found && !st.base.done)
+    io_write_str(ctx, ".\n");
+  ctx->has_runtime_error = false;
 }
 
-static void process_line(prolog_ctx_t *ctx, char *line, bool *should_exit,
+static void process_line(trilog_ctx_t *ctx, char *line, bool *should_exit,
                          bool interactive) {
   line[strcspn(line, "\n")] = 0;
   if (strlen(line) == 0)
@@ -116,7 +125,8 @@ static void process_line(prolog_ctx_t *ctx, char *line, bool *should_exit,
 
   if (strcmp(line, "debug.") == 0) {
     ctx->debug_enabled = !ctx->debug_enabled;
-    printf("Debug mode %s\n", ctx->debug_enabled ? "enabled" : "disabled");
+    io_writef(ctx, "Debug mode %s\n",
+              ctx->debug_enabled ? "enabled" : "disabled");
     return;
   }
 
@@ -127,26 +137,36 @@ static void process_line(prolog_ctx_t *ctx, char *line, bool *should_exit,
   exec_query(ctx, query, interactive);
 }
 
-static bool load_file(prolog_ctx_t *ctx, const char *filename) {
-  return prolog_load_file(ctx, filename);
+static bool load_file(trilog_ctx_t *ctx, const char *filename) {
+  return trilog_load_file(ctx, filename);
 }
 
+//****
+//* entry point
+//****
+
 int main(int argc, char *argv[]) {
-  prolog_ctx_t context = {0};
-  prolog_ctx_t *ctx = &context;
+  trilog_ctx_t *ctx = malloc(TRILOG_CTX_SIZE(TERM_POOL_BYTES));
+  if (!ctx) {
+    fprintf(stderr, "Fatal: failed to allocate trilog context\n");
+    return 1;
+  }
+  trilog_ctx_init(ctx, TERM_POOL_BYTES);
 
   io_hooks_init_default(ctx);
   try_load_core(ctx, argv[0]);
 
   const char *input_file = NULL;
   const char *expression = NULL;
+  const char *quad_file = NULL;
+  const char *junit_dir = NULL;
   int opt;
 
-  while ((opt = getopt(argc, argv, "df:e:h")) != -1) {
+  while ((opt = getopt(argc, argv, "df:e:q:j:h")) != -1) {
     switch (opt) {
     case 'd':
       ctx->debug_enabled = true;
-      fprintf(stderr, "Debug mode enabled\n");
+      io_writef_err(ctx, "Debug mode enabled\n");
       break;
     case 'f':
       input_file = optarg;
@@ -154,11 +174,17 @@ int main(int argc, char *argv[]) {
     case 'e':
       expression = optarg;
       break;
+    case 'q':
+      quad_file = optarg;
+      break;
+    case 'j':
+      junit_dir = optarg;
+      break;
     case 'h':
-      print_usage(argv[0]);
+      print_usage(ctx, argv[0]);
       return 0;
     default:
-      print_usage(argv[0]);
+      print_usage(ctx, argv[0]);
       return 1;
     }
   }
@@ -174,7 +200,20 @@ int main(int argc, char *argv[]) {
     strncpy(line, expression, sizeof(line) - 1);
     bool should_exit = false;
     process_line(ctx, line, &should_exit, false);
-    return parse_has_error(ctx) ? 1 : 0;
+    int rc = parse_has_error(ctx) ? 1 : 0;
+    free(ctx);
+    return rc;
+  }
+
+  if (quad_file) {
+    quad_results_t res;
+    if (junit_dir)
+      res = trilog_run_quad_file_junit(ctx, quad_file, junit_dir);
+    else
+      res = trilog_run_quad_file(ctx, quad_file);
+
+    free(ctx);
+    return res.failed > 0 ? 1 : 0;
   }
 
   char line[1024];
@@ -183,7 +222,7 @@ int main(int argc, char *argv[]) {
 
   while (!should_exit) {
     if (interactive) {
-      printf("?- ");
+      io_write_str(ctx, "?- ");
       fflush(stdout);
     }
 
@@ -192,5 +231,6 @@ int main(int argc, char *argv[]) {
     process_line(ctx, line, &should_exit, interactive);
   }
 
+  free(ctx);
   return 0;
 }

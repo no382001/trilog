@@ -1,11 +1,20 @@
-streaming findall solutions
-lazy list
-int ids instead of string names, this will increase the string pool
+towards some form of iso compliance:
+    https://www.complang.tuwien.ac.at/ulrich/iso-prolog/prologue
 
-- arithmetic: bitwise ops (>>, <<, \/, /\)
-- readline/history in repl
-- assert/1 as alias for assertz/1 is missing
+ease of use on the default linux target:
+    - readline/history in repl
 
-- if there are more than one "_" named anonymus variable in the eval scope, they are going to unify.
-- trailing unparseable input in a query is silently ignored instead of erroring (e.g. ?- X is 5 \/ 3 gives X = 5)
-- the program shouldnt manage the memory pool
+wasm demo:
+    - add a site deployment
+    - some simpler non distracting style
+    - a workable terminal
+
+testing:
+    - move quad to a pl file, separate TAP and jUnit outputs
+
+ledit:
+    - printing 20 lines will need 100k termpool, for what?
+
+since we are not working with that much memory, stability should be first
+
+i really shouldnt be having that dynamic array at the end of the cxt struct, c89 does not have it - i could hack it with [1] but thats ub, with malloc it could work 

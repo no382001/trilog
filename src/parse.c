@@ -1,6 +1,10 @@
 #include "platform_impl.h"
 
-void parse_error(prolog_ctx_t *ctx, const char *fmt, ...) {
+//****
+//* error reporting
+//****
+
+void parse_error(trilog_ctx_t *ctx, const char *fmt, ...) {
   if (ctx->error.has_error)
     return;
 
@@ -14,37 +18,69 @@ void parse_error(prolog_ctx_t *ctx, const char *fmt, ...) {
   va_end(args);
 }
 
-void parse_error_clear(prolog_ctx_t *ctx) {
+void parse_error_clear(trilog_ctx_t *ctx) {
   ctx->error.has_error = false;
+  ctx->error.error_is_eof = false;
   ctx->error.message[0] = '\0';
   ctx->error.line = 0;
   ctx->error.column = 0;
 }
 
-bool parse_has_error(prolog_ctx_t *ctx) { return ctx->error.has_error; }
+static void parse_error_eof(trilog_ctx_t *ctx) {
+  if (ctx->error.has_error)
+    return;
+  ctx->error.has_error = true;
+  ctx->error.error_is_eof = true;
+  strncpy(ctx->error.message, "end_of_file", MAX_ERROR_MSG - 1);
+  ctx->error.message[MAX_ERROR_MSG - 1] = '\0';
+  ctx->error.line = ctx->input_line;
+  ctx->error.column = (int)(ctx->input_ptr - ctx->input_start) + 1;
+}
 
-void parse_error_print(prolog_ctx_t *ctx) {
+bool parse_has_error(trilog_ctx_t *ctx) { return ctx->error.has_error; }
+
+void parse_error_print(trilog_ctx_t *ctx) {
   if (!ctx->error.has_error)
     return;
 
   if (ctx->input_start && ctx->error.column > 0) {
     // show the offending line and point to the error
-    fprintf(stderr, "  %s\n", ctx->input_start);
-    fprintf(stderr, "  %*s^\n", ctx->error.column - 1, "");
-    fprintf(stderr, "error: %s\n", ctx->error.message);
+    io_writef_err(ctx, "  %s\n", ctx->input_start);
+    io_writef_err(ctx, "  %*s^\n", ctx->error.column - 1, "");
+    io_writef_err(ctx, "error: %s\n", ctx->error.message);
   } else {
     // fallback for non-interactive / no context
-    fprintf(stderr, "error: line %d, column %d: %s\n", ctx->error.line,
-            ctx->error.column, ctx->error.message);
+    io_writef_err(ctx, "error: line %d, column %d: %s\n", ctx->error.line,
+                  ctx->error.column, ctx->error.message);
   }
 }
 
-void skip_ws(prolog_ctx_t *ctx) {
+//****
+//* whitespace and comment skipping
+//****
+
+void skip_ws(trilog_ctx_t *ctx) {
   assert(ctx != NULL && "Context is NULL");
   assert(ctx->input_ptr != NULL && "Input pointer is NULL");
-  while (*ctx->input_ptr && isspace(*ctx->input_ptr))
-    ctx->input_ptr++;
+  while (*ctx->input_ptr) {
+    if (isspace((unsigned char)*ctx->input_ptr)) {
+      ctx->input_ptr++;
+    } else if (ctx->input_ptr[0] == '/' && ctx->input_ptr[1] == '*') {
+      ctx->input_ptr += 2;
+      while (*ctx->input_ptr &&
+             !(ctx->input_ptr[0] == '*' && ctx->input_ptr[1] == '/'))
+        ctx->input_ptr++;
+      if (*ctx->input_ptr)
+        ctx->input_ptr += 2;
+    } else {
+      break;
+    }
+  }
 }
+
+//****
+//* operator definitions and precedence
+//****
 
 typedef struct {
   const char *text;
@@ -57,20 +93,29 @@ typedef struct {
   int precedence;
 } op_prec_t;
 
-static term_t *parse_primary(prolog_ctx_t *ctx);
-static term_t *parse_infix(prolog_ctx_t *ctx, term_t *left, int min_prec);
+static term_t *parse_primary(trilog_ctx_t *ctx);
+static term_t *parse_infix(trilog_ctx_t *ctx, term_t *left, int min_prec);
+static term_t *parse_arg(trilog_ctx_t *ctx);
+
 static const op_prec_t precedence_table[] = {
-    {"*", 40},  {"/", 40}, {"//", 40},  {"mod", 40}, {"+", 30},   {"-", 30},
-    {"<", 20},  {">", 20}, {"=<", 20},  {">=", 20},  {"=:=", 20}, {"=\\=", 20},
-    {"is", 10}, {"=", 10}, {"\\=", 10}, {"=..", 10}, {NULL, 0}};
+    {"*", 40},   {"/", 40},    {"//", 40},  {"mod", 40},  {">>", 40},
+    {"<<", 40},  {"/\\", 40},  {"xor", 40}, {"+", 30},    {"-", 30},
+    {"\\/", 30}, {"<", 20},    {">", 20},   {"=<", 20},   {">=", 20},
+    {"=:=", 20}, {"=\\=", 20}, {"==", 20},  {"\\==", 20}, {"@<", 20},
+    {"@>", 20},  {"@=<", 20},  {"@>=", 20}, {"is", 10},   {"=", 10},
+    {"\\=", 10}, {"..", 10},   {"->", 7},   {";", 5},     {"^", 6},
+    {",", 9},    {NULL, 0}};
 
 // ordered longest-first to avoid prefix conflicts
 static const op_pattern_t op_patterns[] = {
     {"=:=", 3, false}, {"=\\=", 3, false}, {"=..", 3, false}, {"mod", 3, true},
-    {"\\=", 2, false}, {"=<", 2, false},   {">=", 2, false},  {"//", 2, false},
+    {"xor", 3, true},  {"\\==", 3, false}, {"@=<", 3, false}, {"@>=", 3, false},
+    {"==", 2, false},  {"@<", 2, false},   {"@>", 2, false},  {"->", 2, false},
+    {"\\=", 2, false}, {"\\/", 2, false},  {"=<", 2, false},  {">=", 2, false},
+    {">>", 2, false},  {"<<", 2, false},   {"//", 2, false},  {"/\\", 2, false},
     {"is", 2, true},   {"+", 1, false},    {"*", 1, false},   {"/", 1, false},
     {"<", 1, false},   {">", 1, false},    {"=", 1, false},   {"-", 1, false},
-    {NULL, 0, false}};
+    {";", 1, false},   {"^", 1, false},    {",", 1, false},   {NULL, 0, false}};
 
 static int get_precedence(const char *op) {
   for (const op_prec_t *p = precedence_table; p->op; p++) {
@@ -80,7 +125,7 @@ static int get_precedence(const char *op) {
   return 0;
 }
 
-static int try_parse_op(prolog_ctx_t *ctx, char *op_out, int max_len) {
+static int try_parse_op(trilog_ctx_t *ctx, char *op_out, int max_len) {
   char *p = ctx->input_ptr;
 
   for (const op_pattern_t *pat = op_patterns; pat->text; pat++) {
@@ -94,10 +139,6 @@ static int try_parse_op(prolog_ctx_t *ctx, char *op_out, int max_len) {
         continue;
     }
 
-    // special case: minus before digit is negative number, not operator
-    if (pat->text[0] == '-' && pat->len == 1 && isdigit(p[1]))
-      continue;
-
     strncpy(op_out, pat->text, max_len);
     op_out[max_len - 1] = '\0';
     return pat->len;
@@ -106,7 +147,11 @@ static int try_parse_op(prolog_ctx_t *ctx, char *op_out, int max_len) {
   return 0;
 }
 
-term_t *parse_list(prolog_ctx_t *ctx) {
+//****
+//* list parsing
+//****
+
+term_t *parse_list(trilog_ctx_t *ctx) {
   assert(ctx != NULL && "Context is NULL");
   assert(ctx->input_ptr != NULL && "Input pointer is NULL");
 
@@ -123,13 +168,16 @@ term_t *parse_list(prolog_ctx_t *ctx) {
     return make_const(ctx, "[]");
   }
 
-  term_t *elements[MAX_ARGS];
+  term_t *elements[MAX_LIST_LIT]; // scratch buffer
   int count = 0;
   term_t *tail = NULL;
 
-  elements[count] = parse_term(ctx);
+  elements[count] = parse_arg(ctx);
   if (!elements[count]) {
-    parse_error(ctx, "failed to parse list element");
+    if (*ctx->input_ptr == '\0' && !parse_has_error(ctx))
+      parse_error_eof(ctx);
+    else if (!parse_has_error(ctx))
+      parse_error(ctx, "failed to parse list element");
     return NULL;
   }
   count++;
@@ -139,9 +187,12 @@ term_t *parse_list(prolog_ctx_t *ctx) {
     if (*ctx->input_ptr == '|') {
       ctx->input_ptr++;
       skip_ws(ctx);
-      tail = parse_term(ctx);
+      tail = parse_arg(ctx);
       if (!tail) {
-        parse_error(ctx, "failed to parse list tail after '|'");
+        if (*ctx->input_ptr == '\0' && !parse_has_error(ctx))
+          parse_error_eof(ctx);
+        else if (!parse_has_error(ctx))
+          parse_error(ctx, "failed to parse list tail after '|'");
         return NULL;
       }
       skip_ws(ctx);
@@ -150,14 +201,17 @@ term_t *parse_list(prolog_ctx_t *ctx) {
     ctx->input_ptr++;
     skip_ws(ctx);
 
-    if (count >= MAX_ARGS) {
-      parse_error(ctx, "too many list elements (max %d)", MAX_ARGS);
+    if (count >= MAX_LIST_LIT) {
+      parse_error(ctx, "too many list elements (max %d)", MAX_LIST_LIT);
       return NULL;
     }
 
-    elements[count] = parse_term(ctx);
+    elements[count] = parse_arg(ctx);
     if (!elements[count]) {
-      parse_error(ctx, "failed to parse list element");
+      if (*ctx->input_ptr == '\0' && !parse_has_error(ctx))
+        parse_error_eof(ctx);
+      else if (!parse_has_error(ctx))
+        parse_error(ctx, "failed to parse list element");
       return NULL;
     }
     count++;
@@ -165,8 +219,10 @@ term_t *parse_list(prolog_ctx_t *ctx) {
   }
 
   if (*ctx->input_ptr != ']') {
-    parse_error(ctx, "expected ']' to close list, got '%c'",
-                *ctx->input_ptr ? *ctx->input_ptr : '?');
+    if (*ctx->input_ptr == '\0')
+      parse_error_eof(ctx);
+    else
+      parse_error(ctx, "expected ']' to close list, got '%c'", *ctx->input_ptr);
     return NULL;
   }
   ctx->input_ptr++;
@@ -180,7 +236,11 @@ term_t *parse_list(prolog_ctx_t *ctx) {
   return result;
 }
 
-static term_t *parse_primary(prolog_ctx_t *ctx) {
+//****
+//* primary term parsing
+//****
+
+static term_t *parse_primary(trilog_ctx_t *ctx) {
   assert(ctx != NULL && "Context is NULL");
   assert(ctx->input_ptr != NULL && "Input pointer is NULL");
 
@@ -196,19 +256,27 @@ static term_t *parse_primary(prolog_ctx_t *ctx) {
     return NULL; // end of input, not necessarily an error
   }
 
-  // parenthesized expression
+  // parenthesized expression: (a) or (a, b, ...) conjunction
   if (*ctx->input_ptr == '(') {
     ctx->input_ptr++;
     skip_ws(ctx);
     term_t *inner = parse_term(ctx);
     if (!inner) {
-      parse_error(ctx, "expected expression inside parentheses");
+      if (*ctx->input_ptr == '\0' && !parse_has_error(ctx))
+        parse_error_eof(ctx);
+      else if (!parse_has_error(ctx))
+        parse_error(ctx, "expected expression inside parentheses");
       return NULL;
     }
     skip_ws(ctx);
+    // ',' is now an infix operator, so parse_term above already consumed
+    // any conjunction chain inside the parens.
     if (*ctx->input_ptr != ')') {
-      parse_error(ctx, "expected ')' after expression, got '%c'",
-                  *ctx->input_ptr ? *ctx->input_ptr : '?');
+      if (*ctx->input_ptr == '\0')
+        parse_error_eof(ctx);
+      else
+        parse_error(ctx, "expected ')' after expression, got '%c'",
+                    *ctx->input_ptr);
       return NULL;
     }
     ctx->input_ptr++;
@@ -220,25 +288,110 @@ static term_t *parse_primary(prolog_ctx_t *ctx) {
 
   if (*ctx->input_ptr == '\'') {
     ctx->input_ptr++; // skip opening quote
-    char name[MAX_NAME];
+    int avail = MAX_STRING_POOL - ctx->string_pool_offset - 1;
+    char *name = ctx->string_pool + ctx->string_pool_offset;
     int i = 0;
+    bool closed = false;
     while (*ctx->input_ptr) {
       if (*ctx->input_ptr == '\'') {
         if (ctx->input_ptr[1] == '\'') { // '' is escaped single-quote
           ctx->input_ptr += 2;
-          if (i < MAX_NAME - 1)
+          if (i < avail)
             name[i++] = '\'';
         } else {
           ctx->input_ptr++; // closing quote
+          closed = true;
           break;
         }
+      } else if (*ctx->input_ptr == '\\' && ctx->input_ptr[1]) {
+        // iso 6.4.2.1 escape sequences
+        ctx->input_ptr++;
+        char esc = *ctx->input_ptr++;
+        if (i < avail) {
+          switch (esc) {
+          case '\\':
+            name[i++] = '\\';
+            break;
+          case 'n':
+            name[i++] = '\n';
+            break;
+          case 't':
+            name[i++] = '\t';
+            break;
+          case 'a':
+            name[i++] = '\a';
+            break;
+          case 'b':
+            name[i++] = '\b';
+            break;
+          case 'r':
+            name[i++] = '\r';
+            break;
+          case 'f':
+            name[i++] = '\f';
+            break;
+          default:
+            name[i++] = esc;
+            break;
+          }
+        }
       } else {
-        if (i < MAX_NAME - 1)
+        if (i < avail)
           name[i++] = *ctx->input_ptr;
         ctx->input_ptr++;
       }
     }
     name[i] = '\0';
+
+    if (!closed) {
+      parse_error_eof(ctx);
+      return NULL;
+    }
+
+    // commit to string pool before parsing args (which may overwrite scratch)
+    name = (char *)intern_name(ctx, name);
+
+    // quoted atom followed by '(' is a functor call (iso 6.3.3)
+    skip_ws(ctx);
+    if (*ctx->input_ptr == '(') {
+      ctx->input_ptr++;
+      term_t *args[MAX_ARGS];
+      int arity = 0;
+      skip_ws(ctx);
+      if (*ctx->input_ptr != ')') {
+        do {
+          skip_ws(ctx);
+          if (arity >= MAX_ARGS) {
+            parse_error(ctx, "too many arguments (max %d)", MAX_ARGS);
+            return NULL;
+          }
+          args[arity] = parse_arg(ctx);
+          if (!args[arity]) {
+            if (!parse_has_error(ctx)) {
+              if (*ctx->input_ptr == '\0')
+                parse_error_eof(ctx);
+              else
+                parse_error(ctx, "failed to parse argument %d", arity + 1);
+            }
+            return NULL;
+          }
+          arity++;
+          skip_ws(ctx);
+        } while (*ctx->input_ptr == ',' && ctx->input_ptr++);
+      }
+      skip_ws(ctx);
+      if (*ctx->input_ptr != ')') {
+        if (*ctx->input_ptr == '\0')
+          parse_error_eof(ctx);
+        else
+          parse_error(ctx, "expected ')' after arguments, got '%c'",
+                      *ctx->input_ptr);
+        return NULL;
+      }
+      ctx->input_ptr++;
+      return make_func(ctx, name, args, arity);
+    }
+
     return make_const(ctx, name);
   }
 
@@ -278,11 +431,22 @@ static term_t *parse_primary(prolog_ctx_t *ctx) {
     ctx->input_ptr++; // skip closing quote
     str_buf[i] = '\0';
 
-    return make_string(ctx, str_buf);
+    // build list of character codes
+    term_t *list = make_const(ctx, "[]");
+    for (int j = (int)i - 1; j >= 0; j--) {
+      char code_buf[8];
+      snprintf(code_buf, sizeof(code_buf), "%d", (unsigned char)str_buf[j]);
+      term_t *code = make_const(ctx, code_buf);
+      term_t *cell[2] = {code, list};
+      list = make_func(ctx, ".", cell, 2);
+    }
+    return list;
   }
 
-  char name[MAX_NAME] = {0};
+  int avail = MAX_STRING_POOL - ctx->string_pool_offset - 1;
+  char *name = ctx->string_pool + ctx->string_pool_offset;
   int i = 0;
+  name[0] = '\0';
 
   if (*ctx->input_ptr == '!') {
     name[i++] = *ctx->input_ptr++;
@@ -290,36 +454,90 @@ static term_t *parse_primary(prolog_ctx_t *ctx) {
              (*ctx->input_ptr == '-' && isdigit(ctx->input_ptr[1]))) {
     if (*ctx->input_ptr == '-')
       name[i++] = *ctx->input_ptr++;
-    while (isdigit(*ctx->input_ptr)) {
-      if (i >= MAX_NAME - 1) {
-        parse_error(ctx, "number too long (max %d digits)", MAX_NAME - 1);
-        return NULL;
+    // 0'c character code notation
+    if (ctx->input_ptr[0] == '0' && ctx->input_ptr[1] == '\'') {
+      ctx->input_ptr += 2;
+      unsigned char ch = (unsigned char)*ctx->input_ptr;
+      if (ch == '\\' && ctx->input_ptr[1]) {
+        ctx->input_ptr++;
+        switch (*ctx->input_ptr) {
+        case 'n':
+          ch = '\n';
+          break;
+        case 't':
+          ch = '\t';
+          break;
+        case 'r':
+          ch = '\r';
+          break;
+        case '\\':
+          ch = '\\';
+          break;
+        case '\'':
+          ch = '\'';
+          break;
+        default:
+          ch = (unsigned char)*ctx->input_ptr;
+          break;
+        }
       }
-      name[i++] = *ctx->input_ptr++;
+      ctx->input_ptr++;
+      snprintf(name + i, avail - i + 1, "%d", (int)ch);
+      i = strlen(name);
+    } else {
+      while (isdigit(*ctx->input_ptr)) {
+        if (i >= avail) {
+          parse_error(ctx, "number too long");
+          return NULL;
+        }
+        name[i++] = *ctx->input_ptr++;
+      }
     }
   } else if (isalpha(*ctx->input_ptr) || *ctx->input_ptr == '_') {
     while (isalnum(*ctx->input_ptr) || *ctx->input_ptr == '_') {
-      if (i >= MAX_NAME - 1) {
-        parse_error(ctx, "name too long (max %d chars)", MAX_NAME - 1);
+      if (i >= avail) {
+        parse_error(ctx, "name too long");
         return NULL;
       }
       name[i++] = *ctx->input_ptr++;
     }
-  } else if (*ctx->input_ptr == '\\' && ctx->input_ptr[1] == '+') {
-    ctx->input_ptr += 2;
-    skip_ws(ctx);
-    term_t *inner = parse_term(ctx);
-    if (!inner) {
-      parse_error(ctx, "expected term after '\\+'");
-      return NULL;
+  } else if (*ctx->input_ptr == '\\') {
+    if (ctx->input_ptr[1] == '+') {
+      ctx->input_ptr += 2;
+      skip_ws(ctx);
+      term_t *inner = parse_arg(ctx); // stop before ',' like functor args
+      if (!inner) {
+        if (*ctx->input_ptr == '\0' && !parse_has_error(ctx))
+          parse_error_eof(ctx);
+        else if (!parse_has_error(ctx))
+          parse_error(ctx, "expected term after '\\+'");
+        return NULL;
+      }
+      term_t *args[1] = {inner};
+      return make_func(ctx, "\\+", args, 1);
+    } else {
+      // unary bitwise complement: \expr
+      ctx->input_ptr++;
+      skip_ws(ctx);
+      term_t *inner = parse_primary(ctx);
+      if (!inner) {
+        if (*ctx->input_ptr == '\0' && !parse_has_error(ctx))
+          parse_error_eof(ctx);
+        else if (!parse_has_error(ctx))
+          parse_error(ctx, "expected term after '\\'");
+        return NULL;
+      }
+      term_t *args[1] = {inner};
+      return make_func(ctx, "\\", args, 1);
     }
-    term_t *args[1] = {inner};
-    return make_func(ctx, "\\+", args, 1);
   } else {
-    // Not a valid start of term
+    // not a valid start of term
     return NULL;
   }
 
+  name[i] = '\0';
+  // commit to string pool before parsing args (which may overwrite scratch)
+  name = (char *)intern_name(ctx, name);
   debug(ctx, "DEBUG parse_primary: parsed name = '%s'\n", name);
 
   skip_ws(ctx);
@@ -337,10 +555,13 @@ static term_t *parse_primary(prolog_ctx_t *ctx) {
           parse_error(ctx, "too many arguments (max %d)", MAX_ARGS);
           return NULL;
         }
-        args[arity] = parse_term(ctx);
+        args[arity] = parse_arg(ctx);
         if (!args[arity]) {
           if (!parse_has_error(ctx)) {
-            parse_error(ctx, "failed to parse argument %d", arity + 1);
+            if (*ctx->input_ptr == '\0')
+              parse_error_eof(ctx);
+            else
+              parse_error(ctx, "failed to parse argument %d", arity + 1);
           }
           return NULL;
         }
@@ -351,8 +572,11 @@ static term_t *parse_primary(prolog_ctx_t *ctx) {
     skip_ws(ctx);
 
     if (*ctx->input_ptr != ')') {
-      parse_error(ctx, "expected ')' after arguments, got '%c'",
-                  *ctx->input_ptr ? *ctx->input_ptr : '?');
+      if (*ctx->input_ptr == '\0')
+        parse_error_eof(ctx);
+      else
+        parse_error(ctx, "expected ')' after arguments, got '%c'",
+                    *ctx->input_ptr);
       return NULL;
     }
     ctx->input_ptr++;
@@ -363,13 +587,33 @@ static term_t *parse_primary(prolog_ctx_t *ctx) {
 
   if (isupper(name[0]) || name[0] == '_') {
     debug(ctx, "DEBUG parse_primary: variable %s\n", name);
-    return make_var(ctx, name);
+    // anonymous variable: each _ is distinct; never shared.
+    if (name[0] == '_' && name[1] == '\0') {
+      return make_var(ctx, "_", ctx->var_counter++);
+    }
+    // named variable: share var_id within the clause/query.
+    const char *iname = intern_name(ctx, name);
+    for (int i = 0; i < ctx->clause_var_count; i++) {
+      if (ctx->clause_vars[i].name == iname)
+        return make_var(ctx, iname, ctx->clause_vars[i].var_id);
+    }
+    assert(ctx->clause_var_count < MAX_CLAUSE_VARS &&
+           "Too many variables in clause");
+    int vid = ctx->var_counter++;
+    ctx->clause_vars[ctx->clause_var_count].name = iname;
+    ctx->clause_vars[ctx->clause_var_count].var_id = vid;
+    ctx->clause_var_count++;
+    return make_var(ctx, iname, vid);
   }
   debug(ctx, "DEBUG parse_primary: constant %s\n", name);
   return make_const(ctx, name);
 }
 
-static term_t *parse_infix(prolog_ctx_t *ctx, term_t *left, int min_prec) {
+//****
+//* infix operator parsing
+//****
+
+static term_t *parse_infix(trilog_ctx_t *ctx, term_t *left, int min_prec) {
   while (1) {
     skip_ws(ctx);
 
@@ -388,11 +632,14 @@ static term_t *parse_infix(prolog_ctx_t *ctx, term_t *left, int min_prec) {
 
     term_t *right = parse_primary(ctx);
     if (!right) {
-      parse_error(ctx, "expected term after '%s'", op);
+      if (*ctx->input_ptr == '\0' && !parse_has_error(ctx))
+        parse_error_eof(ctx);
+      else if (!parse_has_error(ctx))
+        parse_error(ctx, "expected term after '%s'", op);
       return NULL;
     }
 
-    // Look ahead for higher precedence operator
+    // look ahead for higher precedence operator
     skip_ws(ctx);
     char next_op[8] = {0};
     int next_len = try_parse_op(ctx, next_op, sizeof(next_op));
@@ -410,7 +657,7 @@ static term_t *parse_infix(prolog_ctx_t *ctx, term_t *left, int min_prec) {
   }
 }
 
-term_t *parse_term(prolog_ctx_t *ctx) {
+term_t *parse_term(trilog_ctx_t *ctx) {
   assert(ctx != NULL && "Context is NULL");
   assert(ctx->input_ptr != NULL && "Input pointer is NULL");
 
@@ -424,17 +671,39 @@ term_t *parse_term(prolog_ctx_t *ctx) {
   return parse_infix(ctx, left, 0);
 }
 
-static void strip_line_comment(char *line) {
-  bool in_string = false;
+// parse_arg: parses a functor argument or list element.
+// stops before ',' so functor args and list elements are delimited correctly.
+static term_t *parse_arg(trilog_ctx_t *ctx) {
+  term_t *left = parse_primary(ctx);
+  if (!left)
+    return NULL;
+  return parse_infix(ctx, left, 10); // 10 > ',' prec (9), so comma stops arg
+}
+
+//****
+//* comment stripping and clause detection
+//****
+
+void strip_line_comment(char *line) {
+  bool in_dq = false, in_sq = false;
   for (char *p = line; *p; p++) {
-    if (in_string) {
+    if (in_dq) {
       if (*p == '\\' && *(p + 1))
         p++;
       else if (*p == '"')
-        in_string = false;
+        in_dq = false;
+    } else if (in_sq) {
+      if (*p == '\\' && *(p + 1))
+        p++; // backslash escape (e.g. \')
+      else if (*p == '\'' && *(p + 1) == '\'')
+        p++; // escaped ''
+      else if (*p == '\'')
+        in_sq = false;
     } else {
       if (*p == '"')
-        in_string = true;
+        in_dq = true;
+      else if (*p == '\'')
+        in_sq = true;
       else if (*p == '%') {
         *p = '\0';
         break;
@@ -443,18 +712,27 @@ static void strip_line_comment(char *line) {
   }
 }
 
-static bool has_complete_clause(const char *buf) {
-  bool in_string = false;
+bool has_complete_clause(const char *buf) {
+  bool in_dq = false, in_sq = false;
   int depth = 0;
   for (const char *p = buf; *p; p++) {
-    if (in_string) {
+    if (in_dq) {
       if (*p == '\\' && *(p + 1))
         p++;
       else if (*p == '"')
-        in_string = false;
+        in_dq = false;
+    } else if (in_sq) {
+      if (*p == '\\' && *(p + 1))
+        p++; // backslash escape (e.g. \')
+      else if (*p == '\'' && *(p + 1) == '\'')
+        p++; // doubled-quote escape ''
+      else if (*p == '\'')
+        in_sq = false;
     } else {
       if (*p == '"') {
-        in_string = true;
+        in_dq = true;
+      } else if (*p == '\'') {
+        in_sq = true;
       } else if (*p == '(' || *p == '[') {
         depth++;
       } else if (*p == ')' || *p == ']') {
@@ -469,16 +747,20 @@ static bool has_complete_clause(const char *buf) {
   return false;
 }
 
-bool prolog_exec_query(prolog_ctx_t *ctx, char *query) {
+//****
+//* query execution
+//****
+
+static bool parse_goals(trilog_ctx_t *ctx, char *query, goal_stmt_t *goals) {
   parse_error_clear(ctx);
+  ctx->has_runtime_error = false;
   ctx->input_ptr = query;
   ctx->input_start = query;
+  ctx->clause_var_count = 0;
 
-  int term_mark = ctx->term_count;
-  int string_mark = ctx->string_pool_offset;
-  int db_mark = ctx->db_count;
-
-  goal_stmt_t goals = {0};
+  // collect terms into a temporary stack buffer, then allocate from pool
+  term_t *tmp[MAX_GOALS];
+  int n = 0;
   do {
     skip_ws(ctx);
     term_t *g = parse_term(ctx);
@@ -489,167 +771,215 @@ bool prolog_exec_query(prolog_ctx_t *ctx, char *query) {
       }
       break;
     }
-    if (goals.count < MAX_GOALS)
-      goals.goals[goals.count++] = g;
+    if (n < MAX_GOALS)
+      tmp[n++] = g;
     skip_ws(ctx);
   } while (*ctx->input_ptr == ',' && ctx->input_ptr++);
 
-  if (goals.count == 0) {
-    fprintf(stderr, "Error: empty query\n");
+  if (n == 0) {
+    io_writef_err(ctx, "Error: empty query\n");
     return false;
   }
 
-  env_t env = {0};
+  // check for trailing unparsed input (skip optional trailing '.')
+  skip_ws(ctx);
+  if (*ctx->input_ptr == '.')
+    ctx->input_ptr++;
+  skip_ws(ctx);
+  if (*ctx->input_ptr != '\0') {
+    parse_error(ctx, "unexpected token: '%c'", *ctx->input_ptr);
+    parse_error_print(ctx);
+    return false;
+  }
+
+  *goals = goals_alloc(ctx, n);
+  for (int i = 0; i < n; i++)
+    goals->goals[goals->count++] = tmp[i];
+  return true;
+}
+
+bool trilog_exec_query(trilog_ctx_t *ctx, char *query) {
+  int term_mark = ctx->term_pool_offset;
+  int string_mark = ctx->string_pool_offset;
+  int db_mark = ctx->db_count;
+  ctx->db_dirty = false;
+
+  goal_stmt_t goals = {0};
+  if (!parse_goals(ctx, query, &goals))
+    return false;
+
+  ctx->bind_count = 0;
+  env_t env = {.bindings = ctx->bindings, .count = 0};
   bool ok = solve(ctx, &goals, &env);
-  if (ok) {
-    bool printed = false;
-    for (int i = 0; i < env.count; i++) {
-      char *name = env.bindings[i].name;
-      if (strchr(name, '#'))
-        continue;
-      if (name[0] == '_')
-        continue;
-      if (printed)
-        io_write_str(ctx, ", ");
-      io_writef(ctx, "%s = ", name);
-      io_write_term_quoted(ctx, env.bindings[i].value, &env);
-      printed = true;
+
+  if (ctx->has_runtime_error) {
+    io_write_str(ctx, "Unhandled exception: ");
+    if (ctx->thrown_ball) {
+      env_t err_env = {.bindings = ctx->bindings, .count = 0};
+      io_write_term_quoted(ctx, ctx->thrown_ball, &err_env);
+    } else {
+      io_write_str(ctx, ctx->runtime_error);
     }
-    if (!printed)
-      io_write_str(ctx, "true");
+    io_write_str(ctx, "\n");
+    ctx->has_runtime_error = false;
+    ok = false;
+  } else if (ok) {
+    print_bindings(ctx, &env);
     io_write_str(ctx, "\n");
   } else {
     io_write_str(ctx, "false\n");
   }
 
-  // restore pools if no new clauses were added
-  // (clauses added via include must keep their terms)
-  if (ctx->db_count == db_mark) {
-    ctx->term_count = term_mark;
+  // restore pools if no database modifications happened
+  if (!ctx->db_dirty && ctx->db_count == db_mark) {
+    ctx->term_pool_offset = term_mark;
     ctx->string_pool_offset = string_mark;
   }
-
+  ctx->db_dirty = false;
   return ok;
 }
 
 // parse and run a query, calling cb for each solution (no printing).
 // returns true if at least one solution was found.
-bool prolog_exec_query_multi(prolog_ctx_t *ctx, char *query,
+bool trilog_exec_query_multi(trilog_ctx_t *ctx, char *query,
                              solution_callback_t cb, void *ud) {
-  parse_error_clear(ctx);
-  ctx->input_ptr = query;
-  ctx->input_start = query;
-
-  int term_mark = ctx->term_count;
+  int term_mark = ctx->term_pool_offset;
   int string_mark = ctx->string_pool_offset;
   int db_mark = ctx->db_count;
+  ctx->db_dirty = false;
 
   goal_stmt_t goals = {0};
-  do {
-    skip_ws(ctx);
-    term_t *g = parse_term(ctx);
-    if (!g) {
-      if (parse_has_error(ctx)) {
-        parse_error_print(ctx);
-        return false;
-      }
-      break;
-    }
-    if (goals.count < MAX_GOALS)
-      goals.goals[goals.count++] = g;
-    skip_ws(ctx);
-  } while (*ctx->input_ptr == ',' && ctx->input_ptr++);
-
-  if (goals.count == 0) {
-    fprintf(stderr, "Error: empty query\n");
+  if (!parse_goals(ctx, query, &goals))
     return false;
-  }
 
-  env_t env = {0};
+  ctx->bind_count = 0;
+  env_t env = {.bindings = ctx->bindings, .count = 0};
   bool found = solve_all(ctx, &goals, &env, cb, ud);
 
-  if (ctx->db_count == db_mark) {
-    ctx->term_count = term_mark;
+  if (ctx->has_runtime_error) {
+    io_write_str(ctx, "Unhandled exception: ");
+    if (ctx->thrown_ball) {
+      env_t err_env = {.bindings = ctx->bindings, .count = 0};
+      io_write_term_quoted(ctx, ctx->thrown_ball, &err_env);
+    } else {
+      io_write_str(ctx, ctx->runtime_error);
+    }
+    io_write_str(ctx, "\n");
+    // leave has_runtime_error set so the caller can suppress "false"
+    found = false;
+  }
+
+  if (!ctx->db_dirty && ctx->db_count == db_mark) {
+    ctx->term_pool_offset = term_mark;
     ctx->string_pool_offset = string_mark;
   }
+  ctx->db_dirty = false;
   return found;
 }
 
-static void exec_directive(prolog_ctx_t *ctx, char *buf) {
-  prolog_exec_query(ctx, buf + 2); // skip "?-" or ":-"
+//****
+//* file and string loading
+//****
+
+static void exec_directive(trilog_ctx_t *ctx, char *buf) {
+  trilog_exec_query(ctx, buf + 2); // skip "?-" or ":-"
 }
 
-static bool load_clauses_from_fp(prolog_ctx_t *ctx, FILE *f,
+// accumulate one trimmed line into clause[]. if a complete clause is ready,
+// dispatch it and reset. returns false on parse error.
+static bool process_clause_line(trilog_ctx_t *ctx, char *clause, size_t sz,
+                                const char *trimmed) {
+  if (*trimmed == '\0' && clause[0] == '\0')
+    return true;
+  if (clause[0] != '\0' && *trimmed != '\0')
+    strncat(clause, " ", sz - strlen(clause) - 1);
+  strncat(clause, trimmed, sz - strlen(clause) - 1);
+
+  if (!has_complete_clause(clause))
+    return true;
+
+  ctx->input_line++;
+  if (strncmp(clause, "?-", 2) == 0 || strncmp(clause, ":-", 2) == 0)
+    exec_directive(ctx, clause);
+  else
+    parse_clause(ctx, clause);
+  clause[0] = '\0';
+  return !parse_has_error(ctx);
+}
+
+static bool load_clauses_from_fp(trilog_ctx_t *ctx, void *f,
                                  const char *label) {
   char line[1024];
   char clause[16384] = {0};
 
-  while (fgets(line, sizeof(line), f)) {
+  while (io_file_read_line(ctx, f, line, sizeof(line))) {
     line[strcspn(line, "\n")] = 0;
     strip_line_comment(line);
-
     char *trimmed = line;
     while (isspace((unsigned char)*trimmed))
       trimmed++;
-
-    if (*trimmed == '\0' && clause[0] == '\0')
-      continue;
-
-    if (clause[0] != '\0' && *trimmed != '\0')
-      strncat(clause, " ", sizeof(clause) - strlen(clause) - 1);
-    strncat(clause, trimmed, sizeof(clause) - strlen(clause) - 1);
-
-    if (has_complete_clause(clause)) {
-      ctx->input_line++;
-      if (strncmp(clause, "?-", 2) == 0 || strncmp(clause, ":-", 2) == 0)
-        exec_directive(ctx, clause);
-      else
-        parse_clause(ctx, clause);
-      clause[0] = '\0';
-      if (parse_has_error(ctx))
-        return false;
-    }
+    if (!process_clause_line(ctx, clause, sizeof(clause), trimmed))
+      return false;
   }
 
   char *p = clause;
   while (isspace((unsigned char)*p))
     p++;
   if (*p != '\0')
-    fprintf(stderr, "Warning: unterminated clause at end of '%s'\n", label);
-
+    io_writef_err(ctx, "Warning: unterminated clause at end of '%s'\n", label);
   return true;
 }
 
-bool prolog_load_file(prolog_ctx_t *ctx, const char *filename) {
-  FILE *f = fopen(filename, "r");
+bool trilog_load_file(trilog_ctx_t *ctx, const char *filename) {
+  void *f = io_file_open(ctx, filename, "r");
   if (!f) {
-    fprintf(stderr, "Error: cannot open file '%s'\n", filename);
+    io_writef_err(ctx, "Error: cannot open file '%s'\n", filename);
     return false;
   }
 
-  // track top-level files for make/0
+  // track top-level files for make/0 and handle re-consult
+  // compare by basename so that "/path/to/core.pl" and "core.pl" match
   if (ctx->include_depth == 0) {
-    bool already_tracked = false;
+    const char *base = strrchr(filename, '/');
+    base = base ? base + 1 : filename;
+    int file_idx = -1;
     for (int i = 0; i < ctx->make_file_count; i++) {
-      if (strcmp(ctx->make_files[i], filename) == 0) {
-        already_tracked = true;
+      const char *tbase = strrchr(ctx->make_files[i].path, '/');
+      tbase = tbase ? tbase + 1 : ctx->make_files[i].path;
+      if (strcmp(tbase, base) == 0) {
+        file_idx = i;
         break;
       }
     }
-    if (!already_tracked) {
+    if (file_idx >= 0) {
+      // re-consult: skip if file hasn't changed (avoids leaking perm pool)
+      long long cur_mtime = io_file_mtime(ctx, filename);
+      if (cur_mtime != -1LL && cur_mtime == ctx->make_files[file_idx].mtime) {
+        io_file_close(ctx, f);
+        return true;
+      }
+      // file changed: remove old clauses and reload
+      int dst = 0;
+      for (int src = 0; src < ctx->db_count; src++) {
+        if (ctx->database[src].source_file != file_idx)
+          ctx->database[dst++] = ctx->database[src];
+      }
+      ctx->db_count = dst;
+      ctx->make_files[file_idx].mtime = cur_mtime;
+      ctx->current_source_file = file_idx;
+    } else {
       if (ctx->make_file_count == 0) {
         // first file ever (or first after a make reset): snapshot state
         ctx->make_db_mark = ctx->db_count;
-        ctx->make_term_mark = ctx->term_count;
+        ctx->make_term_mark = ctx->term_pool_offset;
         ctx->make_string_mark = ctx->string_pool_offset;
       }
       if (ctx->make_file_count < MAX_MAKE_FILES) {
-        strncpy(ctx->make_files[ctx->make_file_count], filename,
-                MAX_FILE_PATH - 1);
-        ctx->make_files[ctx->make_file_count][MAX_FILE_PATH - 1] = '\0';
-        ctx->make_file_mtimes[ctx->make_file_count] =
-            prolog_file_mtime(filename);
-        ctx->make_file_count++;
+        int idx = ctx->make_file_count++;
+        strncpy(ctx->make_files[idx].path, filename, MAX_FILE_PATH - 1);
+        ctx->make_files[idx].path[MAX_FILE_PATH - 1] = '\0';
+        ctx->make_files[idx].mtime = io_file_mtime(ctx, filename);
+        ctx->current_source_file = idx;
       }
     }
   }
@@ -672,18 +1002,18 @@ bool prolog_load_file(prolog_ctx_t *ctx, const char *filename) {
   bool ok = load_clauses_from_fp(ctx, f, filename);
 
   strncpy(ctx->load_dir, old_load_dir, sizeof(ctx->load_dir) - 1);
-  fclose(f);
+  io_file_close(ctx, f);
   ctx->include_depth--;
+  ctx->current_source_file = -1;
   return ok;
 }
 
-bool prolog_load_string(prolog_ctx_t *ctx, const char *src) {
+bool trilog_load_string(trilog_ctx_t *ctx, const char *src) {
   char line[1024];
   char clause[16384] = {0};
   ctx->include_depth++; // not tracked for make/0
 
   while (*src) {
-    // read one line into `line`
     int i = 0;
     while (*src && *src != '\n' && i < (int)sizeof(line) - 1)
       line[i++] = *src++;
@@ -695,24 +1025,9 @@ bool prolog_load_string(prolog_ctx_t *ctx, const char *src) {
     char *trimmed = line;
     while (isspace((unsigned char)*trimmed))
       trimmed++;
-
-    if (*trimmed == '\0' && clause[0] == '\0')
-      continue;
-    if (clause[0] != '\0' && *trimmed != '\0')
-      strncat(clause, " ", sizeof(clause) - strlen(clause) - 1);
-    strncat(clause, trimmed, sizeof(clause) - strlen(clause) - 1);
-
-    if (has_complete_clause(clause)) {
-      ctx->input_line++;
-      if (strncmp(clause, "?-", 2) == 0 || strncmp(clause, ":-", 2) == 0)
-        exec_directive(ctx, clause);
-      else
-        parse_clause(ctx, clause);
-      clause[0] = '\0';
-      if (parse_has_error(ctx)) {
-        ctx->include_depth--;
-        return false;
-      }
+    if (!process_clause_line(ctx, clause, sizeof(clause), trimmed)) {
+      ctx->include_depth--;
+      return false;
     }
   }
 
@@ -720,13 +1035,18 @@ bool prolog_load_string(prolog_ctx_t *ctx, const char *src) {
   return true;
 }
 
-void parse_clause(prolog_ctx_t *ctx, char *line) {
+//****
+//* clause parsing
+//****
+
+void parse_clause(trilog_ctx_t *ctx, char *line) {
   assert(ctx != NULL && "Context is NULL");
   assert(line != NULL && "Line cannot be NULL");
 
   parse_error_clear(ctx);
   ctx->input_ptr = line;
   ctx->input_start = line;
+  ctx->clause_var_count = 0;
 
   if (ctx->db_count >= MAX_CLAUSES) {
     parse_error(ctx, "database full (max %d clauses)", MAX_CLAUSES);
@@ -737,8 +1057,10 @@ void parse_clause(prolog_ctx_t *ctx, char *line) {
   clause_t *c = &ctx->database[ctx->db_count];
   debug(ctx, "=== Parsing clause ===\n");
 
+  ctx->alloc_permanent = true;
   c->head = parse_term(ctx);
   if (!c->head) {
+    ctx->alloc_permanent = false;
     if (!parse_has_error(ctx)) {
       parse_error(ctx, "failed to parse clause head");
     }
@@ -746,40 +1068,56 @@ void parse_clause(prolog_ctx_t *ctx, char *line) {
     return;
   }
   c->body_count = 0;
+  c->body = NULL;
 
   skip_ws(ctx);
   if (ctx->input_ptr[0] == ':' && ctx->input_ptr[1] == '-') {
     ctx->input_ptr += 2;
     debug(ctx, "=== Parsing body ===\n");
+
+    // collect body goals into a temp stack buffer, then alloc from perm pool
+    term_t *tmp[MAX_GOALS];
+    int n = 0;
     do {
       skip_ws(ctx);
       term_t *g = parse_term(ctx);
       if (!g) {
         if (parse_has_error(ctx)) {
+          ctx->alloc_permanent = false;
           parse_error_print(ctx);
           return;
         }
         break;
       }
-      if (c->body_count >= MAX_GOALS) {
+      if (n >= MAX_GOALS) {
+        ctx->alloc_permanent = false;
         parse_error(ctx, "too many goals in clause body (max %d)", MAX_GOALS);
         parse_error_print(ctx);
         return;
       }
-      c->body[c->body_count++] = g;
+      tmp[n++] = g;
       skip_ws(ctx);
     } while (*ctx->input_ptr == ',' && ctx->input_ptr++);
+
+    if (n > 0) {
+      c->body = (term_t **)term_alloc(ctx, (size_t)n * sizeof(term_t *));
+      for (int i = 0; i < n; i++)
+        c->body[c->body_count++] = tmp[i];
+    }
   }
 
   // terminating dot
   skip_ws(ctx);
   if (*ctx->input_ptr != '.') {
+    ctx->alloc_permanent = false;
     parse_error(ctx, "expected '.' at end of clause");
     parse_error_print(ctx);
     return;
   }
   ctx->input_ptr++;
+  ctx->alloc_permanent = false;
 
+  c->source_file = ctx->current_source_file;
   ctx->db_count++;
 
   if (ctx->debug_enabled) {
