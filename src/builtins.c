@@ -1378,7 +1378,7 @@ static builtin_result_t builtin_retract(trilog_ctx_t *ctx, term_t *goal,
       ctx->db_count--;
       ctx->db_dirty = true;
       ctx->stats.retracts++;
-// TODO: ugly, im gonna have to get rid of this either way
+// TODO: ugly
 #if COMPACT_AFTER_RETRACTS > 0
       if (ctx->stats.retracts % COMPACT_AFTER_RETRACTS == 0)
         compact_perm_pool(ctx);

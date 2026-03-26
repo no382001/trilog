@@ -1,6 +1,23 @@
 # trilog
 
-A lightweight, embeddable Prolog interpreter written in C11.
+A Prolog interpreter aiming to be embeddable, based on van Emden's ABC algorithm (hence the three/tri), written in C11.
+
+## Contents
+
+- [Build](#build)
+- [Usage](#usage)
+- [Language](#language)
+  - [Operators](#operators)
+  - [Arithmetic](#arithmetic)
+  - [ISO built-ins](#iso-built-ins)
+  - [Extensions](#extensions)
+  - [Standard library](#standard-library-corepl)
+- [Embedding](#embedding)
+  - [Context allocation](#context-allocation)
+  - [Custom builtins (FFI)](#custom-builtins-ffi)
+  - [I/O hooks](#io-hooks)
+- [Testing](#testing)
+- [Algorithm](#algorithm)
 
 ## Build
 
@@ -21,7 +38,7 @@ make
 
 Standard Prolog syntax. Integers, atoms, functors, lists, rules and facts. Comments: `%` line comments and `/* */` block comments. Character code notation: `0'a` evaluates to 97.
 
-**Operators**
+### Operators
 
 | Operators | Prec | Notes |
 |-----------|------|-------|
@@ -35,48 +52,54 @@ Standard Prolog syntax. Integers, atoms, functors, lists, rules and facts. Comme
 
 Prefix: `\+` (negation), `\` (bitwise complement).
 
-**Arithmetic** (`is/2`)
+### Arithmetic
 
-Integer arithmetic. Operators: `+ - * / // mod max min >> << /\ \/ xor`. Unary: `- abs \`. ISO overflow and zero-divisor errors are raised.
+Integer arithmetic via `is/2`. Operators: `+ - * / // mod max min >> << /\ \/ xor`. Unary: `- abs \`. ISO overflow and zero-divisor errors are raised.
 
-**Built-ins**
+### ISO built-ins
 
-| | |
-|-|-|
+| Predicate | Notes |
+|-----------|-------|
 | `true` `fail` `!` | basics |
 | `\+(G)` `call(G)` `once(G)` | meta-call |
 | `,(G,G)` `;(G,G)` `->(G,G)` | control |
 | `throw(T)` `catch(G,C,R)` | exceptions (`error(Formal, Context)` convention) |
 | `findall/3` `bagof/3` `setof/3` | aggregation; `X^Goal` for existential quantification |
-| `consult(F)` `include(F)` `make` | loading |
-| `assertz(C)` `asserta(C)` `assert(C)` `retract(H)` `retractall(H)` | database |
-| `dynamic/1` `abolish/1` | database declarations |
-| `current_prolog_flag/2` | flags: `max_integer`, `min_integer`, `bounded`, `integer_rounding_function` |
-| `var/nonvar/atom/integer/number/atomic/compound/callable/string/is_list` | type tests |
-| `functor/3` `arg/3` `=../2` `copy_term/2` | introspection |
-| `is/2` `succ/2` `plus/3` | arithmetic |
-| `compare/3` | standard order |
-| `sort/2` `msort/2` | sorting |
-| `atom_length/2` `atom_concat/3` `atom_chars/2` `atom_codes/2` | atoms |
-| `sub_atom/5` | substring search/decomposition |
+| `asserta(C)` `assertz(C)` `retract(H)` `retractall(H)` `abolish(F/A)` | dynamic database |
+| `dynamic(+Spec)` | declares predicate as dynamic; file-loaded predicates without a `dynamic` declaration are protected from modification |
+| `var/1` `nonvar/1` `atom/1` `integer/1` `number/1` `atomic/1` `compound/1` `callable/1` `is_list/1` | type tests |
+| `functor/3` `arg/3` `=../2` `copy_term/2` | term introspection |
+| `compare/3` `sort/2` | ordering |
+| `atom_length/2` `atom_concat/3` `atom_chars/2` `atom_codes/2` `sub_atom/5` | atoms |
 | `char_code/2` `atom_number/2` `number_chars/2` `number_codes/2` | conversion |
+| `write/1` `writeq/1` `nl` `get_char/1` | basic I/O |
+| `open/3` `close/1` `read_term/2` | streams |
+| `current_prolog_flag/2` | flags: `max_integer` `min_integer` `bounded` `integer_rounding_function` |
+| `is/2` `succ/2` `plus/3` | arithmetic |
+
+### Extensions
+
+These are non-ISO predicates
+
+| Predicate | Notes |
+|-----------|-------|
+| `consult(+F)` `[F]` `[F1,F2,…]` `include(+F)` `make` | file loading; list syntax consults each element |
+| `consulted(-Ls)` | unifies `Ls` with the list of currently loaded files |
+| `unconsult(+F)` | unloads all clauses contributed by file `F`; fails if `F` is not loaded |
+| `msort/2` | sort without removing duplicates |
+| `writeln/1` `with_output_to(+Sink, +Goal)` | output; Sink: `atom(A)`, `string(S)`, `codes(Cs)`, `chars(Chs)` |
+| `read_line_to_atom/2` | read one line from a stream; unifies `end_of_file` at EOF |
 | `atom_to_term/3` `term_to_atom/2` | term <-> atom |
-| `write/1` `writeln/1` `writeq/1` `nl` | output |
-| `with_output_to(+Sink, +Goal)` | capture output; Sink: `atom(A)`, `string(S)`, `codes(Cs)`, `chars(Chs)` |
-| `open(+Path, +Mode, -Stream)` `close(+Stream)` | file streams; Mode: `read`, `write`, `append` |
-| `read_line_to_atom(+Stream, -Atom)` | read one line; unifies `end_of_file` at EOF |
-| `read_term(+Stream, -Term)` | read and parse one term from a stream |
-| `get_char(-Char)` | read one character from stdin |
 
-**Standard library (`core.pl`, loaded automatically)**
+### Standard library (`core.pl`)
 
-`between/3`, `forall/2`, `member/2`, `append/3`, `length/2`, `reverse/2`, `last/2`
+Loaded automatically. Provides: `between/3`, `forall/2`, `member/2`, `append/3`, `length/2`, `reverse/2`, `last/2`.
 
 ## Embedding
 
 ### Context allocation
 
-The context uses a flexible array member for its term pool and must be heap-allocated:
+The library itself performs no dynamic allocation — the host allocates a single contiguous block for the interpreter context (including its term pool) and passes it in:
 
 ```c
 trilog_ctx_t *ctx = malloc(TRILOG_CTX_SIZE(TERM_POOL_BYTES));
@@ -86,7 +109,7 @@ io_hooks_init_default(ctx);
 free(ctx);
 ```
 
-`TERM_POOL_BYTES` is 4 MB by default. Adjust as needed for your target.
+`TERM_POOL_BYTES` defaults to 4 MB. Override at compile time for constrained targets (e.g. `-DTERM_POOL_BYTES=(128*1024)` for RP2040).
 
 ### Custom builtins (FFI)
 
@@ -126,26 +149,6 @@ io_hooks_set(ctx, &hooks);
 
 Only set the callbacks you need; unset ones fall back to the defaults (`stdio`/`libc`).
 
-### Freestanding (no libc)
-
-Define `TRILOG_FREESTANDING` before including `trilog.h`. The header then expects no standard includes — you provide the required primitives as macros:
-
-```c
-#define TRILOG_FREESTANDING
-#define strcmp   my_strcmp
-#define strlen   my_strlen
-#define memcpy   my_memcpy
-#define vsnprintf my_vsnprintf
-// ... etc.
-#include "trilog.h"
-```
-
-All output must be handled through I/O hooks; there is no fallback to `printf`. See `examples/freestanding.c` for a build smoke-test.
-
-```sh
-make freestanding   # verifies the library links without libc
-```
-
 ## Testing
 
 Tests use the [quad format](https://web.liminal.cafe/~byakuren/flowlog/docs/QUAD_TESTS.html) — plain `.pl` files containing queries and their expected output:
@@ -158,9 +161,6 @@ Tests use the [quad format](https://web.liminal.cafe/~byakuren/flowlog/docs/QUAD
 
 ?- atom_length(hello, N).
    N = 5.
-
-?- foo(1).
-   false.
 ```
 
 ```sh
@@ -168,8 +168,10 @@ make quad          # TAP output
 make quad-junit    # JUnit XML → _build/test-results/
 ```
 
-ISO 13211-1 conformance tests (`test/iso_quad.pl`) run but do not fail the build.
+There are ISO conformance tests (`test/iso_quad.pl`) that run but do not fail the build.
 
 ## Algorithm
 
-Based on the **ABC algorithm** from M.H. van Emden's *"An Algorithm for Interpreting PROLOG Programs"* (1981): a depth-first, left-to-right SLD resolution loop with an explicit stack for backtracking. Each clause invocation gets fresh variables via an integer counter. The term pool uses a dual-ended bump allocator: temporary query terms grow up from offset 0, permanent clause terms grow down from the top.
+Based on the **ABC algorithm** from M.H. van Emden's *"An Algorithm for Interpreting PROLOG Programs"* (1981): a depth-first, left-to-right SLD resolution loop with an explicit stack for backtracking. Each clause invocation gets fresh variables via an integer counter.
+
+**Memory layout** — dual-ended bump allocator inside the context buffer: temporary query terms grow up from offset 0; permanent clause terms grow down from the top. After each top-level query the temp region is reclaimed unconditionally. A staging-area compaction pass (`compact_perm_pool`) defragments the permanent region after retracts, controlled by the `COMPACT_AFTER_RETRACTS` macro (default: compact every retract).
