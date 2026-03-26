@@ -130,7 +130,7 @@ l_forward :-
 % --- Commands ---
 
 % quit
-l_do([q|_]) :- !, throw(l_quit).
+l_do([q|_]) :- !, retractall(l_value(_, _)), throw(l_quit).
 
 % add
 l_do([a|_]) :- !,

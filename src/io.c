@@ -283,4 +283,8 @@ void toplevel_query(trilog_ctx_t *ctx, char *query) {
   else if (found && !st.done)
     io_write_str(ctx, ".\n"); // terminate last answer that expected more
   ctx->has_runtime_error = false;
+  // always free temp allocations after a toplevel query — they are no longer
+  // referenced once solving is done, even if the query modified the database
+  ctx->term_pool_offset = 0;
+  compact_perm_pool(ctx);
 }
