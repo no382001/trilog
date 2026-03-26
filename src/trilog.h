@@ -87,6 +87,9 @@ typedef __builtin_va_list va_list;
 #ifndef COMPACT_AFTER_RETRACTS
 #define COMPACT_AFTER_RETRACTS 1
 #endif
+#ifndef MAX_DYNAMIC_PREDS
+#define MAX_DYNAMIC_PREDS 64
+#endif
 #ifndef TERM_POOL_BYTES
 #define TERM_POOL_BYTES (4 * 1024 * 1024)
 #endif
@@ -325,6 +328,12 @@ struct trilog_ctx {
   bool has_runtime_error;
   char runtime_error[MAX_ERROR_MSG];
   term_t *thrown_ball; // exception term set by throw/1
+
+  struct {
+    char name[MAX_NAME];
+    int arity;
+  } dynamic_preds[MAX_DYNAMIC_PREDS];
+  int dynamic_pred_count;
 
   _Alignas(8) char term_pool[]; // fam - must be last field
 };

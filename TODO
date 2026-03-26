@@ -23,6 +23,4 @@ permpool compaction, asserting and retracting creates holes, they need to be rec
 
 since we are not working with that much memory, stability should be first
 
-dynamic is not even used? everything is dynamic
-
-why is term_pool dynamic? bc we
+?- [file]. shorthand

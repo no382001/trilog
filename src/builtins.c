@@ -1175,6 +1175,42 @@ static builtin_result_t builtin_copy_term(trilog_ctx_t *ctx, term_t *goal,
 //* database modification (assert, retract)
 //****
 
+static bool is_declared_dynamic(trilog_ctx_t *ctx, const char *name,
+                                int arity) {
+  for (int i = 0; i < ctx->dynamic_pred_count; i++)
+    if (ctx->dynamic_preds[i].arity == arity &&
+        strcmp(ctx->dynamic_preds[i].name, name) == 0)
+      return true;
+  return false;
+}
+
+// returns true if predicate has file-loaded clauses and no dynamic declaration
+static bool is_static_procedure(trilog_ctx_t *ctx, const char *name,
+                                int arity) {
+  if (is_declared_dynamic(ctx, name, arity))
+    return false;
+  for (int i = 0; i < ctx->db_count; i++) {
+    clause_t *c = &ctx->database[i];
+    if (c->source_file == -1)
+      continue;
+    int ca = (c->head->type == FUNC) ? c->head->arity : 0;
+    if (strcmp(c->head->name, name) == 0 && ca == arity)
+      return true;
+  }
+  return false;
+}
+
+static void throw_static_proc_error(trilog_ctx_t *ctx, const char *name,
+                                    int arity, const char *context) {
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%d", arity);
+  term_t *n = make_const(ctx, name);
+  term_t *a = make_const(ctx, buf);
+  term_t *ind_args[2] = {n, a};
+  term_t *ind = make_func(ctx, "/", ind_args, 2);
+  throw_permission_error(ctx, "modify", "static_procedure", ind, context);
+}
+
 static void flatten_body(env_t *env, term_t *body, clause_t *c) {
   while (body->type == FUNC && strcmp(body->name, ",") == 0 &&
          body->arity == 2 && c->body_count < MAX_GOALS - 1) {
@@ -1188,8 +1224,21 @@ static builtin_result_t builtin_assertz(trilog_ctx_t *ctx, term_t *goal,
                                         env_t *env) {
   if (ctx->db_count >= MAX_CLAUSES)
     return BUILTIN_FAIL;
+  term_t *clause_raw = deref(env, goal->args[0]);
+  term_t *head_raw =
+      (clause_raw->type == FUNC && strcmp(clause_raw->name, ":-") == 0 &&
+       clause_raw->arity == 2)
+          ? deref(env, clause_raw->args[0])
+          : clause_raw;
+  if (head_raw->type != VAR) {
+    int pa = (head_raw->type == FUNC) ? head_raw->arity : 0;
+    if (is_static_procedure(ctx, head_raw->name, pa)) {
+      throw_static_proc_error(ctx, head_raw->name, pa, "assertz/1");
+      return BUILTIN_ERROR;
+    }
+  }
   ctx->alloc_permanent = true;
-  term_t *arg = substitute(ctx, env, deref(env, goal->args[0]));
+  term_t *arg = substitute(ctx, env, clause_raw);
   clause_t *c = &ctx->database[ctx->db_count];
   c->body_count = 0;
   if (arg->type == FUNC && strcmp(arg->name, ":-") == 0 && arg->arity == 2) {
@@ -1209,11 +1258,24 @@ static builtin_result_t builtin_asserta(trilog_ctx_t *ctx, term_t *goal,
                                         env_t *env) {
   if (ctx->db_count >= MAX_CLAUSES)
     return BUILTIN_FAIL;
+  term_t *clause_raw = deref(env, goal->args[0]);
+  term_t *head_raw =
+      (clause_raw->type == FUNC && strcmp(clause_raw->name, ":-") == 0 &&
+       clause_raw->arity == 2)
+          ? deref(env, clause_raw->args[0])
+          : clause_raw;
+  if (head_raw->type != VAR) {
+    int pa = (head_raw->type == FUNC) ? head_raw->arity : 0;
+    if (is_static_procedure(ctx, head_raw->name, pa)) {
+      throw_static_proc_error(ctx, head_raw->name, pa, "asserta/1");
+      return BUILTIN_ERROR;
+    }
+  }
   for (int i = ctx->db_count; i > 0; i--)
     ctx->database[i] = ctx->database[i - 1];
   ctx->db_count++;
   ctx->alloc_permanent = true;
-  term_t *arg = substitute(ctx, env, deref(env, goal->args[0]));
+  term_t *arg = substitute(ctx, env, clause_raw);
   clause_t *c = &ctx->database[0];
   c->body_count = 0;
   if (arg->type == FUNC && strcmp(arg->name, ":-") == 0 && arg->arity == 2) {
@@ -1247,6 +1309,13 @@ static builtin_result_t builtin_retract(trilog_ctx_t *ctx, term_t *goal,
       (arg->type == FUNC && strcmp(arg->name, ":-") == 0 && arg->arity == 2);
   term_t *head_pat = has_body ? deref(env, arg->args[0]) : arg;
   term_t *body_pat = has_body ? deref(env, arg->args[1]) : NULL;
+  if (head_pat->type != VAR) {
+    int pa = (head_pat->type == FUNC) ? head_pat->arity : 0;
+    if (is_static_procedure(ctx, head_pat->name, pa)) {
+      throw_static_proc_error(ctx, head_pat->name, pa, "retract/1");
+      return BUILTIN_ERROR;
+    }
+  }
 
   for (int i = 0; i < ctx->db_count; i++) {
     int env_mark = env->count;
@@ -1282,6 +1351,13 @@ static builtin_result_t builtin_retract(trilog_ctx_t *ctx, term_t *goal,
 static builtin_result_t builtin_retractall(trilog_ctx_t *ctx, term_t *goal,
                                            env_t *env) {
   term_t *head_pat = deref(env, goal->args[0]);
+  if (head_pat->type != VAR) {
+    int pa = (head_pat->type == FUNC) ? head_pat->arity : 0;
+    if (is_static_procedure(ctx, head_pat->name, pa)) {
+      throw_static_proc_error(ctx, head_pat->name, pa, "retractall/1");
+      return BUILTIN_ERROR;
+    }
+  }
   int i = 0;
   int removed = 0;
   while (i < ctx->db_count) {
@@ -1424,12 +1500,36 @@ static builtin_result_t builtin_make(trilog_ctx_t *ctx, term_t *goal,
   return BUILTIN_OK;
 }
 
-// dynamic/1: declaration hint — no-op (all predicates are dynamic here)
+static void register_dynamic_indicator(trilog_ctx_t *ctx, term_t *ind,
+                                       env_t *env) {
+  ind = deref(env, ind);
+  if (ind->type == FUNC && strcmp(ind->name, ",") == 0 && ind->arity == 2) {
+    register_dynamic_indicator(ctx, ind->args[0], env);
+    register_dynamic_indicator(ctx, ind->args[1], env);
+    return;
+  }
+  if (ind->type != FUNC || strcmp(ind->name, "/") != 0 || ind->arity != 2)
+    return;
+  term_t *n = deref(env, ind->args[0]);
+  term_t *a = deref(env, ind->args[1]);
+  const char *name = term_atom_str(n);
+  int arity;
+  if (!name || !term_as_int(a, &arity))
+    return;
+  if (is_declared_dynamic(ctx, name, arity))
+    return;
+  if (ctx->dynamic_pred_count >= MAX_DYNAMIC_PREDS)
+    return;
+  strncpy(ctx->dynamic_preds[ctx->dynamic_pred_count].name, name, MAX_NAME - 1);
+  ctx->dynamic_preds[ctx->dynamic_pred_count].name[MAX_NAME - 1] = '\0';
+  ctx->dynamic_preds[ctx->dynamic_pred_count].arity = arity;
+  ctx->dynamic_pred_count++;
+}
+
+// dynamic/1: register predicate indicators as dynamic (modifiable at runtime)
 static builtin_result_t builtin_dynamic(trilog_ctx_t *ctx, term_t *goal,
                                         env_t *env) {
-  (void)ctx;
-  (void)goal;
-  (void)env;
+  register_dynamic_indicator(ctx, deref(env, goal->args[0]), env);
   return BUILTIN_OK;
 }
 
@@ -1469,6 +1569,67 @@ static builtin_result_t builtin_abolish(trilog_ctx_t *ctx, term_t *goal,
     } else {
       i++;
     }
+  }
+  return BUILTIN_OK;
+}
+
+// consulted(-Ls): unify Ls with list of files currently tracked by make/0
+static builtin_result_t builtin_consulted(trilog_ctx_t *ctx, term_t *goal,
+                                          env_t *env) {
+  term_t *list = make_const(ctx, "[]");
+  for (int i = ctx->make_file_count - 1; i >= 0; i--) {
+    term_t *path = make_const(ctx, ctx->make_files[i].path);
+    term_t *args[2] = {path, list};
+    list = make_func(ctx, ".", args, 2);
+  }
+  return unify(ctx, deref(env, goal->args[0]), list, env) ? BUILTIN_OK
+                                                          : BUILTIN_FAIL;
+}
+
+// unconsult(+File): remove all clauses loaded from File and drop it from
+// make/0 tracking. fails if File is not currently consulted.
+static builtin_result_t builtin_unconsult(trilog_ctx_t *ctx, term_t *goal,
+                                          env_t *env) {
+  term_t *arg = deref(env, goal->args[0]);
+  if (arg->type == VAR) {
+    throw_instantiation_error(ctx, "forget_file/1");
+    return BUILTIN_ERROR;
+  }
+  const char *path = term_atom_str(arg);
+  if (!path) {
+    throw_type_error(ctx, "atom", arg, "unconsult/1");
+    return BUILTIN_ERROR;
+  }
+  int file_idx = -1;
+  for (int i = 0; i < ctx->make_file_count; i++) {
+    if (strcmp(ctx->make_files[i].path, path) == 0) {
+      file_idx = i;
+      break;
+    }
+  }
+  if (file_idx == -1)
+    return BUILTIN_FAIL;
+  int old_count = ctx->db_count;
+  int dst = 0;
+  for (int src = 0; src < ctx->db_count; src++) {
+    if (ctx->database[src].source_file == file_idx)
+      continue;
+    ctx->database[dst] = ctx->database[src];
+    if (ctx->database[dst].source_file > file_idx)
+      ctx->database[dst].source_file--;
+    dst++;
+  }
+  ctx->db_count = dst;
+  ctx->db_dirty = true;
+  for (int i = file_idx; i < ctx->make_file_count - 1; i++)
+    ctx->make_files[i] = ctx->make_files[i + 1];
+  ctx->make_file_count--;
+  int removed = old_count - dst;
+  if (removed > 0) {
+    ctx->stats.retracts += removed;
+#if COMPACT_AFTER_RETRACTS > 0
+    compact_perm_pool(ctx);
+#endif
   }
   return BUILTIN_OK;
 }
@@ -1583,6 +1744,8 @@ static const builtin_t builtins[] = {
     {"retractall", 1, builtin_retractall},
     {"dynamic", 1, builtin_dynamic},
     {"abolish", 1, builtin_abolish},
+    {"consulted", 1, builtin_consulted},
+    {"unconsult", 1, builtin_unconsult},
     {"current_prolog_flag", 2, builtin_current_prolog_flag},
     {"succ", 2, builtin_succ},
     {"plus", 3, builtin_plus},
