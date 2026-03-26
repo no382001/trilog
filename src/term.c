@@ -149,3 +149,118 @@ term_t *rename_vars(trilog_ctx_t *ctx, term_t *t) {
   var_id_map_t map = {0};
   return rename_vars_mapped(ctx, t, &map);
 }
+
+//****
+//* perm pool compaction
+//****
+
+static term_t *copy_term_into_pool(trilog_ctx_t *ctx, term_t *t) {
+  if (!t)
+    return NULL;
+  switch (t->type) {
+  case CONST:
+    return make_const(ctx, t->name);
+  case VAR:
+    return make_var(ctx, t->name, t->arity);
+  case FUNC: {
+    term_t *args[MAX_ARGS];
+    for (int i = 0; i < t->arity; i++) {
+      args[i] = copy_term_into_pool(ctx, t->args[i]);
+      if (!args[i])
+        return NULL;
+    }
+    return make_func(ctx, t->name, args, t->arity);
+  }
+  }
+  return NULL;
+}
+
+static void patch_term_ptrs(term_t *t, int perm_start) {
+  if (!t || t->type != FUNC)
+    return;
+  for (int i = 0; i < t->arity; i++) {
+    if (t->args[i]) {
+      t->args[i] = (term_t *)((char *)t->args[i] - perm_start);
+      patch_term_ptrs(t->args[i], perm_start);
+    }
+  }
+}
+
+void compact_perm_pool(trilog_ctx_t *ctx) {
+  if (ctx->term_pool_offset != 0)
+    return;
+  int perm_start = ctx->term_pool_perm;
+  int perm_used = ctx->term_pool_size - perm_start;
+  if (perm_used <= 0)
+    return;
+  if (perm_used * 2 > ctx->term_pool_size)
+    return;
+
+  // phase 1: copy perm region into staging area at bottom of buffer
+  memcpy(ctx->term_pool, ctx->term_pool + perm_start, (size_t)perm_used);
+  ctx->term_pool_offset = perm_used; // protect staging from perm allocs
+
+  // phase 2: adjust clause-level pointers into staging area
+  for (int i = 0; i < ctx->db_count; i++) {
+    clause_t *c = &ctx->database[i];
+    if (c->body != NULL) {
+      term_t **staging_body = (term_t **)((char *)c->body - perm_start);
+      for (int j = 0; j < c->body_count; j++)
+        if (staging_body[j])
+          staging_body[j] = (term_t *)((char *)staging_body[j] - perm_start);
+      c->body = staging_body;
+    }
+    if (c->head)
+      c->head = (term_t *)((char *)c->head - perm_start);
+  }
+
+  // phase 3: fix internal args[] pointers within staging area
+  for (int i = 0; i < ctx->db_count; i++) {
+    clause_t *c = &ctx->database[i];
+    if (c->head)
+      patch_term_ptrs(c->head, perm_start);
+    if (c->body != NULL)
+      for (int j = 0; j < c->body_count; j++)
+        if (c->body[j])
+          patch_term_ptrs(c->body[j], perm_start);
+  }
+
+  // phase 4: reset perm and rebuild from staging
+  ctx->term_pool_perm = ctx->term_pool_size;
+  ctx->alloc_permanent = true;
+  for (int i = 0; i < ctx->db_count; i++) {
+    clause_t *c = &ctx->database[i];
+    if (c->head) {
+      c->head = copy_term_into_pool(ctx, c->head);
+      if (!c->head) {
+        ctx->alloc_permanent = false;
+        ctx->term_pool_offset = 0;
+        return;
+      }
+    }
+    if (c->body_count > 0) {
+      term_t **nb =
+          (term_t **)term_alloc(ctx, (size_t)c->body_count * sizeof(term_t *));
+      if (!nb) {
+        ctx->alloc_permanent = false;
+        ctx->term_pool_offset = 0;
+        return;
+      }
+      for (int j = 0; j < c->body_count; j++) {
+        nb[j] = c->body ? copy_term_into_pool(ctx, c->body[j]) : NULL;
+        if (!nb[j]) {
+          ctx->alloc_permanent = false;
+          ctx->term_pool_offset = 0;
+          return;
+        }
+      }
+      c->body = nb;
+    } else {
+      c->body = NULL;
+    }
+  }
+  ctx->alloc_permanent = false;
+
+  // phase 5: clear staging
+  ctx->term_pool_offset = 0;
+}

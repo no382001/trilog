@@ -84,6 +84,9 @@ typedef __builtin_va_list va_list;
 #ifndef MAX_CLAUSE_VARS
 #define MAX_CLAUSE_VARS 64
 #endif
+#ifndef COMPACT_AFTER_RETRACTS
+#define COMPACT_AFTER_RETRACTS 1
+#endif
 #ifndef TERM_POOL_BYTES
 #define TERM_POOL_BYTES (4 * 1024 * 1024)
 #endif
@@ -307,6 +310,7 @@ struct trilog_ctx {
     int son_calls;
     int backtracks;
     int stack_peak;
+    int retracts;
   } stats;
 
   // open file streams (handles from io_file_open); null = free slot
@@ -364,6 +368,7 @@ static inline bool term_as_int(const term_t *t, int *out) {
 //****
 
 void ctx_reset_terms(trilog_ctx_t *ctx);
+void compact_perm_pool(trilog_ctx_t *ctx);
 void *term_alloc(trilog_ctx_t *ctx, size_t size);
 // allocate a goal array of n slots from the term pool.
 static inline goal_stmt_t goals_alloc(trilog_ctx_t *ctx, int n) {

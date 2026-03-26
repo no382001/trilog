@@ -1265,6 +1265,12 @@ static builtin_result_t builtin_retract(trilog_ctx_t *ctx, term_t *goal,
         ctx->database[j] = ctx->database[j + 1];
       ctx->db_count--;
       ctx->db_dirty = true;
+      ctx->stats.retracts++;
+// TODO: ugly, im gonna have to get rid of this either way
+#if COMPACT_AFTER_RETRACTS > 0
+      if (ctx->stats.retracts % COMPACT_AFTER_RETRACTS == 0)
+        compact_perm_pool(ctx);
+#endif
       return BUILTIN_OK;
     }
     env->count = ctx->bind_count = env_mark;
@@ -1277,6 +1283,7 @@ static builtin_result_t builtin_retractall(trilog_ctx_t *ctx, term_t *goal,
                                            env_t *env) {
   term_t *head_pat = deref(env, goal->args[0]);
   int i = 0;
+  int removed = 0;
   while (i < ctx->db_count) {
     int env_mark = env->count;
     int trm_save = ctx->term_pool_offset;
@@ -1289,9 +1296,16 @@ static builtin_result_t builtin_retractall(trilog_ctx_t *ctx, term_t *goal,
         ctx->database[j] = ctx->database[j + 1];
       ctx->db_count--;
       ctx->db_dirty = true;
+      removed++;
     } else {
       i++;
     }
+  }
+  if (removed > 0) {
+    ctx->stats.retracts += removed;
+#if COMPACT_AFTER_RETRACTS > 0
+    compact_perm_pool(ctx);
+#endif
   }
   return BUILTIN_OK;
 }

@@ -60,14 +60,15 @@ l_initialize :-
 % --- Main loop (tail-recursive to avoid term/binding overflow) ---
 
 l_loop :-
-    l_display,
-    write('LED> '), flush_output,
-    read_line_to_atom(user_input, LA),
-    ( LA == end_of_file -> true
-    ; atom_chars(LA, Cs),
-      ( catch(l_exec(Cs), l_error, (write('?'), nl)) -> true ; true ),
-      l_loop
-    ).
+    repeat,
+        l_display,
+        write('LED> '), flush_output,
+        read_line_to_atom(user_input, LA),
+        ( LA == end_of_file -> !
+        ; atom_chars(LA, Cs),
+          ( catch(l_exec(Cs), l_error, (write('?'), nl)) -> true ; true ),
+          fail
+        ).
 
 l_exec(Cs) :-
     l_continuation(Cs, X),
@@ -88,8 +89,6 @@ l_continuation([], X) :- !,
 l_continuation(X, X) :- l_set(command, X).
 
 % --- Utilities ---
-
-
 
 l_for(0, _) :- !.
 l_for(N, P) :-
@@ -238,13 +237,12 @@ l_lookstr([Delim|L], S) :-
 l_lookstr(_, _) :- write('?'), nl, fail.
 
 l_look(S) :-
-    ( \+ l_forward ->
-        write('? not found'), nl, fail
-    ; l_value(line, ([Text|_], _)),
-      ( sub_atom(Text, _, _, _, S) -> true
-      ; l_look(S)
-      )
-    ).
+    repeat,
+        ( \+ l_forward ->
+            !, write('? not found'), nl, fail
+        ; l_value(line, ([Text|_], _)),
+          ( sub_atom(Text, _, _, _, S) -> ! ; fail )
+        ).
 
 % change
 l_do([c|L]) :- !,
