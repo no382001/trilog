@@ -115,7 +115,7 @@ $(WEB_DIR)/trilog.js: $(WEB_LIB_SRCS) $(WEB_ENTRY) $(HDRS) core.pl ledit.pl
 	    -s WASM=1 \
 	    -s ALLOW_MEMORY_GROWTH=1 \
 	    -s ASYNCIFY=1 \
-	    -s EXPORTED_FUNCTIONS='["_trilog_web_init","_trilog_web_eval","_trilog_web_push_line","_trilog_web_is_reading","_trilog_web_take_output","_trilog_web_set_yield","_trilog_web_get_stats","_trilog_web_get_usage"]' \
+	    -s EXPORTED_FUNCTIONS='["_trilog_web_init","_trilog_web_eval","_trilog_web_push_line","_trilog_web_is_reading","_trilog_web_is_choosing","_trilog_web_take_output","_trilog_web_set_yield","_trilog_web_get_stats","_trilog_web_get_usage"]' \
 	    -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","getValue"]' \
 	    --embed-file core.pl@/core.pl \
 	    --embed-file ledit.pl@/ledit.pl

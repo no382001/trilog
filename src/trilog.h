@@ -533,6 +533,7 @@ typedef struct {
 bool toplevel_emit_all_cb(trilog_ctx_t *ctx, env_t *env, void *ud,
                           bool has_more);
 void toplevel_query(trilog_ctx_t *ctx, char *query);
+void exec_query_interactive(trilog_ctx_t *ctx, char *query);
 
 // solve yield: set a callback invoked every `interval` steps during solving
 void trilog_set_yield(trilog_ctx_t *ctx, solve_yield_cb_t cb, int interval,

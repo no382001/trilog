@@ -15,7 +15,18 @@
       flex-direction: column;
     }
     #terminal { flex: 1; padding: 8px; min-height: 0; overflow: hidden; }
-    #statusbar { display: none; }
+    #statusbar-reading, #statusbar-choosing {
+      display: none;
+      padding: 4px 10px;
+      font: 11px "Cascadia Code", "Fira Code", monospace;
+      border-top: 1px solid #333;
+      flex-shrink: 0;
+    }
+    #statusbar-reading.visible, #statusbar-choosing.visible { display: block; }
+    #statusbar-reading  { color: #888; background: #111; }
+    #statusbar-reading span  { color: #d4d4d4; }
+    #statusbar-choosing { color: #4ec994; background: #111; }
+    #statusbar-choosing span { color: #d4d4d4; font-weight: bold; }
 
     /* ---- metrics panel ---- */
     #metrics-panel {
@@ -116,7 +127,8 @@
 </head>
 <body>
   <div id="terminal"></div>
-  <div id="statusbar">reading input &mdash; type <span>end_of_file.</span> on its own line to finish, or <span>?</span> for help (output shown when done)</div>
+  <div id="statusbar-reading">reading input &mdash; type <span>end_of_file.</span> on its own line to finish, or <span>?</span> for help (output shown when done)</div>
+  <div id="statusbar-choosing"><span>;</span> next &nbsp;&middot;&nbsp; <span>Enter</span> stop</div>
 
   <div id="metrics-panel">
     <!-- row 1: activity counters + throughput -->
@@ -239,21 +251,22 @@
       const init       = Module.cwrap('trilog_web_init',       null,     []);
       const eval_      = Module.cwrap('trilog_web_eval',       'string', ['string'], {async: true});
       const pushLine   = Module.cwrap('trilog_web_push_line',  null,     ['string']);
-      const isReading  = Module.cwrap('trilog_web_is_reading', 'number', []);
+      const isReading  = Module.cwrap('trilog_web_is_reading',  'number', []);
+      const isChoosing = Module.cwrap('trilog_web_is_choosing', 'number', []);
       const takeOutput = Module._trilog_web_take_output
         ? Module.cwrap('trilog_web_take_output', 'string', [])
         : null;
 
-      const statusbar = document.getElementById('statusbar');
+      const sbReading  = document.getElementById('statusbar-reading');
+      const sbChoosing = document.getElementById('statusbar-choosing');
       setInterval(() => {
-        if (isReading()) {
-          statusbar.classList.add('visible');
-          if (takeOutput) {
-            const out = takeOutput();
-            if (out) termWrite(out);
-          }
-        } else {
-          statusbar.classList.remove('visible');
+        const choosing = isChoosing();
+        const reading  = isReading();
+        sbChoosing.classList.toggle('visible', !!choosing);
+        sbReading.classList.toggle('visible',  reading && !choosing);
+        if (reading && takeOutput) {
+          const out = takeOutput();
+          if (out) termWrite(out);
         }
         if (evalBusy) updateStats();
       }, 100);
@@ -432,6 +445,16 @@
         for (let i = 0; i < e.length; i++) {
           const ch   = e[i];
           const code = ch.charCodeAt(0);
+
+          // interactive answer prompt: ; = more, anything else = stop
+          if (isChoosing()) {
+            if (ch === ';' || ch === ' ') {
+              pushLine(';');
+            } else if (code === 13 || ch === '.') {
+              pushLine('.');
+            }
+            continue;
+          }
 
           if (code === 13) { // Enter
             term.write('\r\n');
