@@ -556,6 +556,49 @@ static const char *resolve_filename(trilog_ctx_t *ctx, term_t *arg, char *buf,
   return filename;
 }
 
+// [f1, f2, ...] as a goal: consult each file in the list.
+// [] succeeds immediately; '.'(H, T) consults H then iterates T.
+static builtin_result_t builtin_nil_goal(trilog_ctx_t *ctx, term_t *goal,
+                                         env_t *env) {
+  (void)ctx;
+  (void)goal;
+  (void)env;
+  return BUILTIN_OK;
+}
+
+static builtin_result_t builtin_list_goal(trilog_ctx_t *ctx, term_t *goal,
+                                          env_t *env) {
+  term_t *list = goal;
+  while (is_cons(list)) {
+    term_t *h = deref(env, list->args[0]);
+    if (h->type == VAR) {
+      throw_instantiation_error(ctx, "[...] goal");
+      return BUILTIN_ERROR;
+    }
+    if (h->type != CONST) {
+      throw_type_error(ctx, "atom", h, "[...] goal");
+      return BUILTIN_ERROR;
+    }
+    int dummy;
+    if (term_as_int(h, &dummy)) {
+      throw_type_error(ctx, "atom", h, "[...] goal");
+      return BUILTIN_ERROR;
+    }
+    char resolved[MAX_FILE_PATH];
+    const char *filename = resolve_filename(ctx, h, resolved, sizeof(resolved));
+    if (!filename)
+      return BUILTIN_FAIL;
+    if (!trilog_load_file(ctx, filename))
+      return BUILTIN_FAIL;
+    list = deref(env, list->args[1]);
+  }
+  if (!is_nil(list)) {
+    throw_type_error(ctx, "list", list, "[...] goal");
+    return BUILTIN_ERROR;
+  }
+  return BUILTIN_OK;
+}
+
 // consult/1: load file as independent unit, tracked for make/0
 static builtin_result_t builtin_consult(trilog_ctx_t *ctx, term_t *goal,
                                         env_t *env) {
@@ -1713,6 +1756,8 @@ static const builtin_t builtins[] = {
     {"writeln", 2, builtin_writeln2},
     {"writeq", 1, builtin_writeq},
     {"writeq", 2, builtin_writeq2},
+    {"[]", 0, builtin_nil_goal},
+    {".", 2, builtin_list_goal},
     {"consult", 1, builtin_consult},
     {"include", 1, builtin_include},
     {"findall", 3, builtin_findall},

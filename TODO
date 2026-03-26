@@ -19,8 +19,4 @@ testing:
 ledit:
     - printing 20 lines will need 100k termpool, for what?
 
-permpool compaction, asserting and retracting creates holes, they need to be reclaimed
-
 since we are not working with that much memory, stability should be first
-
-?- [file]. shorthand
