@@ -58,6 +58,12 @@ static void print_atom(trilog_ctx_t *ctx, const char *name, bool quoted) {
         io_write_str(ctx, "\\'");
       else if (*p == '\\')
         io_write_str(ctx, "\\\\");
+      else if (*p == '\n')
+        io_write_str(ctx, "\\n");
+      else if (*p == '\t')
+        io_write_str(ctx, "\\t");
+      else if (*p == '\r')
+        io_write_str(ctx, "\\r");
       else {
         char buf[2] = {*p, '\0'};
         io_write_str(ctx, buf);
@@ -101,11 +107,18 @@ void print_term(trilog_ctx_t *ctx, term_t *t, env_t *env, bool quoted) {
       io_write_str(ctx, "\"");
       while (is_cons(t)) {
         term_t *h = deref(env, t->args[0]);
-        if (h->name[0] == '"' || h->name[0] == '\\') {
-          char esc[3] = {'\\', h->name[0], '\0'};
+        char c = h->name[0];
+        if (c == '"' || c == '\\') {
+          char esc[3] = {'\\', c, '\0'};
           io_write_str(ctx, esc);
-        } else {
-          char ch[2] = {h->name[0], '\0'};
+        } else if (c == '\n')
+          io_write_str(ctx, "\\n");
+        else if (c == '\t')
+          io_write_str(ctx, "\\t");
+        else if (c == '\r')
+          io_write_str(ctx, "\\r");
+        else {
+          char ch[2] = {c, '\0'};
           io_write_str(ctx, ch);
         }
         t = deref(env, t->args[1]);
