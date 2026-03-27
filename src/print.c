@@ -84,6 +84,36 @@ void print_term(trilog_ctx_t *ctx, term_t *t, env_t *env, bool quoted) {
   t = deref(env, t);
 
   if (is_cons(t)) {
+    // print char lists as double-quoted strings (double_quotes = chars)
+    term_t *scan = t;
+    bool is_chars = true;
+    while (is_cons(scan)) {
+      term_t *h = deref(env, scan->args[0]);
+      int dummy;
+      if (h->type != CONST || !h->name || strlen(h->name) != 1 ||
+          term_as_int(h, &dummy)) {
+        is_chars = false;
+        break;
+      }
+      scan = deref(env, scan->args[1]);
+    }
+    if (is_chars && is_nil(scan)) {
+      io_write_str(ctx, "\"");
+      while (is_cons(t)) {
+        term_t *h = deref(env, t->args[0]);
+        if (h->name[0] == '"' || h->name[0] == '\\') {
+          char esc[3] = {'\\', h->name[0], '\0'};
+          io_write_str(ctx, esc);
+        } else {
+          char ch[2] = {h->name[0], '\0'};
+          io_write_str(ctx, ch);
+        }
+        t = deref(env, t->args[1]);
+      }
+      io_write_str(ctx, "\"");
+      return;
+    }
+
     io_write_str(ctx, "[");
     while (is_cons(t)) {
       assert(t->arity == 2 && "List node must have arity 2");

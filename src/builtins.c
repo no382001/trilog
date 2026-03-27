@@ -1678,6 +1678,7 @@ static builtin_result_t builtin_unconsult(trilog_ctx_t *ctx, term_t *goal,
 }
 
 // current_prolog_flag/2
+// TODO: flags are all hardcoded constants; set_prolog_flag/2 is not implemented
 static builtin_result_t builtin_current_prolog_flag(trilog_ctx_t *ctx,
                                                     term_t *goal, env_t *env) {
   term_t *flag = deref(env, goal->args[0]);
@@ -1705,7 +1706,9 @@ static builtin_result_t builtin_current_prolog_flag(trilog_ctx_t *ctx,
   else if (strcmp(fname, "max_arity") == 0) {
     snprintf(buf, sizeof(buf), "%d", MAX_ARGS);
     val = buf;
-  } else {
+  } else if (strcmp(fname, "double_quotes") == 0)
+    val = "chars";
+  else {
     throw_type_error(ctx, "prolog_flag", flag, "current_prolog_flag/2");
     return BUILTIN_ERROR;
   }

@@ -38,7 +38,7 @@
    X = [1, 2, 3, 4].
 
 ?- append([], [a], X).
-   X = [a].
+   X = "a".
 
 % --- length/2 ---
 
@@ -135,7 +135,7 @@ color(blue).
 % --- findall/3 ---
 
 ?- findall(X, member(X, [a, b, c]), L).
-   L = [a, b, c].
+   L = "abc".
 
 ?- findall(X, member(X, []), L).
    L = [].
@@ -173,10 +173,10 @@ color(blue).
 ;  X = b.
 
 ?- findall(X, (X = a ; X = b), L).
-   L = [a, b].
+   L = "ab".
 
 ?- findall(X, (X = a ; X = b ; X = c), L).
-   L = [a, b, c].
+   L = "abc".
 
 ?- (fail ; X = hello).
    X = hello.
@@ -208,7 +208,7 @@ color(blue).
 
 % -> commits: only first solution of condition
 ?- findall(X, ((X = a ; X = b) -> true ; true), L).
-   L = [a].
+   L = "a".
 
 % nested if-then-else
 ?- (true -> (true -> X = deep ; X = no) ; X = outer).
@@ -326,10 +326,10 @@ color(blue).
    X = [1, 2, 3].
 
 ?- msort([b, a, c], X).
-   X = [a, b, c].
+   X = "abc".
 
 ?- msort([b, a, c, a], X).
-   X = [a, a, b, c].
+   X = "aabc".
 
 ?- msort([1, a, f(x)], X).
    X = [1, a, f(x)].
@@ -343,13 +343,13 @@ color(blue).
    X = [1, 2, 3].
 
 ?- sort([b, a, c, a], X).
-   X = [a, b, c].
+   X = "abc".
 
 ?- sort([1, 1, 1], X).
    X = [1].
 
 ?- sort([c, a, b, a, c], X).
-   X = [a, b, c].
+   X = "abc".
 
 % --- throw/1 and catch/3 ---
 
@@ -401,9 +401,9 @@ bind_and_succeed(X) :- X = 42.
 :- consult('core.pl').
 
 ?- findall(X, member(X, [a, b, c]), L).
-   L = [a, b, c].
+   L = "abc".
 
 :- consult('core.pl').
 
 ?- findall(X, member(X, [a, b, c]), L).
-   L = [a, b, c].
+   L = "abc".
