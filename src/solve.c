@@ -57,6 +57,33 @@ bool son(trilog_ctx_t *ctx, goal_stmt_t *cn, int *clause_idx, env_t *env,
         return false;
       }
     }
+    // existence_error(procedure, Name/Arity) for truly undefined predicates
+    term_t *g = deref(env, selected_goal);
+    if (g->type == CONST || g->type == FUNC) {
+      const char *gname = g->name;
+      int garity = (g->type == FUNC) ? g->arity : 0;
+      bool has_clause = false;
+      for (int i = 0; i < ctx->db_count && !has_clause; i++) {
+        term_t *h = ctx->database[i].head;
+        int ha = (h->type == FUNC) ? h->arity : 0;
+        if (strcmp(h->name, gname) == 0 && ha == garity)
+          has_clause = true;
+      }
+      bool is_dyn = false;
+      for (int i = 0; i < ctx->dynamic_pred_count && !is_dyn; i++) {
+        if (ctx->dynamic_preds[i].arity == garity &&
+            strcmp(ctx->dynamic_preds[i].name, gname) == 0)
+          is_dyn = true;
+      }
+      if (!has_clause && !is_dyn) {
+        char ctx_buf[MAX_NAME + 24];
+        snprintf(ctx_buf, sizeof(ctx_buf), "%s/%d", gname, garity);
+        term_t *slash_args[2] = {make_const(ctx, gname), make_int(ctx, garity)};
+        term_t *indicator = make_func(ctx, "/", slash_args, 2);
+        throw_existence_error(ctx, "procedure", indicator, ctx_buf);
+        return false;
+      }
+    }
   }
 
   for (int i = *clause_idx; i < ctx->db_count; i++) {
