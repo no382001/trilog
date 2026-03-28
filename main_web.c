@@ -12,11 +12,12 @@ static trilog_ctx_t *g_ctx = NULL;
 static char g_out[WEB_OUT_SIZE];
 static int  g_out_pos = 0;
 
-// input queue: js pushes lines, web_read_line consumes them
+// input queue: js pushes lines, web_read_line/web_read_char consume them
 static char g_input_queue[INPUT_QUEUE_MAX][INPUT_LINE_MAX];
 static int  g_input_head = 0;
 static int  g_input_tail = 0;
 static bool g_reading    = false;
+static bool g_choosing   = false; // true while waiting for ; / Enter between solutions
 
 static void web_write_str(trilog_ctx_t *ctx, const char *str, void *ud) {
   (void)ctx; (void)ud;
@@ -62,8 +63,25 @@ void trilog_web_push_line(const char *line) {
   g_input_tail = next;
 }
 
+// consume first char of the next queued entry; used during interactive answer prompt
+static int web_read_char(trilog_ctx_t *ctx, void *ud) {
+  (void)ctx; (void)ud;
+  g_choosing = true;
+  g_reading  = true;
+  while (g_input_head == g_input_tail)
+    emscripten_sleep(10);
+  g_reading  = false;
+  g_choosing = false;
+  int c = (unsigned char)g_input_queue[g_input_head][0];
+  g_input_head = (g_input_head + 1) % INPUT_QUEUE_MAX;
+  return c ? c : '\n';
+}
+
 EMSCRIPTEN_KEEPALIVE
-int trilog_web_is_reading(void) { return g_reading ? 1 : 0; }
+int trilog_web_is_reading(void)   { return g_reading   ? 1 : 0; }
+
+EMSCRIPTEN_KEEPALIVE
+int trilog_web_is_choosing(void)  { return g_choosing  ? 1 : 0; }
 
 // return and clear any buffered output produced so far (usable while blocked).
 EMSCRIPTEN_KEEPALIVE
@@ -88,6 +106,7 @@ void trilog_web_init(void) {
   hooks.writef     = web_writef;
   hooks.writef_err = web_writef;
   hooks.read_line  = web_read_line;
+  hooks.read_char  = web_read_char;
   io_hooks_set(g_ctx, &hooks);
 
   trilog_load_file(g_ctx, "/core.pl");
@@ -163,8 +182,7 @@ const char *trilog_web_eval(const char *query) {
   char buf[4096];
   strncpy(buf, query, sizeof(buf) - 1);
   buf[sizeof(buf) - 1] = '\0';
-  char *qptr = (strncmp(buf, "?-", 2) == 0) ? buf + 2 : buf;
 
-  toplevel_query(g_ctx, qptr);
+  exec_query_interactive(g_ctx, buf);
   return g_out;
 }
