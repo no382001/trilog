@@ -57,9 +57,7 @@ static void bcap_end(trilog_ctx_t *ctx, bcap_t *c) { ctx->io_hooks = c->saved; }
 //****
 
 static term_t *make_stream_term(trilog_ctx_t *ctx, int id) {
-  char buf[16];
-  snprintf(buf, sizeof(buf), "%d", id);
-  term_t *n = make_const(ctx, buf);
+  term_t *n = make_int(ctx, id);
   term_t *args[1] = {n};
   return make_func(ctx, "$stream", args, 1);
 }

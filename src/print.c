@@ -29,14 +29,16 @@ static bool needs_quoting(const char *name) {
   if (strcmp(name, "[]") == 0 || strcmp(name, "{}") == 0 ||
       strcmp(name, "!") == 0)
     return false;
-  // negative integers don't need quoting
-  if (name[0] == '-') {
-    const char *p = name + 1;
+  // atoms that look like integers need quoting (e.g. '1', '-42')
+  {
+    const char *p = name;
+    if (*p == '-')
+      p++;
     if (*p >= '0' && *p <= '9') {
       while (*p >= '0' && *p <= '9')
         p++;
       if (*p == '\0')
-        return false;
+        return true;
     }
   }
   // starts with uppercase or underscore → variable-like, must quote
@@ -95,9 +97,7 @@ void print_term(trilog_ctx_t *ctx, term_t *t, env_t *env, bool quoted) {
     bool is_chars = true;
     while (is_cons(scan)) {
       term_t *h = deref(env, scan->args[0]);
-      int dummy;
-      if (h->type != CONST || !h->name || strlen(h->name) != 1 ||
-          term_as_int(h, &dummy)) {
+      if (h->type != CONST || !h->name || strlen(h->name) != 1) {
         is_chars = false;
         break;
       }
@@ -176,7 +176,8 @@ void print_term(trilog_ctx_t *ctx, term_t *t, env_t *env, bool quoted) {
     return;
   }
 
-  print_atom(ctx, t->name, quoted);
+  // INT terms always print unquoted (they are integer literals, not atoms)
+  print_atom(ctx, t->name, quoted && t->type != INT);
   if (t->type == FUNC && t->arity > 0) {
     io_write_str(ctx, "(");
     for (int i = 0; i < t->arity; i++) {

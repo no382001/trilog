@@ -125,9 +125,7 @@ builtin_result_t builtin_is(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   int result;
   if (!eval_arith(ctx, goal->args[1], env, &result, "is/2"))
     return ctx->has_runtime_error ? BUILTIN_ERROR : BUILTIN_FAIL;
-  char buf[32];
-  snprintf(buf, sizeof(buf), "%d", result);
-  term_t *result_term = make_const(ctx, buf);
+  term_t *result_term = make_int(ctx, result);
   return unify(ctx, goal->args[0], result_term, env) ? BUILTIN_OK
                                                      : BUILTIN_FAIL;
 }
@@ -159,16 +157,13 @@ builtin_result_t builtin_succ(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   bool s_int = term_as_int(s, &is_val);
 
   if (x_int) {
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%d", ix + 1);
-    return unify(ctx, goal->args[1], make_const(ctx, buf), env) ? BUILTIN_OK
-                                                                : BUILTIN_FAIL;
+    return unify(ctx, goal->args[1], make_int(ctx, ix + 1), env) ? BUILTIN_OK
+                                                                 : BUILTIN_FAIL;
   }
   if (s_int && is_val > 0) {
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%d", is_val - 1);
-    return unify(ctx, goal->args[0], make_const(ctx, buf), env) ? BUILTIN_OK
-                                                                : BUILTIN_FAIL;
+    return unify(ctx, goal->args[0], make_int(ctx, is_val - 1), env)
+               ? BUILTIN_OK
+               : BUILTIN_FAIL;
   }
   return BUILTIN_FAIL;
 }
@@ -182,21 +177,20 @@ builtin_result_t builtin_plus(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
   bool b_int = term_as_int(b, &ib);
   bool c_int = term_as_int(c, &ic);
 
-  char buf[32];
   if (a_int && b_int) {
-    snprintf(buf, sizeof(buf), "%d", ia + ib);
-    return unify(ctx, goal->args[2], make_const(ctx, buf), env) ? BUILTIN_OK
-                                                                : BUILTIN_FAIL;
+    return unify(ctx, goal->args[2], make_int(ctx, ia + ib), env)
+               ? BUILTIN_OK
+               : BUILTIN_FAIL;
   }
   if (a_int && c_int) {
-    snprintf(buf, sizeof(buf), "%d", ic - ia);
-    return unify(ctx, goal->args[1], make_const(ctx, buf), env) ? BUILTIN_OK
-                                                                : BUILTIN_FAIL;
+    return unify(ctx, goal->args[1], make_int(ctx, ic - ia), env)
+               ? BUILTIN_OK
+               : BUILTIN_FAIL;
   }
   if (b_int && c_int) {
-    snprintf(buf, sizeof(buf), "%d", ic - ib);
-    return unify(ctx, goal->args[0], make_const(ctx, buf), env) ? BUILTIN_OK
-                                                                : BUILTIN_FAIL;
+    return unify(ctx, goal->args[0], make_int(ctx, ic - ib), env)
+               ? BUILTIN_OK
+               : BUILTIN_FAIL;
   }
   return BUILTIN_FAIL;
 }

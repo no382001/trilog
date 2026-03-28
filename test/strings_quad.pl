@@ -238,3 +238,26 @@ smsg("goodbye").
 
 ?- member(z, "hello").
    false.
+
+% --- digit chars (issue #14) ---
+
+?- "1" = [Ch].
+   Ch = '1'.
+
+?- "1a" = [Ch1, Ch2].
+   Ch1 = '1', Ch2 = a.
+
+?- "123" = [A, B, C].
+   A = '1', B = '2', C = '3'.
+
+?- X = "123".
+   X = "123".
+
+?- [H|_] = "1b".
+   H = '1'.
+
+?- findall(X, member(X, "1a2"), Cs).
+   Cs = "1a2".
+
+?- length("42", N).
+   N = 2.

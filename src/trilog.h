@@ -174,7 +174,7 @@ typedef struct {
 //* term representation
 //****
 
-typedef enum { CONST, VAR, FUNC } term_type;
+typedef enum { CONST, VAR, FUNC, INT } term_type;
 
 // escape sequence table used by both the parser (decode) and printer (encode).
 // each entry maps a raw byte to its two-character escape sequence.
@@ -353,7 +353,7 @@ static inline bool is_nil(const term_t *t) {
 }
 
 static inline bool term_as_int(const term_t *t, int *out) {
-  if (!t || t->type != CONST)
+  if (!t || t->type != INT)
     return false;
   const char *p = t->name;
   int sign = 1;
@@ -402,6 +402,7 @@ void debug_term_raw(trilog_ctx_t *ctx, term_t *t);
 term_t *make_term(trilog_ctx_t *ctx, term_type type, const char *name,
                   term_t **args, int arity);
 term_t *make_const(trilog_ctx_t *ctx, const char *name);
+term_t *make_int(trilog_ctx_t *ctx, int n);
 // for var terms, arity field stores the var_id (unique integer per variable).
 // name may be null for internal renamed variables (not shown in output).
 term_t *make_var(trilog_ctx_t *ctx, const char *name, int var_id);

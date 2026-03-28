@@ -605,6 +605,29 @@ static term_t *parse_primary(trilog_ctx_t *ctx) {
     return make_var(ctx, iname, vid);
   }
   debug(ctx, "DEBUG parse_primary: constant %s\n", name);
+  // integer literal (digits only, or minus + digits)
+  {
+    const char *p = name;
+    if (*p == '-')
+      p++;
+    if (*p >= '0' && *p <= '9') {
+      const char *q = p;
+      while (*q >= '0' && *q <= '9')
+        q++;
+      if (*q == '\0') {
+        int v = 0;
+        const char *pp = name;
+        int sign = 1;
+        if (*pp == '-') {
+          sign = -1;
+          pp++;
+        }
+        while (*pp)
+          v = v * 10 + (*pp++ - '0');
+        return make_int(ctx, sign * v);
+      }
+    }
+  }
   return make_const(ctx, name);
 }
 

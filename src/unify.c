@@ -34,7 +34,9 @@ bool unify(trilog_ctx_t *ctx, term_t *a, term_t *b, env_t *env) {
     return true;
   }
 
-  if (a->type == CONST && b->type == CONST) {
+  if ((a->type == CONST || a->type == INT) &&
+      (b->type == CONST || b->type == INT)) {
+    // INT and CONST with same name unify (e.g. '1' unifies with 1)
     bool result = a->name == b->name;
     debug(ctx, "  -> %s (const=%s vs %s)\n", result ? "OK" : "FAIL", a->name,
           b->name);

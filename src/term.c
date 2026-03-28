@@ -75,6 +75,17 @@ term_t *make_const(trilog_ctx_t *ctx, const char *name) {
   return t;
 }
 
+term_t *make_int(trilog_ctx_t *ctx, int n) {
+  char buf[32];
+  snprintf(buf, sizeof(buf), "%d", n);
+  term_t *t = term_alloc(ctx, sizeof(term_t));
+  if (!t)
+    return NULL;
+  t->type = INT;
+  t->name = intern_name(ctx, buf);
+  return t;
+}
+
 term_t *make_var(trilog_ctx_t *ctx, const char *name, int var_id) {
   term_t *t = term_alloc(ctx, sizeof(term_t)); // no args
   if (!t)
@@ -107,7 +118,8 @@ term_t *make_term(trilog_ctx_t *ctx, term_type type, const char *name,
   assert(ctx != NULL && "Context is NULL");
   assert(name != NULL && "Term name cannot be NULL");
   assert(arity >= 0 && arity <= MAX_ARGS && "Invalid arity");
-  assert((type == CONST || type == VAR || type == FUNC) && "Invalid term type");
+  assert((type == CONST || type == VAR || type == FUNC || type == INT) &&
+         "Invalid term type");
 
   if (type == CONST)
     return make_const(ctx, name);
@@ -123,7 +135,7 @@ term_t *make_term(trilog_ctx_t *ctx, term_type type, const char *name,
 term_t *rename_vars_mapped(trilog_ctx_t *ctx, term_t *t, var_id_map_t *map) {
   if (!t)
     return NULL;
-  if (t->type == CONST)
+  if (t->type == CONST || t->type == INT)
     return t;
   if (t->type == VAR) {
     int old_id = t->arity;
@@ -160,6 +172,11 @@ static term_t *copy_term_into_pool(trilog_ctx_t *ctx, term_t *t) {
   switch (t->type) {
   case CONST:
     return make_const(ctx, t->name);
+  case INT: {
+    int v = 0;
+    term_as_int(t, &v);
+    return make_int(ctx, v);
+  }
   case VAR:
     return make_var(ctx, t->name, t->arity);
   case FUNC: {

@@ -231,16 +231,13 @@ A:
       throw_instantiation_error(ctx, "call/1");
       return false;
     }
-    if (arg->type != FUNC && arg->type != CONST) {
+    if (arg->type == INT) {
       throw_type_error(ctx, "callable", arg, "call/1");
       return false;
     }
-    if (arg->type == CONST) {
-      int dummy;
-      if (term_as_int(arg, &dummy)) {
-        throw_type_error(ctx, "callable", arg, "call/1");
-        return false;
-      }
+    if (arg->type != FUNC && arg->type != CONST) {
+      throw_type_error(ctx, "callable", arg, "call/1");
+      return false;
     }
     goal_stmt_t new_cn = goals_alloc(ctx, cn.count);
     new_cn.goals[new_cn.count++] = arg;
