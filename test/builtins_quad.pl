@@ -268,6 +268,8 @@ bfoo(c).
 ?- findall(X, bfoo(X), L).
    L = "abc".
 
+:- dynamic(bar/1).
+
 ?- findall(X, bar(X), L).
    L = [].
 

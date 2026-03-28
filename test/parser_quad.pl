@@ -2,6 +2,8 @@
 
 % --- valid terms ---
 
+:- dynamic(pfoo_atom/0).
+
 ?- pfoo_atom.
    false.
 
