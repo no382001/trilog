@@ -29,5 +29,7 @@ once(Goal) :- call(Goal), !.
 repeat.
 repeat :- repeat.
 
+false :- fail.
+
 forall_fail(Cond, Action) :- call(Cond), \+ call(Action).
 forall(Cond, Action) :- \+ forall_fail(Cond, Action).
