@@ -156,7 +156,7 @@ Only set the callbacks you need; unset ones fall back to the defaults (`stdio`/`
 Tests use the [quad format](https://web.liminal.cafe/~byakuren/flowlog/docs/QUAD_TESTS.html) — plain `.pl` files containing queries and their expected output:
 
 ```prolog
-?- member(X, [a, b, c]).
+?- member(X, "abc").
    X = a
 ;  X = b
 ;  X = c.
