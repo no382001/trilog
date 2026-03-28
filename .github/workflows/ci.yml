@@ -8,7 +8,6 @@ on:
 permissions:
   contents: read
   actions: read
-  checks: write
 
 jobs:
   build:
@@ -39,7 +38,6 @@ jobs:
     permissions:
       contents: read
       actions: read
-      checks: write
     steps:
       - name: checkout code
         uses: actions/checkout@v4
@@ -54,14 +52,12 @@ jobs:
           chmod +x ./trilog
           make quad-junit
 
-      - name: publish test results
-        uses: dorny/test-reporter@v1
+      - name: upload test results
+        uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Quad Tests
+          name: test-results
           path: _build/test-results/*.xml
-          reporter: java-junit
-          fail-on-error: false
 
   deploy:
     runs-on: ubuntu-latest
