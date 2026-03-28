@@ -23,10 +23,10 @@
    L = [3, 2, 1].
 
 ?- reverse([a, b], [c, d], L).
-   L = [b, a, c, d].
+   L = "bacd".
 
 ?- reverse([x], [], L).
-   L = [x].
+   L = "x".
 
 % --- member/2 (from core.pl) ---
 
@@ -48,10 +48,10 @@
 % --- l_skip_spaces/2 ---
 
 ?- l_skip_spaces([' ', ' ', a, b], R).
-   R = [a, b].
+   R = "ab".
 
 ?- l_skip_spaces([a, b], R).
-   R = [a, b].
+   R = "ab".
 
 ?- l_skip_spaces([], R).
    R = [].
@@ -79,13 +79,13 @@
 % --- l_collect_to/4 ---
 
 ?- l_collect_to([a, b, c], c, Acc, Tail).
-   Acc = [a, b], Tail = [].
+   Acc = "ab", Tail = [].
 
 ?- l_collect_to([a, b, c, d, e], c, Acc, Tail).
-   Acc = [a, b], Tail = [d, e].
+   Acc = "ab", Tail = "de".
 
 ?- l_collect_to([c, d], c, Acc, Tail).
-   Acc = [], Tail = [d].
+   Acc = [], Tail = "d".
 
 ?- l_collect_to([], c, Acc, Tail).
    Acc = [], Tail = [].
@@ -320,16 +320,16 @@
 :- l_set(command, [f]).
 
 ?- l_continuation([], X).
-   X = [f].
+   X = "f".
 
 % Non-empty input stores new command
 ?- l_continuation([b], X).
-   X = [b].
+   X = "b".
 
 ?- l_value(command, C).
-   C = [b].
+   C = "b".
 
 % ===== l_listing (line ordering assembly) =====
 
 ?- reverse([b, a, top], [c], [_|L3]), !.
-   L3 = [a, b, c].
+   L3 = "abc".

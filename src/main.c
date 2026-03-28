@@ -39,7 +39,10 @@ static void try_load_core(trilog_ctx_t *ctx, const char *argv0) {
 //* terminal and usage
 //****
 
-static int read_key(void) {
+// raw single-keypress for interactive solution prompting
+static int read_key_hook(trilog_ctx_t *ctx, void *ud) {
+  (void)ctx;
+  (void)ud;
   struct termios old, raw;
   tcgetattr(STDIN_FILENO, &old);
   raw = old;
@@ -68,51 +71,6 @@ static void print_usage(trilog_ctx_t *ctx, const char *prog) {
   io_writef_err(ctx, "  halt.         Exit the interpreter\n");
 }
 
-//****
-//* interactive query handling
-//****
-
-typedef struct {
-  bool interactive;
-  bool want_more;
-  bool all;
-  toplevel_state_t base;
-} interactive_state_t;
-
-static bool interactive_cb(trilog_ctx_t *ctx, env_t *env, void *ud,
-                           bool has_more) {
-  interactive_state_t *st = ud;
-  st->want_more = false;
-
-  if (!st->interactive || !has_more || st->all)
-    return toplevel_emit_all_cb(ctx, env, &st->base, has_more);
-
-  // interactive: print answer, then wait for keypress
-  io_write_str(ctx, st->base.first ? "   " : ";  ");
-  st->base.first = false;
-  print_bindings(ctx, env);
-
-  int c = read_key();
-  st->want_more = (c == ';' || c == 'a' || c == ' ');
-  st->all = (c == 'a');
-  if (!st->want_more) {
-    io_write_str(ctx, ".\n");
-    st->base.done = true;
-  }
-  return st->want_more;
-}
-
-static void exec_query(trilog_ctx_t *ctx, char *query, bool interactive) {
-  interactive_state_t st = {.interactive = interactive,
-                            .base = {.first = true}};
-  bool found = trilog_exec_query_multi(ctx, query, interactive_cb, &st);
-  if (!ctx->has_runtime_error && (!found || st.want_more))
-    io_write_str(ctx, "   false.\n");
-  else if (found && !st.base.done)
-    io_write_str(ctx, ".\n");
-  ctx->has_runtime_error = false;
-}
-
 static void process_line(trilog_ctx_t *ctx, char *line, bool *should_exit,
                          bool interactive) {
   line[strcspn(line, "\n")] = 0;
@@ -133,8 +91,10 @@ static void process_line(trilog_ctx_t *ctx, char *line, bool *should_exit,
   parse_error_clear(ctx);
   ctx->input_line++;
 
-  char *query = (strncmp(line, "?-", 2) == 0) ? line + 2 : line;
-  exec_query(ctx, query, interactive);
+  if (interactive)
+    exec_query_interactive(ctx, line);
+  else
+    toplevel_query(ctx, (strncmp(line, "?-", 2) == 0) ? line + 2 : line);
 }
 
 static bool load_file(trilog_ctx_t *ctx, const char *filename) {
@@ -154,6 +114,12 @@ int main(int argc, char *argv[]) {
   trilog_ctx_init(ctx, TERM_POOL_BYTES);
 
   io_hooks_init_default(ctx);
+
+  // raw single-keypress for interactive solution prompting
+  io_hooks_t hooks = {0};
+  hooks.read_char = read_key_hook;
+  io_hooks_set(ctx, &hooks);
+
   try_load_core(ctx, argv[0]);
 
   const char *input_file = NULL;

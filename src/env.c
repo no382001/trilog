@@ -55,6 +55,11 @@ static term_t *copy_to_perm(trilog_ctx_t *ctx, term_t *t) {
   switch (t->type) {
   case CONST:
     return make_const(ctx, t->name);
+  case INT: {
+    int v = 0;
+    term_as_int(t, &v);
+    return make_int(ctx, v);
+  }
   case VAR:
     return make_var(ctx, t->name, t->arity);
   case FUNC: {

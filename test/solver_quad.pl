@@ -15,7 +15,7 @@
    X = [1, 2, 3, 4].
 
 ?- append([a], [b], X).
-   X = [a, b].
+   X = "ab".
 
 ?- append([1, 2], [3], [1, 2, 3]).
    true.
@@ -183,10 +183,10 @@ saboth :- safoo3(_), safoo3(_).
    L = [1, 2, 3].
 
 ?- findall(_X, member(_X, [a]), L).
-   L = [a].
+   L = "a".
 
 ?- findall(_X, member(_X, [a, b, c, d, e]), L).
-   L = [a, b, c, d, e].
+   L = "abcde".
 
 % findall through call/1 indirection
 ?- findall(_X, call(member(_X, [1, 2, 3])), L).

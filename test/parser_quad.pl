@@ -2,6 +2,8 @@
 
 % --- valid terms ---
 
+:- dynamic(pfoo_atom/0).
+
 ?- pfoo_atom.
    false.
 
@@ -78,7 +80,7 @@ pfl5([1]).
 pfnl([[a, b], [c]]).
 
 ?- pfnl([[a, X], Y]).
-   X = b, Y = [c].
+   X = b, Y = "c".
 
 % --- clauses ---
 

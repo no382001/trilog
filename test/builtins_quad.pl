@@ -79,7 +79,7 @@ bpair(3, 4).
    error(type_error(evaluable, foo/0)).
 
 ?- X is "hello".
-   error(type_error(evaluable, []/0)).
+   error(type_error(evaluable, h/0)).
 
 % --- comparison: less than ---
 
@@ -266,7 +266,9 @@ bfoo(b).
 bfoo(c).
 
 ?- findall(X, bfoo(X), L).
-   L = [a, b, c].
+   L = "abc".
+
+:- dynamic(bar/1).
 
 ?- findall(X, bar(X), L).
    L = [].
@@ -283,10 +285,10 @@ bpair2(2, b).
 bpair2(3, c).
 
 ?- findall(Y, bpair2(X, Y), L).
-   L = [a, b, c].
+   L = "abc".
 
 ?- findall(x, bfoo(X), L).
-   L = [x, x, x].
+   L = "xxx".
 
 bedge(a, b).
 bedge(b, c).
@@ -314,12 +316,12 @@ bitem(b).
 ball_items(L) :- findall(X, bitem(X), L).
 
 ?- ball_items(L).
-   L = [a, b].
+   L = "ab".
 
 % --- bagof basic ---
 
 ?- bagof(X, bfoo(X), L).
-   L = [a, b, c].
+   L = "abc".
 
 ?- bagof(X, bar(X), L).
    false.
@@ -331,7 +333,7 @@ bpair3(1, x).
 bpair3(2, y).
 
 ?- bagof(B, bpair3(A, B), L).
-   L = [x, y].
+   L = "xy".
 
 % --- nl/0 ---
 
@@ -568,3 +570,29 @@ bcapply(G) :- call(G).
 
 ?- X = hello /* world */.
    X = hello.
+
+% --- double_quotes flag ---
+
+?- current_prolog_flag(double_quotes, V).
+   V = chars.
+
+% "abc" parses as char list [a,b,c]
+?- X = "abc".
+   X = "abc".
+
+?- "abc" = [a, b, c].
+   true.
+
+?- "hello" = [h, e, l, l, o].
+   true.
+
+% char list prints as string
+?- findall(X, member(X, "abc"), L).
+   L = "abc".
+
+% double-quoted string is a proper list
+?- is_list("abc").
+   true.
+
+?- length("abc", N).
+   N = 3.

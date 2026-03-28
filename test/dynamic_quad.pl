@@ -46,13 +46,13 @@
    true.
 
 ?- findall(V, scratch(V), L).
-   L = [x, y, z].
+   L = "xyz".
 
 ?- retract(scratch(y)).
    true.
 
 ?- findall(V, scratch(V), L).
-   L = [x, z].
+   L = "xz".
 
 ?- retractall(scratch(_)).
    true.
@@ -95,13 +95,13 @@
    true.
 
 ?- findall(X, dyn_lifted(X), L).
-   L = [a, b].
+   L = "ab".
 
 ?- retract(dyn_lifted(a)).
    true.
 
 ?- findall(X, dyn_lifted(X), L).
-   L = [b].
+   L = "b".
 
 ?- retractall(dyn_lifted(_)).
    true.
@@ -152,7 +152,7 @@ loop_n(N) :-
 
 % verify core.pl predicates still work after compaction stress
 ?- append([a, b], [c], L).
-   L = [a, b, c].
+   L = "abc".
 
 ?- member(2, [1, 2, 3]).
    true.

@@ -36,9 +36,7 @@ void throw_evaluation_error(trilog_ctx_t *ctx, const char *kind,
 
 void throw_evaluable_error(trilog_ctx_t *ctx, const char *name, int arity,
                            const char *context) {
-  char arity_buf[16];
-  snprintf(arity_buf, sizeof(arity_buf), "%d", arity);
-  term_t *slash_args[2] = {make_const(ctx, name), make_const(ctx, arity_buf)};
+  term_t *slash_args[2] = {make_const(ctx, name), make_int(ctx, arity)};
   term_t *indicator = make_func(ctx, "/", slash_args, 2);
   term_t *targs[2] = {make_const(ctx, "evaluable"), indicator};
   term_t *te = make_func(ctx, "type_error", targs, 2);
@@ -64,6 +62,9 @@ void throw_existence_error(trilog_ctx_t *ctx, const char *object_type,
   term_t *eargs[2] = {make_const(ctx, object_type), object};
   term_t *ee = make_func(ctx, "existence_error", eargs, 2);
   throw_error(ctx, ee, context);
+  if (object->type == FUNC && object->arity == 2)
+    snprintf(ctx->runtime_error, MAX_ERROR_MSG, "existence_error(%s, %s/%s)",
+             object_type, object->args[0]->name, object->args[1]->name);
 }
 
 void ctx_runtime_error(trilog_ctx_t *ctx, const char *fmt, ...) {

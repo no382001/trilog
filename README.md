@@ -2,6 +2,8 @@
 
 A Prolog interpreter aiming to be embeddable, based on van Emden's ABC algorithm (hence the three/tri), written in C11.
 
+> This README is not up to date
+
 ## Contents
 
 - [Build](#build)
