@@ -6,6 +6,16 @@
 #include <stdio.h>
 #include <string.h>
 
+// Interned once here, not per call site - atom_intern is a linear scan.
+static int32_t atom_bang, atom_cut, atom_dot, atom_nil;
+
+void term_init(void) {
+  atom_bang = atom_intern("!");
+  atom_cut = atom_intern("$cut");
+  atom_dot = atom_intern(".");
+  atom_nil = atom_intern("[]");
+}
+
 static tterm_t *tt_new(ttag_t tag) {
   tterm_t *t = arena_alloc(sizeof(tterm_t));
   t->tag = tag;
@@ -53,9 +63,9 @@ size_t heap_copy(tterm_t *t, size_t *rename, size_t cut_barrier) {
       rename[t->as.slot] = heap_new_var();
     return rename[t->as.slot];
   case T_ATOM:
-    if (!strcmp(atom_name(t->as.atom_id), "!")) {
+    if (t->as.atom_id == atom_bang) {
       size_t barrier_arg[1] = {heap_new_int((int64_t)cut_barrier)};
-      return heap_new_struct(atom_intern("$cut"), 1, barrier_arg);
+      return heap_new_struct(atom_cut, 1, barrier_arg);
     }
     return heap_new_atom(t->as.atom_id);
   case T_INT:
@@ -146,8 +156,9 @@ static void print_term_ex(size_t r, int quoted, emit_fn emit) {
   case TAG_STR: {
     size_t f = heap[r].as.ptr;
     int32_t arity = heap[f].as.func.arity;
-    const char *name = atom_name(heap[f].as.func.atom_id);
-    if (arity == 2 && !strcmp(name, ".")) {
+    int32_t f_id = heap[f].as.func.atom_id;
+    const char *name = atom_name(f_id);
+    if (arity == 2 && f_id == atom_dot) {
       emit("[");
       size_t cell = r;
       for (int first = 1;; first = 0) {
@@ -156,13 +167,12 @@ static void print_term_ex(size_t r, int quoted, emit_fn emit) {
           emit(", ");
         print_term_ex(cf + 1, quoted, emit); // head
         size_t tail = heap_deref(cf + 2);
-        if (heap[tail].tag == TAG_ATOM &&
-            !strcmp(atom_name(heap[tail].as.atom_id), "[]"))
+        if (heap[tail].tag == TAG_ATOM && heap[tail].as.atom_id == atom_nil)
           break;
         if (heap[tail].tag == TAG_STR) {
           size_t tf = heap[tail].as.ptr;
           if (heap[tf].as.func.arity == 2 &&
-              !strcmp(atom_name(heap[tf].as.func.atom_id), ".")) {
+              heap[tf].as.func.atom_id == atom_dot) {
             cell = tail;
             continue;
           }

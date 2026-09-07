@@ -6,12 +6,17 @@ IO_SRCS = src/io/io.c src/io/streams.c
 SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/main.c
 HDRS = $(wildcard src/kernel/*.h) $(wildcard src/io/*.h)
 
-trilog: $(SRCS) src/kernel/*.h src/io/*.h
+trilog: format $(SRCS) src/kernel/*.h src/io/*.h
 	$(CC) $(CFLAGS) -o trilog $(SRCS)
 
-.PHONY: test clean format format-check
+.PHONY: test test-upstream clean format format-check
 test: trilog
 	bats test/
+
+test-upstream: trilog
+	@tmp=$$(mktemp); \
+	sed 's|TRILOG="./trilog"|TRILOG="$(CURDIR)/trilog"|' ../test/system.bats > $$tmp; \
+	bats $$tmp; status=$$?; rm -f $$tmp; exit $$status
 
 clean:
 	rm -f trilog

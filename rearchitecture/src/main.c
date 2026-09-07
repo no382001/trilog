@@ -2,6 +2,7 @@
 #include "io.h"
 #include "parse.h"
 #include "solve.h"
+#include "term.h"
 #include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -33,7 +34,9 @@ static void repl(void) {
 int main(int argc, char **argv) {
   io_hooks_init_default();
   heap_init();
+  term_init();
   solve_init();
+  parse_init();
 
   if (!consult_file("boot/core.pl"))
     return 1;

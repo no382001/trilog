@@ -33,35 +33,119 @@ static size_t catch_stack_push(catch_frame_t f) {
 }
 
 static int32_t atom_true, atom_comma, atom_dot, atom_nil;
+// Interned once here, not per call site - atom_intern is a linear scan.
+static int32_t atom_ruleop, atom_slash, atom_error, atom_instantiation_error,
+    atom_type_error, atom_existence_error, atom_stream, atom_end_of_file,
+    atom_uncatch, atom_cut, atom_catch, atom_throw, atom_assertz, atom_assert,
+    atom_asserta, atom_retract;
+// eval_arith operator names.
+static int32_t atom_plus, atom_minus, atom_star, atom_intdiv, atom_mod,
+    atom_min, atom_max, atom_abs, atom_sign, atom_floor, atom_ceiling,
+    atom_round, atom_truncate;
+// dispatch_builtin names.
+static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_le, atom_ge,
+    atom_arith_eq, atom_arith_neq, atom_put_code, atom_get_code, atom_get_char,
+    atom_write_raw, atom_open, atom_close, atom_consult, atom_dynamic,
+    atom_capture_start, atom_capture_stop, atom_var, atom_nonvar, atom_kw_atom,
+    atom_atomic, atom_number, atom_integer, atom_kw_float, atom_compound,
+    atom_callable, atom_functor, atom_arg, atom_univ, atom_compare,
+    atom_atom_codes, atom_char_code, atom_number_codes, atom_mode_read,
+    atom_mode_write, atom_mode_append;
 
 static size_t pending_error_ball = (size_t)-1;
 
 static size_t make_error(size_t formal) {
   size_t args[2] = {formal, heap_new_var()};
-  return heap_new_struct(atom_intern("error"), 2, args);
+  return heap_new_struct(atom_error, 2, args);
 }
 static size_t make_instantiation_error(void) {
-  return make_error(heap_new_atom(atom_intern("instantiation_error")));
+  return make_error(heap_new_atom(atom_instantiation_error));
 }
 static size_t make_type_error(const char *type, size_t culprit) {
   size_t args[2] = {heap_new_atom(atom_intern(type)), culprit};
-  return make_error(heap_new_struct(atom_intern("type_error"), 2, args));
+  return make_error(heap_new_struct(atom_type_error, 2, args));
 }
 static size_t make_existence_error_term(const char *obj_type, size_t culprit) {
   size_t args[2] = {heap_new_atom(atom_intern(obj_type)), culprit};
-  return make_error(heap_new_struct(atom_intern("existence_error"), 2, args));
+  return make_error(heap_new_struct(atom_existence_error, 2, args));
 }
 static size_t make_existence_error(const char *obj_type, int32_t pred_id,
                                    int32_t pred_arity) {
   size_t pi_args[2] = {heap_new_atom(pred_id), heap_new_int(pred_arity)};
-  return make_existence_error_term(
-      obj_type, heap_new_struct(atom_intern("/"), 2, pi_args));
+  return make_existence_error_term(obj_type,
+                                   heap_new_struct(atom_slash, 2, pi_args));
 }
 void solve_init(void) {
   atom_true = atom_intern("true");
   atom_comma = atom_intern(",");
   atom_dot = atom_intern(".");
   atom_nil = atom_intern("[]");
+  atom_ruleop = atom_intern(":-");
+  atom_slash = atom_intern("/");
+  atom_error = atom_intern("error");
+  atom_instantiation_error = atom_intern("instantiation_error");
+  atom_type_error = atom_intern("type_error");
+  atom_existence_error = atom_intern("existence_error");
+  atom_stream = atom_intern("$stream");
+  atom_end_of_file = atom_intern("end_of_file");
+  atom_uncatch = atom_intern("$uncatch");
+  atom_cut = atom_intern("$cut");
+  atom_catch = atom_intern("catch");
+  atom_throw = atom_intern("throw");
+  atom_assertz = atom_intern("assertz");
+  atom_assert = atom_intern("assert");
+  atom_asserta = atom_intern("asserta");
+  atom_retract = atom_intern("retract");
+  atom_plus = atom_intern("+");
+  atom_minus = atom_intern("-");
+  atom_star = atom_intern("*");
+  atom_intdiv = atom_intern("//");
+  atom_mod = atom_intern("mod");
+  atom_min = atom_intern("min");
+  atom_max = atom_intern("max");
+  atom_abs = atom_intern("abs");
+  atom_sign = atom_intern("sign");
+  atom_floor = atom_intern("floor");
+  atom_ceiling = atom_intern("ceiling");
+  atom_round = atom_intern("round");
+  atom_truncate = atom_intern("truncate");
+  atom_is = atom_intern("is");
+  atom_unify_op = atom_intern("=");
+  atom_lt = atom_intern("<");
+  atom_gt = atom_intern(">");
+  atom_le = atom_intern("=<");
+  atom_ge = atom_intern(">=");
+  atom_arith_eq = atom_intern("=:=");
+  atom_arith_neq = atom_intern("=\\=");
+  atom_put_code = atom_intern("put_code");
+  atom_get_code = atom_intern("get_code");
+  atom_get_char = atom_intern("get_char");
+  atom_write_raw = atom_intern("$write_raw");
+  atom_open = atom_intern("open");
+  atom_close = atom_intern("close");
+  atom_consult = atom_intern("consult");
+  atom_dynamic = atom_intern("dynamic");
+  atom_capture_start = atom_intern("$capture_start");
+  atom_capture_stop = atom_intern("$capture_stop");
+  atom_var = atom_intern("var");
+  atom_nonvar = atom_intern("nonvar");
+  atom_kw_atom = atom_intern("atom");
+  atom_atomic = atom_intern("atomic");
+  atom_number = atom_intern("number");
+  atom_integer = atom_intern("integer");
+  atom_kw_float = atom_intern("float");
+  atom_compound = atom_intern("compound");
+  atom_callable = atom_intern("callable");
+  atom_functor = atom_intern("functor");
+  atom_arg = atom_intern("arg");
+  atom_univ = atom_intern("=..");
+  atom_compare = atom_intern("compare");
+  atom_atom_codes = atom_intern("atom_codes");
+  atom_char_code = atom_intern("char_code");
+  atom_number_codes = atom_intern("number_codes");
+  atom_mode_read = atom_intern("read");
+  atom_mode_write = atom_intern("write");
+  atom_mode_append = atom_intern("append");
 }
 
 static idx_key_t key_of_template(tterm_t *head) {
@@ -205,14 +289,16 @@ static int32_t dynamic_count = 0, dynamic_cap = 0;
 static void dynamic_declare(int32_t pred_id, int32_t pred_arity) {
   if (dynamic_count >= dynamic_cap) {
     dynamic_cap = dynamic_cap ? dynamic_cap * 2 : 8;
-    dynamic_decls = realloc(dynamic_decls, (size_t)dynamic_cap * sizeof(dyn_decl_t));
+    dynamic_decls =
+        realloc(dynamic_decls, (size_t)dynamic_cap * sizeof(dyn_decl_t));
   }
   dynamic_decls[dynamic_count++] = (dyn_decl_t){pred_id, pred_arity};
 }
 
 static int is_dynamic(int32_t pred_id, int32_t pred_arity) {
   for (int32_t i = 0; i < dynamic_count; i++)
-    if (dynamic_decls[i].pred_id == pred_id && dynamic_decls[i].pred_arity == pred_arity)
+    if (dynamic_decls[i].pred_id == pred_id &&
+        dynamic_decls[i].pred_arity == pred_arity)
       return 1;
   return 0;
 }
@@ -280,8 +366,7 @@ static void split_clause(size_t clause, size_t *head_out, size_t *body_out,
   size_t d = heap_deref(clause);
   if (heap[d].tag == TAG_STR) {
     size_t f = heap[d].as.ptr;
-    if (!strcmp(atom_name(heap[f].as.func.atom_id), ":-") &&
-        heap[f].as.func.arity == 2) {
+    if (heap[f].as.func.atom_id == atom_ruleop && heap[f].as.func.arity == 2) {
       *head_out = heap_deref(f + 1);
       *nbody_out =
           heap_flatten_conj(heap_deref(f + 2), body_out, MAX_ASSERT_GOALS);
@@ -297,8 +382,7 @@ static void split_clause_whole(size_t clause, size_t *head_out,
   size_t d = heap_deref(clause);
   if (heap[d].tag == TAG_STR) {
     size_t f = heap[d].as.ptr;
-    if (!strcmp(atom_name(heap[f].as.func.atom_id), ":-") &&
-        heap[f].as.func.arity == 2) {
+    if (heap[f].as.func.atom_id == atom_ruleop && heap[f].as.func.arity == 2) {
       *head_out = heap_deref(f + 1);
       *body_out = heap_deref(f + 2);
       return;
@@ -320,50 +404,50 @@ static int64_t eval_arith(size_t r, int *ok) {
   if (heap[r].tag == TAG_STR) {
     size_t f = heap[r].as.ptr;
     int32_t arity = heap[f].as.func.arity;
-    const char *name = atom_name(heap[f].as.func.atom_id);
+    int32_t id = heap[f].as.func.atom_id;
     if (arity == 2) {
       int64_t a = eval_arith(f + 1, ok);
       int64_t b = *ok ? eval_arith(f + 2, ok) : 0;
       if (!*ok)
         return 0;
-      if (!strcmp(name, "+"))
+      if (id == atom_plus)
         return a + b;
-      if (!strcmp(name, "-"))
+      if (id == atom_minus)
         return a - b;
-      if (!strcmp(name, "*"))
+      if (id == atom_star)
         return a * b;
-      if (!strcmp(name, "/") || !strcmp(name, "//") || !strcmp(name, "mod")) {
+      if (id == atom_slash || id == atom_intdiv || id == atom_mod) {
         if (b == 0) {
           *ok = 0;
           return 0;
         } // would be a C-level SIGFPE otherwise
-        if (!strcmp(name, "mod"))
+        if (id == atom_mod)
           return ((a % b) + b) % b; // ISO: result takes the sign of the divisor
         return a / b;
       }
-      if (!strcmp(name, "min"))
+      if (id == atom_min)
         return a < b ? a : b;
-      if (!strcmp(name, "max"))
+      if (id == atom_max)
         return a > b ? a : b;
     } else if (arity == 1) {
       int64_t a = eval_arith(f + 1, ok);
       if (!*ok)
         return 0;
-      if (!strcmp(name, "-"))
+      if (id == atom_minus)
         return -a;
-      if (!strcmp(name, "+"))
+      if (id == atom_plus)
         return a;
-      if (!strcmp(name, "abs"))
+      if (id == atom_abs)
         return a < 0 ? -a : a;
-      if (!strcmp(name, "sign"))
+      if (id == atom_sign)
         return (a > 0) - (a < 0);
-      if (!strcmp(name, "floor") || !strcmp(name, "ceiling") ||
-          !strcmp(name, "round") || !strcmp(name, "truncate"))
+      if (id == atom_floor || id == atom_ceiling || id == atom_round ||
+          id == atom_truncate)
         return a;
     }
     pending_error_ball = make_type_error(
         "evaluable",
-        heap_new_struct(atom_intern("/"), 2,
+        heap_new_struct(atom_slash, 2,
                         (size_t[2]){heap_new_atom(heap[f].as.func.atom_id),
                                     heap_new_int(arity)}));
     *ok = 0;
@@ -373,7 +457,7 @@ static int64_t eval_arith(size_t r, int *ok) {
     pending_error_ball = make_type_error(
         "evaluable",
         heap_new_struct(
-            atom_intern("/"), 2,
+            atom_slash, 2,
             (size_t[2]){heap_new_atom(heap[r].as.atom_id), heap_new_int(0)}));
     *ok = 0;
     return 0;
@@ -439,19 +523,22 @@ static int term_compare(size_t a, size_t b) {
     return av < bv ? -1 : (av > bv ? 1 : 0);
   }
   case 2: {
+    if (heap[a].as.atom_id == heap[b].as.atom_id)
+      return 0;
     int c =
         strcmp(atom_name(heap[a].as.atom_id), atom_name(heap[b].as.atom_id));
-    return c < 0 ? -1 : (c > 0 ? 1 : 0);
+    return c < 0 ? -1 : 1;
   }
   default: {
     size_t af = heap[a].as.ptr, bf = heap[b].as.ptr;
     int32_t aa = heap[af].as.func.arity, ba = heap[bf].as.func.arity;
     if (aa != ba)
       return aa < ba ? -1 : 1;
-    int nc = strcmp(atom_name(heap[af].as.func.atom_id),
-                    atom_name(heap[bf].as.func.atom_id));
-    if (nc != 0)
+    int32_t af_id = heap[af].as.func.atom_id, bf_id = heap[bf].as.func.atom_id;
+    if (af_id != bf_id) {
+      int nc = strcmp(atom_name(af_id), atom_name(bf_id));
       return nc < 0 ? -1 : 1;
+    }
     for (int32_t i = 1; i <= aa; i++) {
       int c = term_compare(af + i, bf + i);
       if (c != 0)
@@ -467,8 +554,7 @@ static int resolve_stream_id(size_t arg, int *id_out) {
   if (heap[s].tag != TAG_STR)
     return 0;
   size_t sf = heap[s].as.ptr;
-  if (heap[sf].as.func.atom_id != atom_intern("$stream") ||
-      heap[sf].as.func.arity != 1)
+  if (heap[sf].as.func.atom_id != atom_stream || heap[sf].as.func.arity != 1)
     return 0;
   size_t idv = heap_deref(sf + 1);
   if (heap[idv].tag != TAG_INT)
@@ -528,31 +614,31 @@ static int dispatch_builtin(size_t goal, int *ok) {
   size_t g = heap_deref(goal);
   size_t f = 0;
   int32_t arity;
-  const char *name;
+  int32_t id;
   if (heap[g].tag == TAG_ATOM) {
     arity = 0;
-    name = atom_name(heap[g].as.atom_id);
+    id = heap[g].as.atom_id;
   } else if (heap[g].tag == TAG_STR) {
     f = heap[g].as.ptr;
     arity = heap[f].as.func.arity;
-    name = atom_name(heap[f].as.func.atom_id);
+    id = heap[f].as.func.atom_id;
   } else {
     return 0;
   }
 
-  if (arity == 2 && !strcmp(name, "is")) {
+  if (arity == 2 && id == atom_is) {
     int aok = 1;
     int64_t v = eval_arith(f + 2, &aok);
     *ok = aok && unify(f + 1, heap_new_int(v));
     return 1;
   }
-  if (arity == 2 && !strcmp(name, "=")) {
+  if (arity == 2 && id == atom_unify_op) {
     *ok = unify(f + 1, f + 2);
     return 1;
   }
   if (arity == 2 &&
-      (!strcmp(name, "<") || !strcmp(name, ">") || !strcmp(name, "=<") ||
-       !strcmp(name, ">=") || !strcmp(name, "=:=") || !strcmp(name, "=\\="))) {
+      (id == atom_lt || id == atom_gt || id == atom_le || id == atom_ge ||
+       id == atom_arith_eq || id == atom_arith_neq)) {
     int aok = 1;
     int64_t a = eval_arith(f + 1, &aok);
     int64_t b = aok ? eval_arith(f + 2, &aok) : 0;
@@ -560,37 +646,37 @@ static int dispatch_builtin(size_t goal, int *ok) {
       *ok = 0;
       return 1;
     }
-    if (!strcmp(name, "<"))
+    if (id == atom_lt)
       *ok = a < b;
-    else if (!strcmp(name, ">"))
+    else if (id == atom_gt)
       *ok = a > b;
-    else if (!strcmp(name, "=<"))
+    else if (id == atom_le)
       *ok = a <= b;
-    else if (!strcmp(name, ">="))
+    else if (id == atom_ge)
       *ok = a >= b;
-    else if (!strcmp(name, "=:="))
+    else if (id == atom_arith_eq)
       *ok = a == b;
     else
       *ok = a != b;
     return 1;
   }
-  if (arity == 1 && !strcmp(name, "put_code")) {
+  if (arity == 1 && id == atom_put_code) {
     size_t a = heap_deref(f + 1);
     char c[2] = {(char)heap[a].as.ival, '\0'};
     io_write_str(c);
     *ok = 1;
     return 1;
   }
-  if (arity == 1 && !strcmp(name, "get_code")) {
+  if (arity == 1 && id == atom_get_code) {
     int c = io_read_char();
     *ok = unify(f + 1, heap_new_int(c == -1 ? -1 : c));
     return 1;
   }
-  if (arity == 1 && !strcmp(name, "get_char")) {
+  if (arity == 1 && id == atom_get_char) {
     int c = io_read_char();
     size_t r;
     if (c == -1)
-      r = heap_new_atom(atom_intern("end_of_file"));
+      r = heap_new_atom(atom_end_of_file);
     else {
       char buf[2] = {(char)c, '\0'};
       r = heap_new_atom(atom_intern(buf));
@@ -598,7 +684,7 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = unify(f + 1, r);
     return 1;
   }
-  if (arity == 3 && !strcmp(name, "$write_raw")) {
+  if (arity == 3 && id == atom_write_raw) {
     size_t target = heap_deref(f + 1);
     int quoted = heap[heap_deref(f + 3)].as.ival != 0;
     int kind;
@@ -618,32 +704,32 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = 1;
     return 1;
   }
-  if (arity == 3 && !strcmp(name, "open")) {
+  if (arity == 3 && id == atom_open) {
     size_t path_d = heap_deref(f + 1);
     size_t mode_d = heap_deref(f + 2);
     if (heap[path_d].tag != TAG_ATOM || heap[mode_d].tag != TAG_ATOM) {
       *ok = 0;
       return 1;
     }
-    const char *mn = atom_name(heap[mode_d].as.atom_id);
-    const char *fmode = !strcmp(mn, "read")     ? "r"
-                        : !strcmp(mn, "write")  ? "w"
-                        : !strcmp(mn, "append") ? "a"
-                                                : NULL;
+    int32_t mode_id = heap[mode_d].as.atom_id;
+    const char *fmode = mode_id == atom_mode_read     ? "r"
+                        : mode_id == atom_mode_write  ? "w"
+                        : mode_id == atom_mode_append ? "a"
+                                                      : NULL;
     if (!fmode) {
       *ok = 0;
       return 1;
     }
-    int id = stream_open(atom_name(heap[path_d].as.atom_id), fmode);
-    if (id < 0) {
+    int stream_id = stream_open(atom_name(heap[path_d].as.atom_id), fmode);
+    if (stream_id < 0) {
       *ok = 0;
       return 1;
     }
-    size_t id_arg[1] = {heap_new_int(id)};
-    *ok = unify(f + 3, heap_new_struct(atom_intern("$stream"), 1, id_arg));
+    size_t id_arg[1] = {heap_new_int(stream_id)};
+    *ok = unify(f + 3, heap_new_struct(atom_stream, 1, id_arg));
     return 1;
   }
-  if (arity == 1 && !strcmp(name, "close")) {
+  if (arity == 1 && id == atom_close) {
     int id;
     if (!resolve_stream_id(f + 1, &id)) {
       *ok = 0;
@@ -655,7 +741,7 @@ static int dispatch_builtin(size_t goal, int *ok) {
   }
   // Fragile: a directive in the consulted file runs via a nested
   // run_query while this one is still on the C stack, and sp is global.
-  if (arity == 1 && !strcmp(name, "consult")) {
+  if (arity == 1 && id == atom_consult) {
     size_t path_d = heap_deref(f + 1);
     if (heap[path_d].tag != TAG_ATOM) {
       *ok = 0;
@@ -664,14 +750,14 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = consult_file(atom_name(heap[path_d].as.atom_id));
     return 1;
   }
-  if (arity == 1 && !strcmp(name, "dynamic")) {
+  if (arity == 1 && id == atom_dynamic) {
     size_t d = heap_deref(f + 1);
     if (heap[d].tag != TAG_STR) {
       *ok = 0;
       return 1;
     }
     size_t df = heap[d].as.ptr;
-    if (heap[df].as.func.atom_id != atom_intern("/") || heap[df].as.func.arity != 2) {
+    if (heap[df].as.func.atom_id != atom_slash || heap[df].as.func.arity != 2) {
       *ok = 0;
       return 1;
     }
@@ -685,7 +771,7 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = 1;
     return 1;
   }
-  if (arity == 0 && !strcmp(name, "$capture_start")) {
+  if (arity == 0 && id == atom_capture_start) {
     capture_saved = io_hooks_get();
     capture_pos = 0;
     capture_buf[0] = '\0';
@@ -695,40 +781,39 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = 1;
     return 1;
   }
-  if (arity == 1 && !strcmp(name, "$capture_stop")) {
+  if (arity == 1 && id == atom_capture_stop) {
     io_hooks_restore(capture_saved);
     *ok = unify(f + 1, heap_new_atom(atom_intern(capture_buf)));
     return 1;
   }
 
-  if (arity == 1 && (!strcmp(name, "var") || !strcmp(name, "nonvar") ||
-                     !strcmp(name, "atom") || !strcmp(name, "atomic") ||
-                     !strcmp(name, "number") || !strcmp(name, "integer") ||
-                     !strcmp(name, "float") || !strcmp(name, "compound") ||
-                     !strcmp(name, "callable"))) {
+  if (arity == 1 &&
+      (id == atom_var || id == atom_nonvar || id == atom_kw_atom ||
+       id == atom_atomic || id == atom_number || id == atom_integer ||
+       id == atom_kw_float || id == atom_compound || id == atom_callable)) {
     tag_t t = heap[heap_deref(f + 1)].tag;
-    if (!strcmp(name, "var"))
+    if (id == atom_var)
       *ok = t == TAG_REF;
-    else if (!strcmp(name, "nonvar"))
+    else if (id == atom_nonvar)
       *ok = t != TAG_REF;
-    else if (!strcmp(name, "atom"))
+    else if (id == atom_kw_atom)
       *ok = t == TAG_ATOM;
-    else if (!strcmp(name, "number"))
+    else if (id == atom_number)
       *ok = t == TAG_INT || t == TAG_FLT;
-    else if (!strcmp(name, "integer"))
+    else if (id == atom_integer)
       *ok = t == TAG_INT;
-    else if (!strcmp(name, "float"))
+    else if (id == atom_kw_float)
       *ok = t == TAG_FLT;
-    else if (!strcmp(name, "atomic"))
+    else if (id == atom_atomic)
       *ok = t == TAG_ATOM || t == TAG_INT || t == TAG_FLT;
-    else if (!strcmp(name, "compound"))
+    else if (id == atom_compound)
       *ok = t == TAG_STR;
     else
       *ok = t == TAG_ATOM || t == TAG_STR; // callable
     return 1;
   }
 
-  if (arity == 3 && !strcmp(name, "functor")) {
+  if (arity == 3 && id == atom_functor) {
     size_t term = heap_deref(f + 1);
     if (heap[term].tag != TAG_REF) {
       size_t name_val, arity_val;
@@ -765,7 +850,7 @@ static int dispatch_builtin(size_t goal, int *ok) {
                 heap_new_struct(heap[name_d].as.atom_id, (int32_t)ar, args));
     return 1;
   }
-  if (arity == 3 && !strcmp(name, "arg")) {
+  if (arity == 3 && id == atom_arg) {
     size_t n_d = heap_deref(f + 1);
     size_t term = heap_deref(f + 2);
     if (heap[n_d].tag != TAG_INT || heap[term].tag != TAG_STR) {
@@ -781,7 +866,7 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = unify(f + 3, tf + (size_t)n);
     return 1;
   }
-  if (arity == 2 && !strcmp(name, "=..")) {
+  if (arity == 2 && id == atom_univ) {
     size_t term = heap_deref(f + 1);
     if (heap[term].tag != TAG_REF) {
       size_t list = heap_new_atom(atom_nil);
@@ -835,13 +920,14 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = unify(term, built);
     return 1;
   }
-  if (arity == 3 && !strcmp(name, "compare")) {
+  if (arity == 3 && id == atom_compare) {
     int c = term_compare(f + 2, f + 3);
-    *ok = unify(f + 1,
-                heap_new_atom(atom_intern(c < 0 ? "<" : (c > 0 ? ">" : "="))));
+    *ok =
+        unify(f + 1, heap_new_atom(c < 0 ? atom_lt
+                                         : (c > 0 ? atom_gt : atom_unify_op)));
     return 1;
   }
-  if (arity == 2 && !strcmp(name, "atom_codes")) {
+  if (arity == 2 && id == atom_atom_codes) {
     size_t a = heap_deref(f + 1);
     if (heap[a].tag == TAG_ATOM) {
       *ok = unify(f + 2, codes_from_cstr(atom_name(heap[a].as.atom_id)));
@@ -855,7 +941,7 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = unify(f + 1, heap_new_atom(atom_intern(buf)));
     return 1;
   }
-  if (arity == 2 && !strcmp(name, "char_code")) {
+  if (arity == 2 && id == atom_char_code) {
     size_t a = heap_deref(f + 1);
     if (heap[a].tag == TAG_ATOM) {
       *ok = unify(
@@ -871,7 +957,7 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = unify(f + 1, heap_new_atom(atom_intern(buf)));
     return 1;
   }
-  if (arity == 2 && !strcmp(name, "number_codes")) {
+  if (arity == 2 && id == atom_number_codes) {
     size_t a = heap_deref(f + 1);
     if (heap[a].tag == TAG_INT) {
       char buf[32];
@@ -1001,20 +1087,20 @@ A:
     if (heap[fd].tag == TAG_STR) {
       size_t cf = heap[fd].as.ptr;
       int32_t fd_arity = heap[cf].as.func.arity;
-      const char *fd_name = atom_name(heap[cf].as.func.atom_id);
-      if (fd_arity == 2 && heap[cf].as.func.atom_id == atom_comma) {
+      int32_t fd_id = heap[cf].as.func.atom_id;
+      if (fd_arity == 2 && fd_id == atom_comma) {
         size_t inner_first = heap_deref(cf + 1);
         size_t inner_rest = heap_deref(cf + 2);
         size_t new_rest = build_conj_tail(&inner_rest, 1, rest);
         cn = build_conj_tail(&inner_first, 1, new_rest);
         goto A;
       }
-      if (fd_arity == 1 && !strcmp(fd_name, "$cut")) {
+      if (fd_arity == 1 && fd_id == atom_cut) {
         sp = (size_t)heap[heap_deref(cf + 1)].as.ival;
         cn = rest;
         goto A;
       }
-      if (fd_arity == 3 && !strcmp(fd_name, "catch")) {
+      if (fd_arity == 3 && fd_id == atom_catch) {
         size_t goal = heap_deref(cf + 1);
         size_t catcher = heap_deref(cf + 2);
         size_t recovery = heap_deref(cf + 3);
@@ -1028,27 +1114,25 @@ A:
                             .outer_active_catch = active_catch});
         active_catch = idx;
         size_t uncatch_arg[1] = {heap_new_int((int64_t)idx)};
-        size_t uncatch_term =
-            heap_new_struct(atom_intern("$uncatch"), 1, uncatch_arg);
+        size_t uncatch_term = heap_new_struct(atom_uncatch, 1, uncatch_arg);
         size_t after_goal = build_conj_tail(&uncatch_term, 1, rest);
         cn = build_conj_tail(&goal, 1, after_goal);
         goto A;
       }
-      if (fd_arity == 1 && !strcmp(fd_name, "$uncatch")) {
+      if (fd_arity == 1 && fd_id == atom_uncatch) {
         size_t idx = (size_t)heap[heap_deref(cf + 1)].as.ival;
         active_catch = catch_stack[idx].outer_active_catch;
         cn = rest;
         goto A;
       }
-      if (fd_arity == 1 && !strcmp(fd_name, "throw")) {
+      if (fd_arity == 1 && fd_id == atom_throw) {
         size_t ball = heap_deref(cf + 1);
         if (do_throw(ball, &cn, &active_catch))
           goto A;
         return;
       }
-      if (fd_arity == 1 &&
-          (!strcmp(fd_name, "assertz") || !strcmp(fd_name, "assert") ||
-           !strcmp(fd_name, "asserta"))) {
+      if (fd_arity == 1 && (fd_id == atom_assertz || fd_id == atom_assert ||
+                            fd_id == atom_asserta)) {
         size_t clause = heap_deref(cf + 1);
         size_t body_refs[MAX_ASSERT_GOALS];
         size_t head, all_terms[1 + MAX_ASSERT_GOALS];
@@ -1063,7 +1147,7 @@ A:
         int32_t nvars;
         heap_terms_to_templates(all_terms, 1 + nbody, templates, &nvars);
 
-        if (!strcmp(fd_name, "asserta"))
+        if (fd_id == atom_asserta)
           db_add_front(templates[0], nbody > 0 ? templates + 1 : NULL, nbody,
                        nvars);
         else
@@ -1071,7 +1155,7 @@ A:
         cn = rest;
         goto A;
       }
-      if (fd_arity == 1 && !strcmp(fd_name, "retract")) {
+      if (fd_arity == 1 && fd_id == atom_retract) {
         size_t clause = heap_deref(cf + 1);
         size_t want_head, want_body;
         split_clause_whole(clause, &want_head, &want_body);
@@ -1133,7 +1217,8 @@ B:
   if (clause_idx >= db_count) {
     if (!predicate_known &&
         is_dynamic(caller_key.pred_id, caller_key.pred_arity))
-      goto C; // declared dynamic - no clauses is a normal fail, not existence_error
+      goto C; // declared dynamic - no clauses is a normal fail, not
+              // existence_error
     if (!predicate_known) {
       size_t ball = make_existence_error("procedure", caller_key.pred_id,
                                          caller_key.pred_arity);

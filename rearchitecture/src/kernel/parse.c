@@ -14,6 +14,14 @@
 #define MAX_ARITY 255
 #define MAX_TOKEN 4096
 
+static int32_t atom_comma_op, atom_ruleop, atom_qmark_dash;
+
+void parse_init(void) {
+  atom_comma_op = atom_intern(",");
+  atom_ruleop = atom_intern(":-");
+  atom_qmark_dash = atom_intern("?-");
+}
+
 typedef enum { XFX, XFY, YFX, FX, FY } assoc_t;
 typedef struct {
   const char *name;
@@ -419,7 +427,7 @@ static tterm_t **flatten_conj(tterm_t *t, int32_t *n_out) {
   tterm_t *scratch[MAX_ARITY];
   int32_t n = 0;
   while (t->tag == T_STR && t->as.str.arity == 2 &&
-         !strcmp(atom_name(t->as.str.atom_id), ",")) {
+         t->as.str.atom_id == atom_comma_op) {
     if (n >= MAX_ARITY)
       perr("clause body too long");
     scratch[n++] = t->as.str.args[0];
@@ -446,15 +454,15 @@ static void run_directive(tterm_t *goal, int32_t nvars) {
 
 static void assemble_clause(tterm_t *t, int32_t nvars) {
   if (t->tag == T_STR && t->as.str.arity == 2 &&
-      !strcmp(atom_name(t->as.str.atom_id), ":-")) {
+      t->as.str.atom_id == atom_ruleop) {
     int32_t nbody;
     tterm_t **body = flatten_conj(t->as.str.args[1], &nbody);
     db_add(t->as.str.args[0], body, nbody, nvars);
     return;
   }
   if (t->tag == T_STR && t->as.str.arity == 1 &&
-      (!strcmp(atom_name(t->as.str.atom_id), ":-") ||
-       !strcmp(atom_name(t->as.str.atom_id), "?-"))) {
+      (t->as.str.atom_id == atom_ruleop ||
+       t->as.str.atom_id == atom_qmark_dash)) {
     run_directive(t->as.str.args[0], nvars);
     return;
   }

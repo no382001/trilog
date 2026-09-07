@@ -19,6 +19,8 @@ typedef struct tterm {
   } as;
 } tterm_t;
 
+void term_init(void);
+
 tterm_t *tt_var(int32_t slot);
 tterm_t *tt_atom(const char *name);
 tterm_t *tt_int(int64_t v);
