@@ -1,0 +1,6 @@
+keep in its entirety:
+    io interaction layer
+    ffi
+
+iso builtins and regression tests for all of the issues we had before
+
