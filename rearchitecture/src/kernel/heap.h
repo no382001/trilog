@@ -4,18 +4,28 @@
 
 // STR points at a FUNCTOR cell, followed by `arity` arg cells.
 // FUNCTOR cells are metadata only, never deref'd as a value.
-typedef enum { TAG_REF, TAG_ATOM, TAG_INT, TAG_FLT, TAG_STR, TAG_FUNCTOR } tag_t;
+typedef enum {
+  TAG_REF,
+  TAG_ATOM,
+  TAG_INT,
+  TAG_FLT,
+  TAG_STR,
+  TAG_FUNCTOR
+} tag_t;
 
 typedef struct {
-    tag_t tag;
-    union {
-        size_t ref;      // REF: heap index (self = unbound)
-        int32_t atom_id; // ATOM
-        int64_t ival;    // INT
-        double fval;     // FLT
-        size_t ptr;      // STR: heap index of the FUNCTOR cell it points to
-        struct { int32_t atom_id; int32_t arity; } func; // FUNCTOR
-    } as;
+  tag_t tag;
+  union {
+    size_t ref;      // REF: heap index (self = unbound)
+    int32_t atom_id; // ATOM
+    int64_t ival;    // INT
+    double fval;     // FLT
+    size_t ptr;      // STR: heap index of the FUNCTOR cell it points to
+    struct {
+      int32_t atom_id;
+      int32_t arity;
+    } func; // FUNCTOR
+  } as;
 } cell_t;
 
 void heap_init(void);

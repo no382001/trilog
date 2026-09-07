@@ -32,13 +32,17 @@ old test suite to port over, as a checklist
     test/*.bats: ledit(10), reclaim(8), stress(17), system(44)
     -> rearchitecture's own test/system.bats (56) is a fresh start, not a
        port of any of the above yet
-    -> old test/system.bats 27/44 pass
+    -> old test/system.bats 30/44 pass
        missing:
        - CLI flags (-f/-v/-h, ~/.trilog init)
-       - quad_cli/junit
-       - ISO error terms
-       - string-as-chars
-       term_to_atom/atom_to_term, copy_term
+       - quad_cli/junit (blocked on DCGs - lib/quad.pl needs dcg_load.pl)
+       - string-as-chars (double-quoted strings; issues #1/#11/#14/#20)
+       - term_to_atom/atom_to_term, copy_term
+       ISO errors: instantiation_error/type_error(evaluable,_) now thrown
+       from is/2, and existence_error(procedure,_) from calling an
+       undefined predicate (see run_query's predicate_known tracking and
+       do_throw in solve.c) - only those two call sites so far, not every
+       builtin (functor/3, arg/3, etc. still just fail on bad input)
 
 
 # last main's pipeline Results:

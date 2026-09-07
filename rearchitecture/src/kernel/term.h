@@ -5,18 +5,18 @@
 typedef enum { T_VAR, T_ATOM, T_INT, T_FLT, T_STR } ttag_t;
 
 typedef struct tterm {
-    ttag_t tag;
-    union {
-        int32_t slot;    // T_VAR
-        int32_t atom_id; // T_ATOM
-        int64_t ival;    // T_INT
-        double fval;     // T_FLT
-        struct {
-            int32_t atom_id;
-            int32_t arity;
-            struct tterm **args;
-        } str;           // T_STR
-    } as;
+  ttag_t tag;
+  union {
+    int32_t slot;    // T_VAR
+    int32_t atom_id; // T_ATOM
+    int64_t ival;    // T_INT
+    double fval;     // T_FLT
+    struct {
+      int32_t atom_id;
+      int32_t arity;
+      struct tterm **args;
+    } str; // T_STR
+  } as;
 } tterm_t;
 
 tterm_t *tt_var(int32_t slot);
@@ -32,4 +32,5 @@ void print_term_quoted(size_t r);
 
 tterm_t *heap_to_template(size_t r, int32_t *nvars_out);
 
-void heap_terms_to_templates(size_t *terms, int32_t n, tterm_t **out, int32_t *nvars_out);
+void heap_terms_to_templates(size_t *terms, int32_t n, tterm_t **out,
+                             int32_t *nvars_out);
