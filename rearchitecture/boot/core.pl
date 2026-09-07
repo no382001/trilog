@@ -190,3 +190,7 @@ writeq(S, T) :-
 
 nl :- write('\n').
 nl(S) :- write(S, '\n').
+
+char_code(Char, Code) :- atom_codes(Char, [Code]).
+
+get_char(Char) :- get_code(C), (C == -1 -> Char = end_of_file ; char_code(Char, C)).

@@ -35,22 +35,21 @@ static size_t catch_stack_push(catch_frame_t f) {
 static int32_t atom_true, atom_comma, atom_dot, atom_nil;
 // Interned once here, not per call site - atom_intern is a linear scan.
 static int32_t atom_ruleop, atom_slash, atom_error, atom_instantiation_error,
-    atom_type_error, atom_existence_error, atom_stream, atom_end_of_file,
-    atom_uncatch, atom_cut, atom_catch, atom_throw, atom_assertz, atom_assert,
-    atom_asserta, atom_retract;
+    atom_type_error, atom_existence_error, atom_stream, atom_uncatch, atom_cut,
+    atom_catch, atom_throw, atom_assertz, atom_assert, atom_asserta,
+    atom_retract;
 // eval_arith operator names.
 static int32_t atom_plus, atom_minus, atom_star, atom_intdiv, atom_mod,
     atom_min, atom_max, atom_abs, atom_sign, atom_floor, atom_ceiling,
     atom_round, atom_truncate;
 // dispatch_builtin names.
 static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_le, atom_ge,
-    atom_arith_eq, atom_arith_neq, atom_put_code, atom_get_code, atom_get_char,
-    atom_write_raw, atom_open, atom_close, atom_consult, atom_dynamic,
-    atom_capture_start, atom_capture_stop, atom_var, atom_nonvar, atom_kw_atom,
-    atom_atomic, atom_number, atom_integer, atom_kw_float, atom_compound,
-    atom_callable, atom_functor, atom_arg, atom_univ, atom_compare,
-    atom_atom_codes, atom_char_code, atom_number_codes, atom_mode_read,
-    atom_mode_write, atom_mode_append;
+    atom_arith_eq, atom_arith_neq, atom_put_code, atom_get_code, atom_write_raw,
+    atom_open, atom_close, atom_consult, atom_dynamic, atom_capture_start,
+    atom_capture_stop, atom_var, atom_nonvar, atom_kw_atom, atom_atomic,
+    atom_number, atom_integer, atom_kw_float, atom_compound, atom_callable,
+    atom_functor, atom_arg, atom_univ, atom_compare, atom_atom_codes,
+    atom_number_codes, atom_mode_read, atom_mode_write, atom_mode_append;
 
 static size_t pending_error_ball = (size_t)-1;
 
@@ -87,7 +86,6 @@ void solve_init(void) {
   atom_type_error = atom_intern("type_error");
   atom_existence_error = atom_intern("existence_error");
   atom_stream = atom_intern("$stream");
-  atom_end_of_file = atom_intern("end_of_file");
   atom_uncatch = atom_intern("$uncatch");
   atom_cut = atom_intern("$cut");
   atom_catch = atom_intern("catch");
@@ -119,7 +117,6 @@ void solve_init(void) {
   atom_arith_neq = atom_intern("=\\=");
   atom_put_code = atom_intern("put_code");
   atom_get_code = atom_intern("get_code");
-  atom_get_char = atom_intern("get_char");
   atom_write_raw = atom_intern("$write_raw");
   atom_open = atom_intern("open");
   atom_close = atom_intern("close");
@@ -141,7 +138,6 @@ void solve_init(void) {
   atom_univ = atom_intern("=..");
   atom_compare = atom_intern("compare");
   atom_atom_codes = atom_intern("atom_codes");
-  atom_char_code = atom_intern("char_code");
   atom_number_codes = atom_intern("number_codes");
   atom_mode_read = atom_intern("read");
   atom_mode_write = atom_intern("write");
@@ -672,18 +668,6 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = unify(f + 1, heap_new_int(c == -1 ? -1 : c));
     return 1;
   }
-  if (arity == 1 && id == atom_get_char) {
-    int c = io_read_char();
-    size_t r;
-    if (c == -1)
-      r = heap_new_atom(atom_end_of_file);
-    else {
-      char buf[2] = {(char)c, '\0'};
-      r = heap_new_atom(atom_intern(buf));
-    }
-    *ok = unify(f + 1, r);
-    return 1;
-  }
   if (arity == 3 && id == atom_write_raw) {
     size_t target = heap_deref(f + 1);
     int quoted = heap[heap_deref(f + 3)].as.ival != 0;
@@ -938,22 +922,6 @@ static int dispatch_builtin(size_t goal, int *ok) {
       *ok = 0;
       return 1;
     }
-    *ok = unify(f + 1, heap_new_atom(atom_intern(buf)));
-    return 1;
-  }
-  if (arity == 2 && id == atom_char_code) {
-    size_t a = heap_deref(f + 1);
-    if (heap[a].tag == TAG_ATOM) {
-      *ok = unify(
-          f + 2, heap_new_int((unsigned char)atom_name(heap[a].as.atom_id)[0]));
-      return 1;
-    }
-    size_t c = heap_deref(f + 2);
-    if (heap[c].tag != TAG_INT) {
-      *ok = 0;
-      return 1;
-    }
-    char buf[2] = {(char)heap[c].as.ival, '\0'};
     *ok = unify(f + 1, heap_new_atom(atom_intern(buf)));
     return 1;
   }
