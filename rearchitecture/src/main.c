@@ -10,12 +10,39 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <termios.h>
 #include <unistd.h>
+
+// raw single-keypress for interactive solution prompting
+static int read_key_hook(void *ud) {
+  (void)ud;
+  struct termios old, raw;
+  tcgetattr(STDIN_FILENO, &old);
+  raw = old;
+  raw.c_lflag &= ~(ICANON | ECHO);
+  raw.c_cc[VMIN] = 1;
+  raw.c_cc[VTIME] = 0;
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+  int c = getchar();
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &old);
+  return c;
+}
 
 // One line = one query - no support yet for a query spanning multiple lines.
 static void repl(void) {
+  int interactive = isatty(fileno(stdin));
   char line[8192];
-  while (io_read_line(line, sizeof line)) {
+  for (;;) {
+    if (interactive) {
+      io_write_str("?- ");
+      fflush(stdout);
+    }
+    if (!io_read_line(line, sizeof line))
+      break;
+    line[strcspn(line, "\n")] = '\0';
+    if (!strcmp(line, "halt."))
+      break;
+
     int blank = 1;
     for (char *p = line; *p; p++)
       if (!isspace((unsigned char)*p)) {
@@ -30,7 +57,7 @@ static void repl(void) {
     const char **names;
     if (!parse_query(line, &goals, &ngoals, &nvars, &names))
       continue;
-    run_query(goals, ngoals, nvars, names, RUN_INTERACTIVE);
+    run_query_meta(goals, ngoals, nvars, names, RUN_INTERACTIVE);
   }
 }
 
@@ -77,6 +104,11 @@ static void load_init_file(int verbose) {
 
 int main(int argc, char **argv) {
   io_hooks_init_default();
+  if (isatty(fileno(stdin))) {
+    io_hooks_t hooks = io_hooks_get();
+    hooks.read_key = read_key_hook;
+    io_hooks_replace(hooks);
+  }
 
   int fast = 0, verbose = 0;
   const char *query = NULL;
@@ -128,7 +160,7 @@ int main(int argc, char **argv) {
     const char **names;
     if (!parse_query(query, &goals, &ngoals, &nvars, &names))
       return 1;
-    run_query(goals, ngoals, nvars, names, RUN_BATCH);
+    run_query_meta(goals, ngoals, nvars, names, RUN_BATCH);
   } else {
     repl();
   }

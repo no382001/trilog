@@ -49,3 +49,8 @@ enum { RUN_BATCH = 0, RUN_INTERACTIVE = 1, RUN_SILENT = 2 };
 
 void run_query(tterm_t **goals, int32_t ngoals, int32_t nvars,
                const char **varnames, int mode);
+
+void run_query_meta(tterm_t **goals, int32_t ngoals, int32_t nvars,
+                    const char **varnames, int mode);
+int op_lookup_infix(int32_t name_atom_id, int *pri, int *assoc_code);
+int op_lookup_prefix(int32_t name_atom_id, int *pri, int *assoc_code);

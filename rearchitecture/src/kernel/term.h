@@ -28,6 +28,8 @@ tterm_t *tt_flt(double v);
 tterm_t *tt_struct(const char *name, int32_t arity, tterm_t **args);
 
 size_t heap_copy(tterm_t *t, size_t *rename, size_t cut_barrier);
+size_t heap_copy_goal(tterm_t *t, size_t *rename, size_t cut_barrier);
+size_t heap_rebake_cuts(size_t r, size_t cut_barrier);
 
 void print_term(size_t r);
 void print_term_quoted(size_t r);

@@ -20,6 +20,10 @@ static char *default_read_line(char *buf, int size, void *ud) {
   (void)ud;
   return fgets(buf, size, stdin);
 }
+static int default_read_key(void *ud) {
+  (void)ud;
+  return ';';
+}
 static void *default_file_open(const char *path, const char *mode, void *ud) {
   (void)ud;
   return fopen(path, mode);
@@ -55,6 +59,7 @@ void io_hooks_init_default(void) {
       .write_err = default_write_err,
       .read_char = default_read_char,
       .read_line = default_read_line,
+      .read_key = default_read_key,
       .file_open = default_file_open,
       .file_close = default_file_close,
       .file_read_line = default_file_read_line,
@@ -82,6 +87,9 @@ int io_read_char(void) {
 }
 char *io_read_line(char *buf, int size) {
   return hooks.read_line ? hooks.read_line(buf, size, hooks.userdata) : NULL;
+}
+int io_read_key(void) {
+  return hooks.read_key ? hooks.read_key(hooks.userdata) : ';';
 }
 void *io_file_open(const char *path, const char *mode) {
   return hooks.file_open ? hooks.file_open(path, mode, hooks.userdata) : NULL;

@@ -43,20 +43,40 @@ static const op_t OPS[] = {
 };
 #define NOPS (int)(sizeof(OPS) / sizeof(OPS[0]))
 
-static const op_t *find_infix(const char *name) {
+static int find_infix(const char *name, op_t *out) {
   for (int i = 0; i < NOPS; i++)
     if ((OPS[i].assoc == XFX || OPS[i].assoc == XFY || OPS[i].assoc == YFX) &&
-        !strcmp(OPS[i].name, name))
-      return &OPS[i];
-  return NULL;
+        !strcmp(OPS[i].name, name)) {
+      *out = OPS[i];
+      return 1;
+    }
+  int pri, assoc_code;
+  int32_t id = atom_intern(name);
+  if (op_lookup_infix(id, &pri, &assoc_code)) {
+    out->name = atom_name(id); // permanent atom-table storage, not `name`
+    out->pri = pri;
+    out->assoc = (assoc_t)assoc_code;
+    return 1;
+  }
+  return 0;
 }
 
-static const op_t *find_prefix(const char *name) {
+static int find_prefix(const char *name, op_t *out) {
   for (int i = 0; i < NOPS; i++)
     if ((OPS[i].assoc == FX || OPS[i].assoc == FY) &&
-        !strcmp(OPS[i].name, name))
-      return &OPS[i];
-  return NULL;
+        !strcmp(OPS[i].name, name)) {
+      *out = OPS[i];
+      return 1;
+    }
+  int pri, assoc_code;
+  int32_t id = atom_intern(name);
+  if (op_lookup_prefix(id, &pri, &assoc_code)) {
+    out->name = atom_name(id);
+    out->pri = pri;
+    out->assoc = (assoc_t)assoc_code;
+    return 1;
+  }
+  return 0;
 }
 
 // ---- input cursor and error handling ----
@@ -296,6 +316,21 @@ static tterm_t *parse_primary(void) {
   }
   if (*P == '[')
     return parse_list();
+  if (*P == '{') {
+    P++;
+    skip_ws();
+    if (*P == '}') {
+      P++;
+      return tt_atom("{}");
+    }
+    tterm_t *t = parse_expr(1200);
+    skip_ws();
+    if (*P != '}')
+      perr("expected '}'");
+    P++;
+    tterm_t *args[1] = {t};
+    return tt_struct("{}", 1, args);
+  }
   if (*P == '"')
     return parse_string();
   if (*P == '!') {
@@ -344,19 +379,20 @@ static tterm_t *parse_primary(void) {
       P++;
       return tt_struct(name, n, args);
     }
-    const op_t *pre = find_prefix(name);
-    if (pre && *P != '\0' && !at_clause_end() && *P != ')' && *P != ',' &&
-        *P != ']' && *P != '|' && !find_infix(name)) {
-      tterm_t *arg = parse_expr(pre->assoc == FY ? pre->pri : pre->pri - 1);
+    op_t pre, dummy;
+    int have_pre = find_prefix(name, &pre);
+    if (have_pre && *P != '\0' && !at_clause_end() && *P != ')' && *P != ',' &&
+        *P != ']' && *P != '|' && !find_infix(name, &dummy)) {
+      tterm_t *arg = parse_expr(pre.assoc == FY ? pre.pri : pre.pri - 1);
       return tt_struct(name, 1, &arg);
     }
     return tt_atom(name);
   }
   if (is_symbol_char((unsigned char)*P)) {
     read_while(name, is_symbol_char);
-    const op_t *pre = find_prefix(name);
-    if (pre) {
-      tterm_t *arg = parse_expr(pre->assoc == FY ? pre->pri : pre->pri - 1);
+    op_t pre;
+    if (find_prefix(name, &pre)) {
+      tterm_t *arg = parse_expr(pre.assoc == FY ? pre.pri : pre.pri - 1);
       return tt_struct(name, 1, &arg);
     }
     return tt_atom(name);
@@ -366,57 +402,57 @@ static tterm_t *parse_primary(void) {
 }
 
 // tries to read an infix operator name at the current position without
-// consuming it if it doesn't turn out to be one; returns NULL if none.
-static const op_t *peek_infix_op(size_t *len_out) {
+// consuming it if it doesn't turn out to be one; returns 0 if none.
+static int peek_infix_op(size_t *len_out, op_t *out) {
   skip_ws();
   if (*P == '\0' || *P == ')' || *P == ']' || *P == '|' || at_clause_end())
-    return NULL;
+    return 0;
   if (*P == ',') {
     *len_out = 1;
-    return find_infix(",");
+    return find_infix(",", out);
   }
   if (*P == ';') {
     *len_out = 1;
-    return find_infix(";");
+    return find_infix(";", out);
   }
   if (is_symbol_char((unsigned char)*P)) {
     const char *save = P;
     char name[MAX_TOKEN];
     read_while(name, is_symbol_char);
-    const op_t *op = find_infix(name);
+    int found = find_infix(name, out);
     size_t len = strlen(name);
     P = save;
-    if (op)
+    if (found)
       *len_out = len;
-    return op;
+    return found;
   }
   if (islower((unsigned char)*P)) {
     const char *save = P;
     char name[MAX_TOKEN];
     read_while(name, is_ident_char);
-    const op_t *op = find_infix(name);
+    int found = find_infix(name, out);
     size_t len = strlen(name);
     P = save;
-    if (op)
+    if (found)
       *len_out = len;
-    return op;
+    return found;
   }
-  return NULL;
+  return 0;
 }
 
 static tterm_t *parse_expr(int max_prec) {
   tterm_t *left = parse_primary();
   for (;;) {
     size_t len;
-    const op_t *op = peek_infix_op(&len);
-    if (!op || op->pri > max_prec)
+    op_t op;
+    if (!peek_infix_op(&len, &op) || op.pri > max_prec)
       break;
-    int right_max = (op->assoc == XFY) ? op->pri : op->pri - 1;
+    int right_max = (op.assoc == XFY) ? op.pri : op.pri - 1;
     P += len;
     skip_ws();
     tterm_t *right = parse_expr(right_max);
     tterm_t *args[2] = {left, right};
-    left = tt_struct(op->name, 2, args);
+    left = tt_struct(op.name, 2, args);
   }
   return left;
 }
@@ -450,7 +486,7 @@ static void run_directive(tterm_t *goal, int32_t nvars) {
       arena_alloc((size_t)(nvars > 0 ? nvars : 1) * sizeof(char *));
   for (int32_t i = 0; i < nvars; i++)
     names[i] = arena_strdup(var_names[i]);
-  run_query(goals, n, nvars, names, RUN_SILENT);
+  run_query_meta(goals, n, nvars, names, RUN_SILENT);
 }
 
 static void assemble_clause(tterm_t *t, int32_t nvars) {
@@ -467,7 +503,6 @@ static void assemble_clause(tterm_t *t, int32_t nvars) {
     run_directive(t->as.str.args[0], nvars);
     return;
   }
-  db_add(t, NULL, 0, nvars); // a fact
 }
 
 bool consult_file(const char *path) {

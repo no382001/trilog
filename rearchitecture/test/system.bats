@@ -306,6 +306,44 @@ TRILOG="./trilog"
   [[ "$output" != *"yes:"* ]]
 }
 
+# --- cut scoping through ;/->, call/1, catch/3 (regression) ---
+
+@test "a cut reached through a bare ; is transparent to the enclosing goal (regression)" {
+  run "$TRILOG" -e "( (write(a), !, fail) ; write(b) )."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"a"* ]]
+  [[ "$output" != *"b"* ]]
+  [[ "$output" != *"yes:"* ]]
+}
+
+@test "call/1 gives an embedded cut its own scope, opaque to the enclosing ; (regression)" {
+  run "$TRILOG" -e "( call((write(a), !, fail)) ; write(b) )."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"a"* ]]
+  [[ "$output" == *"b"* ]]
+  [[ "$output" == *"yes:"* ]]
+}
+
+@test "catch/3's Goal argument gives an embedded cut its own scope too (regression)" {
+  run "$TRILOG" -e "( catch((write(a), !, fail), _, true) ; write(b) )."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"a"* ]]
+  [[ "$output" == *"b"* ]]
+  [[ "$output" == *"yes:"* ]]
+}
+
+@test "once/1 and \\+/1 don't crash on an embedded cut (regression)" {
+  run "$TRILOG" -e "once((write(x), !, fail)) ; write(y)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"x"* ]]
+  [[ "$output" == *"y"* ]]
+
+  run "$TRILOG" -e "( \\+ (write(z), !, fail) ; write(q) )."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"z"* ]]
+  [[ "$output" == *"q"* ]]
+}
+
 @test "backtracking into Goal through catch/3 finds every solution (regression)" {
   # opt(a) succeeds first, so opt(b)'s later throw needs the catch scope
   # to survive independently of any one attempt.
@@ -421,4 +459,180 @@ TRILOG="./trilog"
   run timeout 10 "$TRILOG" test/family.pl -e "count_list(50000, L), list_len(L, N)."
   [ "$status" -eq 0 ]
   [[ "$output" == *"N=50000"* ]]
+}
+
+# --- interactive solution-stepping (real tty only) ---
+
+@test "raw single-keypress solution-stepping: ;/space continue, other key stops" {
+  fifo=$(mktemp -u)
+  out=$(mktemp)
+  mkfifo "$fifo"
+
+  script -qfec "$TRILOG" "$out" <"$fifo" &
+  script_pid=$!
+  exec {send_fd}>"$fifo" # {var}> avoids fd 3, which bats reserves for itself
+
+  send() { sleep "$1"; printf '%s' "$2" >&"$send_fd"; sleep 0.1; }
+
+  send 0.3 $'member(X,[1,2,3]).\n'
+  [[ "$(cat "$out")" == *"X = 1"* ]]
+
+  send 0.4 ';' # continue on ;
+  [[ "$(cat "$out")" == *"X = 2"* ]]
+
+  send 0.4 ' ' # continue on space
+  [[ "$(cat "$out")" == *"X = 3"* ]]
+
+  send 0.4 'n' # any other key stops enumeration
+
+  send 0.4 $'write(after).\n' # REPL must still be alive afterward
+  [[ "$(cat "$out")" == *"after"* ]]
+
+  send 0.4 $'halt.\n'
+
+  wait "$script_pid" 2>/dev/null
+  exec {send_fd}>&-
+  rm -f "$fifo" "$out"
+}
+
+# --- DCGs ---
+
+@test "DCG: terminals and phrase/2" {
+  printf 'greeting --> [hello], [world].\n' > /tmp/trilog_dcg1.pl
+  run "$TRILOG" /tmp/trilog_dcg1.pl -e "phrase(greeting, [hello, world])."
+  [[ "$output" == *"yes:"* ]]
+  run "$TRILOG" /tmp/trilog_dcg1.pl -e "phrase(greeting, [hello, there])."
+  [[ "$output" != *"yes:"* ]]
+  rm -f /tmp/trilog_dcg1.pl
+}
+
+@test "DCG: recursion and a {}//1 embedded goal" {
+  printf 'digits([D|Ds]) --> [D], { D >= 0, D =< 9 }, digits(Ds).\n' > /tmp/trilog_dcg2.pl
+  printf 'digits([D]) --> [D], { D >= 0, D =< 9 }.\n' >> /tmp/trilog_dcg2.pl
+  run "$TRILOG" /tmp/trilog_dcg2.pl -e "phrase(digits(Ds), [1,2,3])."
+  [[ "$output" == *"Ds=[1, 2, 3]"* ]]
+  rm -f /tmp/trilog_dcg2.pl
+}
+
+@test "DCG: ; alternation and a cut committing a branch" {
+  cat > /tmp/trilog_dcg3.pl <<'EOF'
+alt --> [x] ; [y].
+opt --> [z], !, [w].
+opt --> [].
+EOF
+  run "$TRILOG" /tmp/trilog_dcg3.pl -e "phrase(alt, [x])."
+  [[ "$output" == *"yes:"* ]]
+  run "$TRILOG" /tmp/trilog_dcg3.pl -e "phrase(alt, [y])."
+  [[ "$output" == *"yes:"* ]]
+  run "$TRILOG" /tmp/trilog_dcg3.pl -e "phrase(opt, [z, w])."
+  [[ "$output" == *"yes:"* ]]
+  run "$TRILOG" /tmp/trilog_dcg3.pl -e "phrase(opt, [])."
+  [[ "$output" == *"yes:"* ]]
+  rm -f /tmp/trilog_dcg3.pl
+}
+
+# --- cut representation (regression) ---
+
+@test "a clause asserted with a literal cut still cuts correctly when called from a different depth (regression)" {
+  run "$TRILOG" -e "assertz((foo(1))), assertz((foo(X) :- X=2, !)), assertz((foo(3))), findall(Z, foo(Z), L), write(L)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[1, 2]"* ]]
+}
+
+# --- solve/2's own cut correctness (regression) ---
+
+@test "solve/2: a cut after a multi-clause call gives exactly one answer, not one per remaining alternative" {
+  run "$TRILOG" test/family.pl -e "first_choice(W), write(W)."
+  [ "$status" -eq 0 ]
+  [ "$(echo "$output" | grep -c 'yes:')" -eq 1 ]
+  [[ "$output" == *"W=a"* ]]
+}
+
+@test "solve/2: a cut-committed base case keeps every binding it made, including the final list tail" {
+  run "$TRILOG" -e "assertz((build(0,[]):-!)), assertz((build(N,[N|T]):-N>0,N1 is N-1,build(N1,T))), build(3,L), write(L)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[3, 2, 1]"* ]]
+}
+
+@test "solve/2: a recursive predicate's own cut never leaks into its own recursive call (regression)" {
+  run "$TRILOG" -e "assertz((mycollect(Id,L):-retract(item(Id,X)),!,L=[X|Rest],mycollect(Id,Rest))), assertz((mycollect(Id,[]):-retract(mark(Id)))), assertz(mark(1)), assertz(item(1,a)), assertz(item(1,b)), mycollect(1,L), write(L)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[a, b]"* ]]
+}
+
+@test "solve/2: findall/3 itself works, having survived every prior cut design's failure mode" {
+  run "$TRILOG" test/family.pl -e "findall(X, choice(X), L), write(L)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[a, b, c]"* ]]
+}
+
+@test "solve/2: two cuts in one clause body both fire, and everything after the second still runs" {
+  run "$TRILOG" -e "assertz((foo:-write(a),!,write(b),!,write(c))), foo."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"abc"* ]]
+}
+
+@test "solve/2: plain cut-free backtracking is unaffected (regression)" {
+  run "$TRILOG" test/family.pl -e "choice(X), write(X), nl, fail ; true."
+  [[ "$output" == *"a"* ]]
+  [[ "$output" == *"b"* ]]
+  [[ "$output" == *"c"* ]]
+}
+
+@test "solve/2: DCG rules with an embedded cut work under meta-interpretation" {
+  printf 'opt --> [z], !, [w].\nopt --> [].\n' > /tmp/mi_dcg_test.pl
+  run "$TRILOG" /tmp/mi_dcg_test.pl -e "phrase(opt, [z, w])."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"yes:"* ]]
+  run "$TRILOG" /tmp/mi_dcg_test.pl -e "phrase(opt, [])."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"yes:"* ]]
+  rm -f /tmp/mi_dcg_test.pl
+}
+
+@test "a consult-time directive can call a core.pl-defined predicate (regression)" {
+  cat > /tmp/mi_directive_test.pl <<'PLEOF'
+:- ( member(x, [x, y]) -> true ; throw(should_not_happen) ).
+ok_marker(1).
+PLEOF
+  run "$TRILOG" /tmp/mi_directive_test.pl -e "ok_marker(X), write(X)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"yes:"* ]]
+  [[ "$output" == *"1"* ]]
+  rm -f /tmp/mi_directive_test.pl
+}
+
+@test "op/3 defines a custom infix operator, most recently asserted priority wins" {
+  cat > /tmp/mi_op_test.pl <<'PLEOF'
+:- op(700, xfx, ===>).
+rewrite(a ===> b).
+PLEOF
+  run "$TRILOG" /tmp/mi_op_test.pl -e "rewrite(X), X = (A ===> B), write(A), write(B)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"yes:"* ]]
+  [[ "$output" == *"ab"* ]]
+
+  cat > /tmp/mi_op_test2.pl <<'PLEOF'
+:- op(700, xfx, ===>).
+:- op(600, xfx, ===>).
+lower_prec(X) :- X = (a ===> b ===> c).
+PLEOF
+  run "$TRILOG" /tmp/mi_op_test2.pl -e "lower_prec(X), write(X)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"yes:"* ]]
+  [[ "$output" == *"===>(===>(a, b), c)"* ]]
+  rm -f /tmp/mi_op_test.pl /tmp/mi_op_test2.pl
+}
+
+@test "boot/core.pl's own consult produces no uncaught exceptions (regression)" {
+  run "$TRILOG" -f -e "true."
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"existence_error"* ]]
+  [[ "$output" != *"uncaught exception"* ]]
+}
+
+@test "DCG rules translate lazily at call time, not eagerly at consult time (regression)" {
+  run "$TRILOG" -e "assertz((greeting --> [hello],[world])), phrase(greeting,[hello,world])."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"yes:"* ]]
 }

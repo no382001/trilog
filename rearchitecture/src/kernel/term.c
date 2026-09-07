@@ -7,13 +7,21 @@
 #include <string.h>
 
 // Interned once here, not per call site - atom_intern is a linear scan.
-static int32_t atom_bang, atom_cut, atom_dot, atom_nil;
+static int32_t atom_bang, atom_cut, atom_dot, atom_nil, atom_comma,
+    atom_semicolon, atom_arrow;
 
 void term_init(void) {
   atom_bang = atom_intern("!");
-  atom_cut = atom_intern("$cut");
+  atom_cut = atom_intern("$$cut");
   atom_dot = atom_intern(".");
   atom_nil = atom_intern("[]");
+  atom_comma = atom_intern(",");
+  atom_semicolon = atom_intern(";");
+  atom_arrow = atom_intern("->");
+}
+
+static int is_transparent_functor(int32_t id) {
+  return id == atom_comma || id == atom_semicolon || id == atom_arrow;
 }
 
 static tterm_t *tt_new(ttag_t tag) {
@@ -63,10 +71,6 @@ size_t heap_copy(tterm_t *t, size_t *rename, size_t cut_barrier) {
       rename[t->as.slot] = heap_new_var();
     return rename[t->as.slot];
   case T_ATOM:
-    if (t->as.atom_id == atom_bang) {
-      size_t barrier_arg[1] = {heap_new_int((int64_t)cut_barrier)};
-      return heap_new_struct(atom_cut, 1, barrier_arg);
-    }
     return heap_new_atom(t->as.atom_id);
   case T_INT:
     return heap_new_int(t->as.ival);
@@ -81,6 +85,39 @@ size_t heap_copy(tterm_t *t, size_t *rename, size_t cut_barrier) {
   }
   }
   return (size_t)-1; // unreachable
+}
+
+size_t heap_copy_goal(tterm_t *t, size_t *rename, size_t cut_barrier) {
+  if (t->tag == T_ATOM && t->as.atom_id == atom_bang) {
+    size_t barrier_arg[1] = {heap_new_int((int64_t)cut_barrier)};
+    return heap_new_struct(atom_cut, 1, barrier_arg);
+  }
+  if (t->tag == T_STR && t->as.str.arity == 2 &&
+      is_transparent_functor(t->as.str.atom_id)) {
+    size_t args[2] = {heap_copy_goal(t->as.str.args[0], rename, cut_barrier),
+                      heap_copy_goal(t->as.str.args[1], rename, cut_barrier)};
+    return heap_new_struct(t->as.str.atom_id, 2, args);
+  }
+  return heap_copy(t, rename, cut_barrier);
+}
+
+size_t heap_rebake_cuts(size_t r, size_t cut_barrier) {
+  r = heap_deref(r);
+  if (heap[r].tag == TAG_ATOM && heap[r].as.atom_id == atom_bang) {
+    size_t barrier_arg[1] = {heap_new_int((int64_t)cut_barrier)};
+    return heap_new_struct(atom_cut, 1, barrier_arg);
+  }
+  if (heap[r].tag == TAG_STR) {
+    size_t f = heap[r].as.ptr;
+    int32_t arity = heap[f].as.func.arity;
+    int32_t id = heap[f].as.func.atom_id;
+    if (arity == 2 && is_transparent_functor(id)) {
+      size_t args[2] = {heap_rebake_cuts(f + 1, cut_barrier),
+                        heap_rebake_cuts(f + 2, cut_barrier)};
+      return heap_new_struct(id, 2, args);
+    }
+  }
+  return r;
 }
 
 static int atom_needs_quote(const char *s) {

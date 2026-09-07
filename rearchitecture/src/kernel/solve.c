@@ -14,6 +14,94 @@
 static clause_t *db = NULL;
 static int32_t db_count = 0, db_cap = 0;
 
+#define PRED_HASH_SIZE 1024
+typedef struct pred_bucket {
+  int32_t pred_id, pred_arity;
+  int32_t *indices;
+  int32_t count, cap;
+  struct pred_bucket *next;
+} pred_bucket_t;
+static pred_bucket_t *pred_hash[PRED_HASH_SIZE];
+
+static uint32_t pred_hash_slot(int32_t pred_id, int32_t pred_arity) {
+  uint32_t h = (uint32_t)pred_id * 2654435761u + (uint32_t)pred_arity * 40503u;
+  return h % PRED_HASH_SIZE;
+}
+
+static pred_bucket_t *pred_bucket_find(int32_t pred_id, int32_t pred_arity) {
+  for (pred_bucket_t *b = pred_hash[pred_hash_slot(pred_id, pred_arity)]; b;
+       b = b->next)
+    if (b->pred_id == pred_id && b->pred_arity == pred_arity)
+      return b;
+  return NULL;
+}
+
+static pred_bucket_t *pred_bucket_find_or_create(int32_t pred_id,
+                                                 int32_t pred_arity) {
+  pred_bucket_t *b = pred_bucket_find(pred_id, pred_arity);
+  if (b)
+    return b;
+  b = calloc(1, sizeof(pred_bucket_t));
+  b->pred_id = pred_id;
+  b->pred_arity = pred_arity;
+  uint32_t slot = pred_hash_slot(pred_id, pred_arity);
+  b->next = pred_hash[slot];
+  pred_hash[slot] = b;
+  return b;
+}
+
+static void pred_bucket_grow_if_needed(pred_bucket_t *b) {
+  if (b->count < b->cap)
+    return;
+  b->cap = b->cap ? b->cap * 2 : 4;
+  b->indices = realloc(b->indices, (size_t)b->cap * sizeof(int32_t));
+}
+
+static void pred_bucket_add_index(int32_t pred_id, int32_t pred_arity,
+                                  int32_t idx) {
+  pred_bucket_t *b = pred_bucket_find_or_create(pred_id, pred_arity);
+  pred_bucket_grow_if_needed(b);
+  b->indices[b->count++] = idx;
+}
+
+static void pred_bucket_add_index_front(int32_t pred_id, int32_t pred_arity,
+                                        int32_t idx) {
+  pred_bucket_t *b = pred_bucket_find_or_create(pred_id, pred_arity);
+  pred_bucket_grow_if_needed(b);
+  memmove(&b->indices[1], &b->indices[0], (size_t)b->count * sizeof(int32_t));
+  b->indices[0] = idx;
+  b->count++;
+}
+
+static void pred_bucket_remove_index(int32_t pred_id, int32_t pred_arity,
+                                     int32_t idx) {
+  pred_bucket_t *b = pred_bucket_find(pred_id, pred_arity);
+  if (!b)
+    return;
+  for (int32_t i = 0; i < b->count; i++)
+    if (b->indices[i] == idx) {
+      memmove(&b->indices[i], &b->indices[i + 1],
+              (size_t)(b->count - i - 1) * sizeof(int32_t));
+      b->count--;
+      return;
+    }
+}
+
+static void pred_index_fixup_insert_at(int32_t at) {
+  for (int i = 0; i < PRED_HASH_SIZE; i++)
+    for (pred_bucket_t *b = pred_hash[i]; b; b = b->next)
+      for (int32_t j = 0; j < b->count; j++)
+        if (b->indices[j] >= at)
+          b->indices[j]++;
+}
+static void pred_index_fixup_remove_at(int32_t at) {
+  for (int i = 0; i < PRED_HASH_SIZE; i++)
+    for (pred_bucket_t *b = pred_hash[i]; b; b = b->next)
+      for (int32_t j = 0; j < b->count; j++)
+        if (b->indices[j] > at)
+          b->indices[j]--;
+}
+
 static frame_t *stack = NULL;
 static size_t stack_cap = 0, sp = 0;
 
@@ -37,19 +125,25 @@ static int32_t atom_true, atom_comma, atom_dot, atom_nil;
 static int32_t atom_ruleop, atom_slash, atom_error, atom_instantiation_error,
     atom_type_error, atom_existence_error, atom_stream, atom_uncatch, atom_cut,
     atom_catch, atom_throw, atom_assertz, atom_assert, atom_asserta,
-    atom_retract;
+    atom_retract, atom_call;
 // eval_arith operator names.
 static int32_t atom_plus, atom_minus, atom_star, atom_intdiv, atom_mod,
     atom_min, atom_max, atom_abs, atom_sign, atom_floor, atom_ceiling,
     atom_round, atom_truncate;
+// op_lookup_infix/prefix names
+static int32_t atom_op_pred, atom_optype_xfx, atom_optype_xfy, atom_optype_yfx,
+    atom_optype_fx, atom_optype_fy;
 // dispatch_builtin names.
-static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_arith_compare,
-    atom_put_code, atom_get_code, atom_write_raw, atom_open, atom_close,
-    atom_consult, atom_dynamic, atom_capture_start, atom_capture_stop, atom_var,
-    atom_kw_atom, atom_integer, atom_kw_float, atom_compound, atom_functor,
-    atom_arg, atom_univ, atom_compare, atom_atom_codes, atom_number_codes,
-    atom_mode_read, atom_mode_write, atom_mode_append, atom_copy_term,
-    atom_term_to_atom, atom_atom_to_term;
+static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_put_code,
+    atom_get_code, atom_write_raw, atom_open, atom_close, atom_consult,
+    atom_dynamic, atom_capture_start, atom_capture_stop, atom_var, atom_kw_atom,
+    atom_integer, atom_kw_float, atom_compound, atom_functor, atom_arg,
+    atom_univ, atom_atom_codes, atom_number_codes, atom_mode_read,
+    atom_mode_write, atom_mode_append, atom_copy_term, atom_term_to_atom,
+    atom_atom_to_term, atom_clause_candidates, atom_choice_mark, atom_cut_to,
+    atom_arith_le, atom_arith_ge, atom_arith_eq, atom_arith_ne, atom_term_eq,
+    atom_term_ne, atom_term_lt, atom_term_gt, atom_term_le, atom_term_ge,
+    atom_var_addr, atom_fail, atom_false;
 
 static size_t pending_error_ball = (size_t)-1;
 
@@ -86,14 +180,15 @@ void solve_init(void) {
   atom_type_error = atom_intern("type_error");
   atom_existence_error = atom_intern("existence_error");
   atom_stream = atom_intern("$stream");
-  atom_uncatch = atom_intern("$uncatch");
-  atom_cut = atom_intern("$cut");
+  atom_uncatch = atom_intern("$$uncatch");
+  atom_cut = atom_intern("$$cut");
   atom_catch = atom_intern("catch");
   atom_throw = atom_intern("throw");
   atom_assertz = atom_intern("assertz");
   atom_assert = atom_intern("assert");
   atom_asserta = atom_intern("asserta");
   atom_retract = atom_intern("retract");
+  atom_call = atom_intern("call");
   atom_plus = atom_intern("+");
   atom_minus = atom_intern("-");
   atom_star = atom_intern("*");
@@ -107,20 +202,27 @@ void solve_init(void) {
   atom_ceiling = atom_intern("ceiling");
   atom_round = atom_intern("round");
   atom_truncate = atom_intern("truncate");
+  atom_op_pred = atom_intern("$$op");
+  atom_optype_xfx = atom_intern("xfx");
+  atom_optype_xfy = atom_intern("xfy");
+  atom_optype_yfx = atom_intern("yfx");
+  atom_optype_fx = atom_intern("fx");
+  atom_optype_fy = atom_intern("fy");
   atom_is = atom_intern("is");
   atom_unify_op = atom_intern("=");
   atom_lt = atom_intern("<");
   atom_gt = atom_intern(">");
-  atom_arith_compare = atom_intern("$arith_compare");
   atom_put_code = atom_intern("put_code");
   atom_get_code = atom_intern("get_code");
-  atom_write_raw = atom_intern("$write_raw");
+  atom_write_raw = atom_intern("$$write_raw");
   atom_open = atom_intern("open");
   atom_close = atom_intern("close");
   atom_consult = atom_intern("consult");
   atom_dynamic = atom_intern("dynamic");
-  atom_capture_start = atom_intern("$capture_start");
-  atom_capture_stop = atom_intern("$capture_stop");
+  atom_capture_start = atom_intern("$$capture_start");
+  atom_capture_stop = atom_intern("$$capture_stop");
+  atom_fail = atom_intern("fail");
+  atom_false = atom_intern("false");
   atom_var = atom_intern("var");
   atom_kw_atom = atom_intern("atom");
   atom_integer = atom_intern("integer");
@@ -129,7 +231,7 @@ void solve_init(void) {
   atom_functor = atom_intern("functor");
   atom_arg = atom_intern("arg");
   atom_univ = atom_intern("=..");
-  atom_compare = atom_intern("compare");
+  atom_var_addr = atom_intern("$$var_addr");
   atom_atom_codes = atom_intern("atom_codes");
   atom_number_codes = atom_intern("number_codes");
   atom_mode_read = atom_intern("read");
@@ -138,6 +240,19 @@ void solve_init(void) {
   atom_copy_term = atom_intern("copy_term");
   atom_term_to_atom = atom_intern("term_to_atom");
   atom_atom_to_term = atom_intern("atom_to_term");
+  atom_clause_candidates = atom_intern("$$clause_candidates");
+  atom_choice_mark = atom_intern("$$choice_mark");
+  atom_cut_to = atom_intern("$$cut_to");
+  atom_arith_le = atom_intern("=<");
+  atom_arith_ge = atom_intern(">=");
+  atom_arith_eq = atom_intern("=:=");
+  atom_arith_ne = atom_intern("=\\=");
+  atom_term_eq = atom_intern("==");
+  atom_term_ne = atom_intern("\\==");
+  atom_term_lt = atom_intern("@<");
+  atom_term_gt = atom_intern("@>");
+  atom_term_le = atom_intern("@=<");
+  atom_term_ge = atom_intern("@>=");
 }
 
 static idx_key_t key_of_template(tterm_t *head) {
@@ -245,11 +360,22 @@ static void db_ensure_cap(void) {
 
 void db_add(tterm_t *head, tterm_t **body, int32_t nbody, int32_t nvars) {
   db_ensure_cap();
-  db[db_count++] = (clause_t){.head = head,
-                              .body = body,
-                              .nbody = nbody,
-                              .nvars = nvars,
-                              .key = key_of_template(head)};
+  idx_key_t key = key_of_template(head);
+  int32_t idx = db_count++;
+  db[idx] = (clause_t){
+      .head = head, .body = body, .nbody = nbody, .nvars = nvars, .key = key};
+  pred_bucket_add_index(key.pred_id, key.pred_arity, idx);
+}
+
+static void db_fixup_choice_points_insert_at(int32_t at) {
+  for (size_t i = 0; i < sp; i++)
+    if (stack[i].clause_idx >= at)
+      stack[i].clause_idx++;
+}
+static void db_fixup_choice_points_remove_at(int32_t at) {
+  for (size_t i = 0; i < sp; i++)
+    if (stack[i].clause_idx > at)
+      stack[i].clause_idx--;
 }
 
 static void db_add_front(tterm_t *head, tterm_t **body, int32_t nbody,
@@ -257,17 +383,21 @@ static void db_add_front(tterm_t *head, tterm_t **body, int32_t nbody,
   db_ensure_cap();
   memmove(&db[1], &db[0], (size_t)db_count * sizeof(clause_t));
   db_count++;
-  db[0] = (clause_t){.head = head,
-                     .body = body,
-                     .nbody = nbody,
-                     .nvars = nvars,
-                     .key = key_of_template(head)};
+  idx_key_t key = key_of_template(head);
+  db[0] = (clause_t){
+      .head = head, .body = body, .nbody = nbody, .nvars = nvars, .key = key};
+  db_fixup_choice_points_insert_at(0);
+  pred_index_fixup_insert_at(0);
+  pred_bucket_add_index_front(key.pred_id, key.pred_arity, 0);
 }
 
 static void db_remove_at(int32_t idx) {
+  pred_bucket_remove_index(db[idx].key.pred_id, db[idx].key.pred_arity, idx);
   memmove(&db[idx], &db[idx + 1],
           (size_t)(db_count - idx - 1) * sizeof(clause_t));
   db_count--;
+  db_fixup_choice_points_remove_at(idx);
+  pred_index_fixup_remove_at(idx);
 }
 
 // boot/core.pl declares fail/0 and false/0 this way
@@ -318,6 +448,24 @@ static size_t body_as_term(size_t *goals, int32_t n) {
   if (n == 1)
     return goals[0];
   return build_conj_tail(goals, n - 1, goals[n - 1]);
+}
+
+static void rename_init(size_t *rename, int32_t n);
+
+static size_t fresh_copy_term(tterm_t *t, int32_t nvars) {
+  size_t rn[nvars > 0 ? nvars : 1];
+  rename_init(rn, nvars);
+  return heap_copy(t, rn, 0);
+}
+
+static void fresh_copy_clause(clause_t *c, size_t *head_out, size_t *body_out) {
+  size_t rn[c->nvars > 0 ? c->nvars : 1];
+  rename_init(rn, c->nvars);
+  *head_out = heap_copy(c->head, rn, 0);
+  size_t bodies[c->nbody > 0 ? c->nbody : 1];
+  for (int32_t j = 0; j < c->nbody; j++)
+    bodies[j] = heap_copy(c->body[j], rn, 0);
+  *body_out = body_as_term(bodies, c->nbody);
 }
 
 static void decompose(size_t cn, size_t *first, size_t *rest) {
@@ -584,7 +732,7 @@ static int resolve_write_target(size_t target, int *kind_out,
 }
 
 // with_output_to/2's C half (see boot/core.pl). Not reentrant: a nested
-// with_output_to before the outer's $capture_stop mixes both into one buffer.
+// with_output_to before the outer's $$capture_stop mixes both into one buffer.
 #define CAPTURE_BUF_SIZE 4096
 static char capture_buf[CAPTURE_BUF_SIZE];
 static int capture_pos;
@@ -616,8 +764,6 @@ static void tta_emit(const char *str) {
   }
 }
 
-static void rename_init(size_t *rename, int32_t n);
-
 static int dispatch_builtin(size_t goal, int *ok) {
   size_t g = heap_deref(goal);
   size_t f = 0;
@@ -634,6 +780,11 @@ static int dispatch_builtin(size_t goal, int *ok) {
     return 0;
   }
 
+  if (arity == 0 && (id == atom_fail || id == atom_false)) {
+    *ok = 0;
+    return 1;
+  }
+
   if (arity == 2 && id == atom_is) {
     int aok = 1;
     int64_t v = eval_arith(f + 2, &aok);
@@ -644,18 +795,46 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = unify(f + 1, f + 2);
     return 1;
   }
-  if (arity == 3 && id == atom_arith_compare) {
+  if (arity == 2 &&
+      (id == atom_lt || id == atom_gt || id == atom_arith_le ||
+       id == atom_arith_ge || id == atom_arith_eq || id == atom_arith_ne)) {
     int aok = 1;
-    int64_t a = eval_arith(f + 2, &aok);
-    int64_t b = aok ? eval_arith(f + 3, &aok) : 0;
+    int64_t a = eval_arith(f + 1, &aok);
+    int64_t b = aok ? eval_arith(f + 2, &aok) : 0;
     if (!aok) {
       *ok = 0;
       return 1;
     }
-    int c = a < b ? -1 : (a > b ? 1 : 0);
-    *ok =
-        unify(f + 1, heap_new_atom(c < 0 ? atom_lt
-                                         : (c > 0 ? atom_gt : atom_unify_op)));
+    if (id == atom_lt)
+      *ok = a < b;
+    else if (id == atom_gt)
+      *ok = a > b;
+    else if (id == atom_arith_le)
+      *ok = a <= b;
+    else if (id == atom_arith_ge)
+      *ok = a >= b;
+    else if (id == atom_arith_eq)
+      *ok = a == b;
+    else
+      *ok = a != b;
+    return 1;
+  }
+  if (arity == 2 &&
+      (id == atom_term_eq || id == atom_term_ne || id == atom_term_lt ||
+       id == atom_term_gt || id == atom_term_le || id == atom_term_ge)) {
+    int c = term_compare(f + 1, f + 2);
+    if (id == atom_term_eq)
+      *ok = c == 0;
+    else if (id == atom_term_ne)
+      *ok = c != 0;
+    else if (id == atom_term_lt)
+      *ok = c < 0;
+    else if (id == atom_term_gt)
+      *ok = c > 0;
+    else if (id == atom_term_le)
+      *ok = c <= 0;
+    else
+      *ok = c >= 0;
     return 1;
   }
   if (arity == 1 && id == atom_put_code) {
@@ -780,6 +959,38 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = unify(f + 2, heap_copy(tmpl, rn, 0));
     return 1;
   }
+  if (arity == 2 && id == atom_clause_candidates) {
+    idx_key_t want = key_of_goal(f + 1);
+    size_t list = heap_new_atom(atom_nil);
+    pred_bucket_t *bucket = pred_bucket_find(want.pred_id, want.pred_arity);
+    for (int32_t bi = bucket ? bucket->count - 1 : -1; bi >= 0; bi--) {
+      clause_t *c = &db[bucket->indices[bi]];
+      if (keys_conflict(want, c->key))
+        continue;
+      size_t h2, b2;
+      fresh_copy_clause(c, &h2, &b2);
+      size_t pair_args[2] = {h2, b2};
+      size_t pair = heap_new_struct(atom_minus, 2, pair_args);
+      size_t cons_args[2] = {pair, list};
+      list = heap_new_struct(atom_dot, 2, cons_args);
+    }
+    *ok = unify(f + 2, list);
+    return 1;
+  }
+  if (arity == 1 && id == atom_choice_mark) {
+    *ok = unify(f + 1, heap_new_int((int64_t)sp));
+    return 1;
+  }
+  if (arity == 1 && id == atom_cut_to) {
+    size_t mark_d = heap_deref(f + 1);
+    if (heap[mark_d].tag != TAG_INT) {
+      *ok = 0;
+      return 1;
+    }
+    sp = (size_t)heap[mark_d].as.ival;
+    *ok = 1;
+    return 1;
+  }
   if (arity == 2 && id == atom_term_to_atom) {
     size_t term_arg = heap_deref(f + 1);
     size_t atom_arg = heap_deref(f + 2);
@@ -802,9 +1013,7 @@ static int dispatch_builtin(size_t goal, int *ok) {
       *ok = 0;
       return 1;
     }
-    size_t rn[nvars > 0 ? nvars : 1];
-    rename_init(rn, nvars);
-    *ok = unify(term_arg, heap_copy(t, rn, 0));
+    *ok = unify(term_arg, fresh_copy_term(t, nvars));
     return 1;
   }
   // Bindings is always []
@@ -823,9 +1032,7 @@ static int dispatch_builtin(size_t goal, int *ok) {
       *ok = 0;
       return 1;
     }
-    size_t rn[nvars > 0 ? nvars : 1];
-    rename_init(rn, nvars);
-    *ok = unify(f + 2, heap_copy(t, rn, 0)) &&
+    *ok = unify(f + 2, fresh_copy_term(t, nvars)) &&
           unify(f + 3, heap_new_atom(atom_nil));
     return 1;
   }
@@ -954,11 +1161,9 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = unify(term, built);
     return 1;
   }
-  if (arity == 3 && id == atom_compare) {
-    int c = term_compare(f + 2, f + 3);
-    *ok =
-        unify(f + 1, heap_new_atom(c < 0 ? atom_lt
-                                         : (c > 0 ? atom_gt : atom_unify_op)));
+  if (arity == 2 && id == atom_var_addr) {
+    size_t d = heap_deref(f + 1);
+    *ok = unify(f + 2, heap_new_int((int64_t)d));
     return 1;
   }
   if (arity == 2 && id == atom_atom_codes) {
@@ -1027,9 +1232,7 @@ static int do_throw(size_t ball, size_t *cn_out, size_t *active_catch_ptr) {
     heap_release(entry.heap_mark);
     trail_release(entry.trail_mark);
     sp = entry.sp_at_entry;
-    size_t rn[nballvars > 0 ? nballvars : 1];
-    rename_init(rn, nballvars);
-    size_t ball_copy = heap_copy(ball_template, rn, 0);
+    size_t ball_copy = fresh_copy_term(ball_template, nballvars);
     if (unify(entry.catcher, ball_copy)) {
       *active_catch_ptr = entry.outer_active_catch;
       *cn_out = build_conj_tail(&entry.recovery, 1, entry.continuation);
@@ -1050,7 +1253,7 @@ void run_query(tterm_t **goals, int32_t ngoals, int32_t nvars,
 
   size_t qgoals[ngoals > 0 ? ngoals : 1];
   for (int32_t i = 0; i < ngoals; i++)
-    qgoals[i] = heap_copy(goals[i], rename, cut_barrier);
+    qgoals[i] = heap_copy_goal(goals[i], rename, cut_barrier);
   size_t cn = build_conj_tail(qgoals, ngoals, heap_new_atom(atom_true));
 
   size_t first, rest;
@@ -1081,6 +1284,16 @@ A:
           }
         if (!any_var)
           io_write_str("true");
+
+        if (sp == 0) {
+          io_write_str(".\n");
+          return;
+        }
+        int key = io_read_key();
+        if (key != ';' && key != ' ') {
+          io_write_str(".\n");
+          return;
+        }
       } else if (mode == RUN_BATCH) {
         io_write_str("yes:");
         for (int32_t i = 0; i < nvars; i++)
@@ -1113,13 +1326,18 @@ A:
         cn = build_conj_tail(&inner_first, 1, new_rest);
         goto A;
       }
+      if (fd_arity == 1 && fd_id == atom_call) {
+        size_t goal = heap_rebake_cuts(heap_deref(cf + 1), sp);
+        cn = build_conj_tail(&goal, 1, rest);
+        goto A;
+      }
       if (fd_arity == 1 && fd_id == atom_cut) {
         sp = (size_t)heap[heap_deref(cf + 1)].as.ival;
         cn = rest;
         goto A;
       }
       if (fd_arity == 3 && fd_id == atom_catch) {
-        size_t goal = heap_deref(cf + 1);
+        size_t goal = heap_rebake_cuts(heap_deref(cf + 1), sp);
         size_t catcher = heap_deref(cf + 2);
         size_t recovery = heap_deref(cf + 3);
         size_t idx = catch_stack_push(
@@ -1178,9 +1396,15 @@ A:
         size_t want_head, want_body;
         split_clause_whole(clause, &want_head, &want_body);
 
+        idx_key_t want_key = key_of_goal(want_head);
+        pred_bucket_t *bucket =
+            pred_bucket_find(want_key.pred_id, want_key.pred_arity);
         size_t rmark = heap_mark(), rtmark = trail_mark();
         int found = 0;
-        for (int32_t ci = 0; ci < db_count; ci++) {
+        for (int32_t bi = 0; bucket && bi < bucket->count; bi++) {
+          int32_t ci = bucket->indices[bi];
+          if (keys_conflict(want_key, db[ci].key))
+            continue;
           trail_release(rtmark);
           heap_release(rmark);
           clause_t *c = &db[ci];
@@ -1266,7 +1490,7 @@ B:
 
     size_t bodies[c->nbody > 0 ? c->nbody : 1];
     for (int32_t i = 0; i < c->nbody; i++)
-      bodies[i] = heap_copy(c->body[i], r2, cut_barrier);
+      bodies[i] = heap_copy_goal(c->body[i], r2, cut_barrier);
     size_t newcn = build_conj_tail(bodies, c->nbody, rest);
 
     if (!no_more_candidates(clause_idx, caller_key))
@@ -1302,4 +1526,66 @@ C:
     caller_key = key_of_goal(first);
     goto B;
   }
+}
+
+static int op_lookup(int32_t name_atom_id, int want_infix, int *pri,
+                     int *assoc_code) {
+  pred_bucket_t *b = pred_bucket_find(atom_op_pred, 3);
+  if (!b)
+    return 0;
+  int found = 0;
+  for (int32_t i = 0; i < b->count; i++) {
+    tterm_t *head = db[b->indices[i]].head;
+    tterm_t *pri_t = head->as.str.args[0];
+    tterm_t *type_t = head->as.str.args[1];
+    tterm_t *name_t = head->as.str.args[2];
+    if (name_t->tag != T_ATOM || name_t->as.atom_id != name_atom_id)
+      continue;
+    if (pri_t->tag != T_INT || type_t->tag != T_ATOM)
+      continue; // malformed fact
+    int32_t tid = type_t->as.atom_id;
+    int code;
+    if (tid == atom_optype_xfx)
+      code = 0;
+    else if (tid == atom_optype_xfy)
+      code = 1;
+    else if (tid == atom_optype_yfx)
+      code = 2;
+    else if (tid == atom_optype_fx)
+      code = 3;
+    else if (tid == atom_optype_fy)
+      code = 4;
+    else
+      continue; // unrecognized Type atom
+    if ((code <= 2) != want_infix)
+      continue;
+    *pri = (int)pri_t->as.ival;
+    *assoc_code = code;
+    found = 1;
+  }
+  return found;
+}
+
+int op_lookup_infix(int32_t name_atom_id, int *pri, int *assoc_code) {
+  return op_lookup(name_atom_id, 1, pri, assoc_code);
+}
+int op_lookup_prefix(int32_t name_atom_id, int *pri, int *assoc_code) {
+  return op_lookup(name_atom_id, 0, pri, assoc_code);
+}
+
+static tterm_t *wrap_conj(tterm_t **goals, int32_t n) {
+  if (n == 0)
+    return tt_atom("true");
+  tterm_t *acc = goals[n - 1];
+  for (int32_t i = n - 2; i >= 0; i--) {
+    tterm_t *args[2] = {goals[i], acc};
+    acc = tt_struct(",", 2, args);
+  }
+  return acc;
+}
+void run_query_meta(tterm_t **goals, int32_t ngoals, int32_t nvars,
+                    const char **names, int mode) {
+  tterm_t *solve_args[1] = {wrap_conj(goals, ngoals)};
+  tterm_t *wrapped[1] = {tt_struct("solve", 1, solve_args)};
+  run_query(wrapped, 1, nvars, names, mode);
 }
