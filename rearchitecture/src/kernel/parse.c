@@ -534,3 +534,30 @@ bool parse_query(const char *src, tterm_t ***goals_out, int32_t *ngoals_out,
   *varnames_out = names;
   return true;
 }
+
+bool parse_term_from_string(const char *src, tterm_t **term_out,
+                            int32_t *nvars_out, const char ***varnames_out) {
+  P = src;
+  if (setjmp(err_jmp)) {
+    char msg[32 + sizeof err_msg];
+    snprintf(msg, sizeof msg, "parse error: %s\n", err_msg);
+    io_write_err(msg);
+    return false;
+  }
+  vartab_reset();
+  tterm_t *t = parse_expr(1200);
+  skip_ws();
+  if (*P != '\0' && !at_clause_end())
+    perr("unexpected trailing input");
+  if (at_clause_end())
+    P++;
+
+  *term_out = t;
+  *nvars_out = var_count;
+  const char **names =
+      arena_alloc((size_t)(var_count > 0 ? var_count : 1) * sizeof(char *));
+  for (int32_t i = 0; i < var_count; i++)
+    names[i] = arena_strdup(var_names[i]);
+  *varnames_out = names;
+  return true;
+}

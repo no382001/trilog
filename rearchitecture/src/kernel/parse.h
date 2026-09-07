@@ -9,3 +9,6 @@ bool consult_file(const char *path);
 
 bool parse_query(const char *src, tterm_t ***goals_out, int32_t *ngoals_out,
                  int32_t *nvars_out, const char ***varnames_out);
+
+bool parse_term_from_string(const char *src, tterm_t **term_out,
+                            int32_t *nvars_out, const char ***varnames_out);

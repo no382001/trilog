@@ -48,7 +48,8 @@ static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_arith_compare,
     atom_consult, atom_dynamic, atom_capture_start, atom_capture_stop, atom_var,
     atom_kw_atom, atom_integer, atom_kw_float, atom_compound, atom_functor,
     atom_arg, atom_univ, atom_compare, atom_atom_codes, atom_number_codes,
-    atom_mode_read, atom_mode_write, atom_mode_append;
+    atom_mode_read, atom_mode_write, atom_mode_append, atom_copy_term,
+    atom_term_to_atom, atom_atom_to_term;
 
 static size_t pending_error_ball = (size_t)-1;
 
@@ -134,6 +135,9 @@ void solve_init(void) {
   atom_mode_read = atom_intern("read");
   atom_mode_write = atom_intern("write");
   atom_mode_append = atom_intern("append");
+  atom_copy_term = atom_intern("copy_term");
+  atom_term_to_atom = atom_intern("term_to_atom");
+  atom_atom_to_term = atom_intern("atom_to_term");
 }
 
 static idx_key_t key_of_template(tterm_t *head) {
@@ -598,6 +602,22 @@ static void capture_write_str(const char *str, void *ud) {
   }
 }
 
+static char tta_buf[CAPTURE_BUF_SIZE];
+static int tta_pos;
+static void tta_emit(const char *str) {
+  int len = (int)strlen(str);
+  int rem = CAPTURE_BUF_SIZE - tta_pos - 1;
+  if (len > rem)
+    len = rem;
+  if (len > 0) {
+    memcpy(tta_buf + tta_pos, str, (size_t)len);
+    tta_pos += len;
+    tta_buf[tta_pos] = '\0';
+  }
+}
+
+static void rename_init(size_t *rename, int32_t n);
+
 static int dispatch_builtin(size_t goal, int *ok) {
   size_t g = heap_deref(goal);
   size_t f = 0;
@@ -750,6 +770,63 @@ static int dispatch_builtin(size_t goal, int *ok) {
   if (arity == 1 && id == atom_capture_stop) {
     io_hooks_restore(capture_saved);
     *ok = unify(f + 1, heap_new_atom(atom_intern(capture_buf)));
+    return 1;
+  }
+  if (arity == 2 && id == atom_copy_term) {
+    int32_t nvars;
+    tterm_t *tmpl = heap_to_template(f + 1, &nvars);
+    size_t rn[nvars > 0 ? nvars : 1];
+    rename_init(rn, nvars);
+    *ok = unify(f + 2, heap_copy(tmpl, rn, 0));
+    return 1;
+  }
+  if (arity == 2 && id == atom_term_to_atom) {
+    size_t term_arg = heap_deref(f + 1);
+    size_t atom_arg = heap_deref(f + 2);
+    if (heap[term_arg].tag != TAG_REF) {
+      tta_pos = 0;
+      tta_buf[0] = '\0';
+      print_term_via(term_arg, 1, tta_emit); // quoted, so it round-trips
+      *ok = unify(atom_arg, heap_new_atom(atom_intern(tta_buf)));
+      return 1;
+    }
+    if (heap[atom_arg].tag != TAG_ATOM) {
+      *ok = 0;
+      return 1;
+    }
+    int32_t nvars;
+    const char **names;
+    tterm_t *t;
+    if (!parse_term_from_string(atom_name(heap[atom_arg].as.atom_id), &t,
+                                &nvars, &names)) {
+      *ok = 0;
+      return 1;
+    }
+    size_t rn[nvars > 0 ? nvars : 1];
+    rename_init(rn, nvars);
+    *ok = unify(term_arg, heap_copy(t, rn, 0));
+    return 1;
+  }
+  // Bindings is always []
+  // TODO: this is fine for now, but not a complete impl
+  if (arity == 3 && id == atom_atom_to_term) {
+    size_t atom_arg = heap_deref(f + 1);
+    if (heap[atom_arg].tag != TAG_ATOM) {
+      *ok = 0;
+      return 1;
+    }
+    int32_t nvars;
+    const char **names;
+    tterm_t *t;
+    if (!parse_term_from_string(atom_name(heap[atom_arg].as.atom_id), &t,
+                                &nvars, &names)) {
+      *ok = 0;
+      return 1;
+    }
+    size_t rn[nvars > 0 ? nvars : 1];
+    rename_init(rn, nvars);
+    *ok = unify(f + 2, heap_copy(t, rn, 0)) &&
+          unify(f + 3, heap_new_atom(atom_nil));
     return 1;
   }
 
