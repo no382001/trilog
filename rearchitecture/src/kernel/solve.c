@@ -43,13 +43,12 @@ static int32_t atom_plus, atom_minus, atom_star, atom_intdiv, atom_mod,
     atom_min, atom_max, atom_abs, atom_sign, atom_floor, atom_ceiling,
     atom_round, atom_truncate;
 // dispatch_builtin names.
-static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_le, atom_ge,
-    atom_arith_eq, atom_arith_neq, atom_put_code, atom_get_code, atom_write_raw,
-    atom_open, atom_close, atom_consult, atom_dynamic, atom_capture_start,
-    atom_capture_stop, atom_var, atom_nonvar, atom_kw_atom, atom_atomic,
-    atom_number, atom_integer, atom_kw_float, atom_compound, atom_callable,
-    atom_functor, atom_arg, atom_univ, atom_compare, atom_atom_codes,
-    atom_number_codes, atom_mode_read, atom_mode_write, atom_mode_append;
+static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_arith_compare,
+    atom_put_code, atom_get_code, atom_write_raw, atom_open, atom_close,
+    atom_consult, atom_dynamic, atom_capture_start, atom_capture_stop, atom_var,
+    atom_kw_atom, atom_integer, atom_kw_float, atom_compound, atom_functor,
+    atom_arg, atom_univ, atom_compare, atom_atom_codes, atom_number_codes,
+    atom_mode_read, atom_mode_write, atom_mode_append;
 
 static size_t pending_error_ball = (size_t)-1;
 
@@ -111,10 +110,7 @@ void solve_init(void) {
   atom_unify_op = atom_intern("=");
   atom_lt = atom_intern("<");
   atom_gt = atom_intern(">");
-  atom_le = atom_intern("=<");
-  atom_ge = atom_intern(">=");
-  atom_arith_eq = atom_intern("=:=");
-  atom_arith_neq = atom_intern("=\\=");
+  atom_arith_compare = atom_intern("$arith_compare");
   atom_put_code = atom_intern("put_code");
   atom_get_code = atom_intern("get_code");
   atom_write_raw = atom_intern("$write_raw");
@@ -125,14 +121,10 @@ void solve_init(void) {
   atom_capture_start = atom_intern("$capture_start");
   atom_capture_stop = atom_intern("$capture_stop");
   atom_var = atom_intern("var");
-  atom_nonvar = atom_intern("nonvar");
   atom_kw_atom = atom_intern("atom");
-  atom_atomic = atom_intern("atomic");
-  atom_number = atom_intern("number");
   atom_integer = atom_intern("integer");
   atom_kw_float = atom_intern("float");
   atom_compound = atom_intern("compound");
-  atom_callable = atom_intern("callable");
   atom_functor = atom_intern("functor");
   atom_arg = atom_intern("arg");
   atom_univ = atom_intern("=..");
@@ -632,28 +624,18 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = unify(f + 1, f + 2);
     return 1;
   }
-  if (arity == 2 &&
-      (id == atom_lt || id == atom_gt || id == atom_le || id == atom_ge ||
-       id == atom_arith_eq || id == atom_arith_neq)) {
+  if (arity == 3 && id == atom_arith_compare) {
     int aok = 1;
-    int64_t a = eval_arith(f + 1, &aok);
-    int64_t b = aok ? eval_arith(f + 2, &aok) : 0;
+    int64_t a = eval_arith(f + 2, &aok);
+    int64_t b = aok ? eval_arith(f + 3, &aok) : 0;
     if (!aok) {
       *ok = 0;
       return 1;
     }
-    if (id == atom_lt)
-      *ok = a < b;
-    else if (id == atom_gt)
-      *ok = a > b;
-    else if (id == atom_le)
-      *ok = a <= b;
-    else if (id == atom_ge)
-      *ok = a >= b;
-    else if (id == atom_arith_eq)
-      *ok = a == b;
-    else
-      *ok = a != b;
+    int c = a < b ? -1 : (a > b ? 1 : 0);
+    *ok =
+        unify(f + 1, heap_new_atom(c < 0 ? atom_lt
+                                         : (c > 0 ? atom_gt : atom_unify_op)));
     return 1;
   }
   if (arity == 1 && id == atom_put_code) {
@@ -772,28 +754,19 @@ static int dispatch_builtin(size_t goal, int *ok) {
   }
 
   if (arity == 1 &&
-      (id == atom_var || id == atom_nonvar || id == atom_kw_atom ||
-       id == atom_atomic || id == atom_number || id == atom_integer ||
-       id == atom_kw_float || id == atom_compound || id == atom_callable)) {
+      (id == atom_var || id == atom_kw_atom || id == atom_integer ||
+       id == atom_kw_float || id == atom_compound)) {
     tag_t t = heap[heap_deref(f + 1)].tag;
     if (id == atom_var)
       *ok = t == TAG_REF;
-    else if (id == atom_nonvar)
-      *ok = t != TAG_REF;
     else if (id == atom_kw_atom)
       *ok = t == TAG_ATOM;
-    else if (id == atom_number)
-      *ok = t == TAG_INT || t == TAG_FLT;
     else if (id == atom_integer)
       *ok = t == TAG_INT;
     else if (id == atom_kw_float)
       *ok = t == TAG_FLT;
-    else if (id == atom_atomic)
-      *ok = t == TAG_ATOM || t == TAG_INT || t == TAG_FLT;
-    else if (id == atom_compound)
-      *ok = t == TAG_STR;
     else
-      *ok = t == TAG_ATOM || t == TAG_STR; // callable
+      *ok = t == TAG_STR; // compound
     return 1;
   }
 

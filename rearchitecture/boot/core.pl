@@ -53,6 +53,21 @@ findall(Template, Goal, List) :-
 
 '\\='(X, Y) :- \+ X = Y.
 
+'<'(A, B) :- '$arith_compare'(<, A, B).
+'>'(A, B) :- '$arith_compare'(>, A, B).
+'=<'(A, B) :- '$arith_compare'(O, A, B), '$le_order'(O).
+'>='(A, B) :- '$arith_compare'(O, A, B), '$ge_order'(O).
+'=:='(A, B) :- '$arith_compare'(=, A, B).
+'=\\='(A, B) :- \+ '$arith_compare'(=, A, B).
+
+nonvar(X) :- \+ var(X).
+number(X) :- integer(X).
+number(X) :- float(X).
+atomic(X) :- atom(X).
+atomic(X) :- number(X).
+callable(X) :- atom(X).
+callable(X) :- compound(X).
+
 % --- lists ---
 
 append([], L, L).
