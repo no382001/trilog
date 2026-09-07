@@ -1,3 +1,6 @@
+:- dynamic(fail/0).
+:- dynamic(false/0).
+
 % if-then-else
 ';'('->'(If, Then), _) :- If, !, Then.
 ';'('->'(_, _), Else) :- !, Else.
@@ -161,9 +164,29 @@ sort(L, Sorted) :- msort(L, M), '$dedup'(M, Sorted).
 '$dedup'([X,Y|T], [X|R]) :- '$dedup'([Y|T], R).
 
 % --- with_output_to/2 ---
-% $capture_start/$capture_stop (solve.c) swap the write_str hook for a
-% buffer; same known gap as findall - a throw from Goal skips $capture_stop.
 with_output_to(atom(A), Goal) :-
     '$capture_start',
     (call(Goal) -> '$capture_stop'(A) ; '$capture_stop'(_), fail).
 with_output_to(codes(Cs), Goal) :- with_output_to(atom(A), Goal), atom_codes(A, Cs).
+
+% --- write ---
+
+'$stream_alias'(user_output, 0).
+'$stream_alias'(user_error, 1).
+
+'$resolve_stream'(S, N) :- '$stream_alias'(S, N), !.
+'$resolve_stream'('$stream'(Id), '$stream'(Id)) :- !.
+'$resolve_stream'(S, _) :- throw(error(domain_error(stream_or_alias, S), _)).
+
+write(T) :- '$write_raw'(0, T, 0).
+write(S, T) :-
+    '$resolve_stream'(S, N),
+    ( '$write_raw'(N, T, 0) -> true ; throw(error(existence_error(stream, S), write/2)) ).
+
+writeq(T) :- '$write_raw'(0, T, 1).
+writeq(S, T) :-
+    '$resolve_stream'(S, N),
+    ( '$write_raw'(N, T, 1) -> true ; throw(error(existence_error(stream, S), writeq/2)) ).
+
+nl :- write('\n').
+nl(S) :- write(S, '\n').

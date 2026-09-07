@@ -29,6 +29,8 @@ size_t heap_copy(tterm_t *t, size_t *rename, size_t cut_barrier);
 
 void print_term(size_t r);
 void print_term_quoted(size_t r);
+typedef void (*emit_fn)(const char *s);
+void print_term_via(size_t r, int quoted, emit_fn emit);
 
 tterm_t *heap_to_template(size_t r, int32_t *nvars_out);
 

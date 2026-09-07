@@ -95,66 +95,66 @@ static int atom_needs_quote(const char *s) {
   return !all_symbol;
 }
 
-static void print_atom(const char *name, int quoted) {
+static void print_atom(const char *name, int quoted, emit_fn emit) {
   if (!quoted || !atom_needs_quote(name)) {
-    io_write_str(name);
+    emit(name);
     return;
   }
-  io_write_str("'");
+  emit("'");
   for (const char *p = name; *p; p++) {
     switch (*p) {
     case '\'':
-      io_write_str("\\'");
+      emit("\\'");
       break;
     case '\\':
-      io_write_str("\\\\");
+      emit("\\\\");
       break;
     case '\n':
-      io_write_str("\\n");
+      emit("\\n");
       break;
     case '\t':
-      io_write_str("\\t");
+      emit("\\t");
       break;
     default: {
       char c[2] = {*p, '\0'};
-      io_write_str(c);
+      emit(c);
     }
     }
   }
-  io_write_str("'");
+  emit("'");
 }
 
-static void print_term_ex(size_t r, int quoted) {
+static void print_term_ex(size_t r, int quoted, emit_fn emit) {
   r = heap_deref(r);
   char buf[64];
   switch (heap[r].tag) {
   case TAG_REF:
     snprintf(buf, sizeof buf, "_G%zu", r);
-    io_write_str(buf);
+    emit(buf);
     break;
   case TAG_ATOM:
-    print_atom(atom_name(heap[r].as.atom_id), quoted);
+    print_atom(atom_name(heap[r].as.atom_id), quoted, emit);
     break;
   case TAG_INT:
     snprintf(buf, sizeof buf, "%ld", heap[r].as.ival);
-    io_write_str(buf);
+    emit(buf);
     break;
   case TAG_FLT:
     snprintf(buf, sizeof buf, "%g", heap[r].as.fval);
-    io_write_str(buf);
+    emit(buf);
     break;
   case TAG_STR: {
     size_t f = heap[r].as.ptr;
     int32_t arity = heap[f].as.func.arity;
     const char *name = atom_name(heap[f].as.func.atom_id);
     if (arity == 2 && !strcmp(name, ".")) {
-      io_write_str("[");
+      emit("[");
       size_t cell = r;
       for (int first = 1;; first = 0) {
         size_t cf = heap[cell].as.ptr;
         if (!first)
-          io_write_str(", ");
-        print_term_ex(cf + 1, quoted); // head
+          emit(", ");
+        print_term_ex(cf + 1, quoted, emit); // head
         size_t tail = heap_deref(cf + 2);
         if (heap[tail].tag == TAG_ATOM &&
             !strcmp(atom_name(heap[tail].as.atom_id), "[]"))
@@ -167,22 +167,22 @@ static void print_term_ex(size_t r, int quoted) {
             continue;
           }
         }
-        io_write_str("|");
-        print_term_ex(tail, quoted);
+        emit("|");
+        print_term_ex(tail, quoted, emit);
         break;
       }
-      io_write_str("]");
+      emit("]");
       break;
     }
-    print_atom(name, quoted);
+    print_atom(name, quoted, emit);
     if (arity > 0) {
-      io_write_str("(");
+      emit("(");
       for (int32_t i = 0; i < arity; i++) {
         if (i)
-          io_write_str(", ");
-        print_term_ex(f + 1 + i, quoted);
+          emit(", ");
+        print_term_ex(f + 1 + i, quoted, emit);
       }
-      io_write_str(")");
+      emit(")");
     }
     break;
   }
@@ -191,8 +191,11 @@ static void print_term_ex(size_t r, int quoted) {
   }
 }
 
-void print_term(size_t r) { print_term_ex(r, 0); }
-void print_term_quoted(size_t r) { print_term_ex(r, 1); }
+void print_term(size_t r) { print_term_ex(r, 0, io_write_str); }
+void print_term_quoted(size_t r) { print_term_ex(r, 1, io_write_str); }
+void print_term_via(size_t r, int quoted, emit_fn emit) {
+  print_term_ex(r, quoted, emit);
+}
 
 #define MAX_BALL_VARS 64
 

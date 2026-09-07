@@ -47,14 +47,16 @@ static size_t make_type_error(const char *type, size_t culprit) {
   size_t args[2] = {heap_new_atom(atom_intern(type)), culprit};
   return make_error(heap_new_struct(atom_intern("type_error"), 2, args));
 }
+static size_t make_existence_error_term(const char *obj_type, size_t culprit) {
+  size_t args[2] = {heap_new_atom(atom_intern(obj_type)), culprit};
+  return make_error(heap_new_struct(atom_intern("existence_error"), 2, args));
+}
 static size_t make_existence_error(const char *obj_type, int32_t pred_id,
                                    int32_t pred_arity) {
   size_t pi_args[2] = {heap_new_atom(pred_id), heap_new_int(pred_arity)};
-  size_t args[2] = {heap_new_atom(atom_intern(obj_type)),
-                    heap_new_struct(atom_intern("/"), 2, pi_args)};
-  return make_error(heap_new_struct(atom_intern("existence_error"), 2, args));
+  return make_existence_error_term(
+      obj_type, heap_new_struct(atom_intern("/"), 2, pi_args));
 }
-
 void solve_init(void) {
   atom_true = atom_intern("true");
   atom_comma = atom_intern(",");
@@ -190,6 +192,29 @@ static void db_remove_at(int32_t idx) {
   memmove(&db[idx], &db[idx + 1],
           (size_t)(db_count - idx - 1) * sizeof(clause_t));
   db_count--;
+}
+
+// boot/core.pl declares fail/0 and false/0 this way
+typedef struct {
+  int32_t pred_id;
+  int32_t pred_arity;
+} dyn_decl_t;
+static dyn_decl_t *dynamic_decls = NULL;
+static int32_t dynamic_count = 0, dynamic_cap = 0;
+
+static void dynamic_declare(int32_t pred_id, int32_t pred_arity) {
+  if (dynamic_count >= dynamic_cap) {
+    dynamic_cap = dynamic_cap ? dynamic_cap * 2 : 8;
+    dynamic_decls = realloc(dynamic_decls, (size_t)dynamic_cap * sizeof(dyn_decl_t));
+  }
+  dynamic_decls[dynamic_count++] = (dyn_decl_t){pred_id, pred_arity};
+}
+
+static int is_dynamic(int32_t pred_id, int32_t pred_arity) {
+  for (int32_t i = 0; i < dynamic_count; i++)
+    if (dynamic_decls[i].pred_id == pred_id && dynamic_decls[i].pred_arity == pred_arity)
+      return 1;
+  return 0;
 }
 
 static void stack_push(frame_t f) {
@@ -452,55 +477,32 @@ static int resolve_stream_id(size_t arg, int *id_out) {
   return 1;
 }
 
-static int resolve_output_handle(size_t arg, void **handle_out) {
-  size_t s = heap_deref(arg);
-  if (heap[s].tag == TAG_ATOM) {
-    const char *n = atom_name(heap[s].as.atom_id);
-    if (strcmp(n, "user_output") && strcmp(n, "user"))
-      return 0;
-    *handle_out = NULL;
-    return 1;
+static void *file_target;
+static void emit_to_file(const char *str) { io_file_write(file_target, str); }
+
+enum { OUT_STDOUT, OUT_STDERR, OUT_FILE };
+
+static int resolve_write_target(size_t target, int *kind_out,
+                                void **handle_out) {
+  if (heap[target].tag == TAG_INT) {
+    int64_t n = heap[target].as.ival;
+    if (n == 0) {
+      *kind_out = OUT_STDOUT;
+      return 1;
+    }
+    if (n == 1) {
+      *kind_out = OUT_STDERR;
+      return 1;
+    }
+    return 0;
   }
   int id;
   void *h;
-  if (!resolve_stream_id(arg, &id) || !(h = stream_handle(id)))
+  if (!resolve_stream_id(target, &id) || !(h = stream_handle(id)))
     return 0;
+  *kind_out = OUT_FILE;
   *handle_out = h;
   return 1;
-}
-
-// Redirects write_str into a file handle for the duration of one print.
-static void *redirect_handle;
-static void redirect_write_str(const char *str, void *ud) {
-  (void)ud;
-  io_file_write(redirect_handle, str);
-}
-static void print_term_to(void *handle, size_t r, int quoted) {
-  io_hooks_t saved = io_hooks_get();
-  redirect_handle = handle;
-  io_hooks_t tmp = saved;
-  tmp.write_str = redirect_write_str;
-  io_hooks_replace(tmp);
-  if (quoted)
-    print_term_quoted(r);
-  else
-    print_term(r);
-  io_hooks_restore(saved);
-}
-
-// Same trick, relayed to the write_err hook instead - for the one term
-// (an uncaught exception's ball) that belongs on the error stream.
-static void err_relay_write_str(const char *str, void *ud) {
-  (void)ud;
-  io_write_err(str);
-}
-static void print_term_err(size_t r) {
-  io_hooks_t saved = io_hooks_get();
-  io_hooks_t tmp = saved;
-  tmp.write_str = err_relay_write_str;
-  io_hooks_replace(tmp);
-  print_term(r);
-  io_hooks_restore(saved);
 }
 
 // with_output_to/2's C half (see boot/core.pl). Not reentrant: a nested
@@ -596,49 +598,23 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = unify(f + 1, r);
     return 1;
   }
-  if (arity == 0 && (!strcmp(name, "fail") || !strcmp(name, "false"))) {
-    *ok = 0;
-    return 1;
-  }
-  if (arity == 0 && !strcmp(name, "nl")) {
-    io_write_str("\n");
-    *ok = 1;
-    return 1;
-  }
-  if (arity == 1 && !strcmp(name, "nl")) {
+  if (arity == 3 && !strcmp(name, "$write_raw")) {
+    size_t target = heap_deref(f + 1);
+    int quoted = heap[heap_deref(f + 3)].as.ival != 0;
+    int kind;
     void *h;
-    if (!resolve_output_handle(f + 1, &h)) {
+    if (!resolve_write_target(target, &kind, &h)) {
       *ok = 0;
       return 1;
     }
-    if (h)
-      io_file_write(h, "\n");
-    else
-      io_write_str("\n");
-    *ok = 1;
-    return 1;
-  }
-  if (arity == 1 && (!strcmp(name, "write") || !strcmp(name, "writeq"))) {
-    if (!strcmp(name, "writeq"))
-      print_term_quoted(f + 1);
-    else
-      print_term(f + 1);
-    *ok = 1;
-    return 1;
-  }
-  if (arity == 2 && (!strcmp(name, "write") || !strcmp(name, "writeq"))) {
-    void *h;
-    if (!resolve_output_handle(f + 1, &h)) {
-      *ok = 0;
-      return 1;
+    if (kind == OUT_STDOUT)
+      print_term_via(f + 2, quoted, io_write_str);
+    else if (kind == OUT_STDERR)
+      print_term_via(f + 2, quoted, io_write_err);
+    else {
+      file_target = h;
+      print_term_via(f + 2, quoted, emit_to_file);
     }
-    int quoted = !strcmp(name, "writeq");
-    if (h)
-      print_term_to(h, f + 2, quoted);
-    else if (quoted)
-      print_term_quoted(f + 2);
-    else
-      print_term(f + 2);
     *ok = 1;
     return 1;
   }
@@ -686,6 +662,27 @@ static int dispatch_builtin(size_t goal, int *ok) {
       return 1;
     }
     *ok = consult_file(atom_name(heap[path_d].as.atom_id));
+    return 1;
+  }
+  if (arity == 1 && !strcmp(name, "dynamic")) {
+    size_t d = heap_deref(f + 1);
+    if (heap[d].tag != TAG_STR) {
+      *ok = 0;
+      return 1;
+    }
+    size_t df = heap[d].as.ptr;
+    if (heap[df].as.func.atom_id != atom_intern("/") || heap[df].as.func.arity != 2) {
+      *ok = 0;
+      return 1;
+    }
+    size_t name_d = heap_deref(df + 1);
+    size_t arity_d = heap_deref(df + 2);
+    if (heap[name_d].tag != TAG_ATOM || heap[arity_d].tag != TAG_INT) {
+      *ok = 0;
+      return 1;
+    }
+    dynamic_declare(heap[name_d].as.atom_id, (int32_t)heap[arity_d].as.ival);
+    *ok = 1;
     return 1;
   }
   if (arity == 0 && !strcmp(name, "$capture_start")) {
@@ -918,7 +915,7 @@ static int do_throw(size_t ball, size_t *cn_out, size_t *active_catch_ptr) {
   for (;;) {
     if (idx == (size_t)-1) {
       io_write_err("uncaught exception: ");
-      print_term_err(ball);
+      print_term_via(ball, 0, io_write_err);
       io_write_err("\n");
       return 0;
     }
@@ -939,7 +936,7 @@ static int do_throw(size_t ball, size_t *cn_out, size_t *active_catch_ptr) {
 }
 
 void run_query(tterm_t **goals, int32_t ngoals, int32_t nvars,
-               const char **varnames, int interactive) {
+               const char **varnames, int mode) {
   size_t rename[nvars > 0 ? nvars : 1];
   rename_init(rename, nvars);
 
@@ -965,7 +962,7 @@ A:
     // wrongly ends the query.
     size_t cnd = heap_deref(cn);
     if (heap[cnd].tag == TAG_ATOM && heap[cnd].as.atom_id == atom_true) {
-      if (interactive) {
+      if (mode == RUN_INTERACTIVE) {
         io_write_str(any_found ? "\n;  " : "   ");
         any_found = 1;
         int any_var = 0;
@@ -980,7 +977,7 @@ A:
           }
         if (!any_var)
           io_write_str("true");
-      } else {
+      } else if (mode == RUN_BATCH) {
         io_write_str("yes:");
         for (int32_t i = 0; i < nvars; i++)
           if (rename[i] != (size_t)-1) {
@@ -1134,6 +1131,9 @@ A:
 
 B:
   if (clause_idx >= db_count) {
+    if (!predicate_known &&
+        is_dynamic(caller_key.pred_id, caller_key.pred_arity))
+      goto C; // declared dynamic - no clauses is a normal fail, not existence_error
     if (!predicate_known) {
       size_t ball = make_existence_error("procedure", caller_key.pred_id,
                                          caller_key.pred_arity);
@@ -1179,7 +1179,7 @@ B:
 
 C:
   if (sp == 0) {
-    if (interactive)
+    if (mode == RUN_INTERACTIVE)
       io_write_str(any_found ? ".\n" : "   false.\n");
     return;
   }

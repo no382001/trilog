@@ -441,7 +441,7 @@ static void run_directive(tterm_t *goal, int32_t nvars) {
       arena_alloc((size_t)(nvars > 0 ? nvars : 1) * sizeof(char *));
   for (int32_t i = 0; i < nvars; i++)
     names[i] = arena_strdup(var_names[i]);
-  run_query(goals, n, nvars, names, 0);
+  run_query(goals, n, nvars, names, RUN_SILENT);
 }
 
 static void assemble_clause(tterm_t *t, int32_t nvars) {
