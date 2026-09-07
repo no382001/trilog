@@ -1,6 +1,8 @@
 #include "term.h"
 #include "arena.h"
 #include "heap.h"
+#include "io.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -68,24 +70,61 @@ size_t heap_copy(tterm_t *t, size_t *rename, size_t cut_barrier) {
     return (size_t)-1; // unreachable
 }
 
-void print_term(size_t r) {
+static int atom_needs_quote(const char *s) {
+    if (!s[0]) return 1;
+    if (!strcmp(s, "[]") || !strcmp(s, "{}") || !strcmp(s, "!") || !strcmp(s, ";")) return 0;
+    if (islower((unsigned char)s[0])) {
+        for (const char *p = s + 1; *p; p++)
+            if (!isalnum((unsigned char)*p) && *p != '_') return 1;
+        return 0;
+    }
+    static const char *symbol_chars = "+-*/\\^<>=~:.?@#&$";
+    int all_symbol = 1;
+    for (const char *p = s; *p; p++)
+        if (!strchr(symbol_chars, *p)) { all_symbol = 0; break; }
+    return !all_symbol;
+}
+
+static void print_atom(const char *name, int quoted) {
+    if (!quoted || !atom_needs_quote(name)) {
+        io_write_str(name);
+        return;
+    }
+    io_write_str("'");
+    for (const char *p = name; *p; p++) {
+        switch (*p) {
+        case '\'': io_write_str("\\'"); break;
+        case '\\': io_write_str("\\\\"); break;
+        case '\n': io_write_str("\\n"); break;
+        case '\t': io_write_str("\\t"); break;
+        default: {
+            char c[2] = {*p, '\0'};
+            io_write_str(c);
+        }
+        }
+    }
+    io_write_str("'");
+}
+
+static void print_term_ex(size_t r, int quoted) {
     r = heap_deref(r);
+    char buf[64];
     switch (heap[r].tag) {
-    case TAG_REF: printf("_G%zu", r); break;
-    case TAG_ATOM: printf("%s", atom_name(heap[r].as.atom_id)); break;
-    case TAG_INT: printf("%ld", heap[r].as.ival); break;
-    case TAG_FLT: printf("%g", heap[r].as.fval); break;
+    case TAG_REF: snprintf(buf, sizeof buf, "_G%zu", r); io_write_str(buf); break;
+    case TAG_ATOM: print_atom(atom_name(heap[r].as.atom_id), quoted); break;
+    case TAG_INT: snprintf(buf, sizeof buf, "%ld", heap[r].as.ival); io_write_str(buf); break;
+    case TAG_FLT: snprintf(buf, sizeof buf, "%g", heap[r].as.fval); io_write_str(buf); break;
     case TAG_STR: {
         size_t f = heap[r].as.ptr;
         int32_t arity = heap[f].as.func.arity;
         const char *name = atom_name(heap[f].as.func.atom_id);
         if (arity == 2 && !strcmp(name, ".")) {
-            printf("[");
+            io_write_str("[");
             size_t cell = r;
             for (int first = 1;; first = 0) {
                 size_t cf = heap[cell].as.ptr;
-                if (!first) printf(",");
-                print_term(cf + 1); // head
+                if (!first) io_write_str(", ");
+                print_term_ex(cf + 1, quoted); // head
                 size_t tail = heap_deref(cf + 2);
                 if (heap[tail].tag == TAG_ATOM && !strcmp(atom_name(heap[tail].as.atom_id), "[]")) break;
                 if (heap[tail].tag == TAG_STR) {
@@ -95,27 +134,30 @@ void print_term(size_t r) {
                         continue;
                     }
                 }
-                printf("|");
-                print_term(tail);
+                io_write_str("|");
+                print_term_ex(tail, quoted);
                 break;
             }
-            printf("]");
+            io_write_str("]");
             break;
         }
-        printf("%s", name);
+        print_atom(name, quoted);
         if (arity > 0) {
-            printf("(");
+            io_write_str("(");
             for (int32_t i = 0; i < arity; i++) {
-                if (i) printf(",");
-                print_term(f + 1 + i);
+                if (i) io_write_str(", ");
+                print_term_ex(f + 1 + i, quoted);
             }
-            printf(")");
+            io_write_str(")");
         }
         break;
     }
     case TAG_FUNCTOR: break; // never a term in its own right
     }
 }
+
+void print_term(size_t r) { print_term_ex(r, 0); }
+void print_term_quoted(size_t r) { print_term_ex(r, 1); }
 
 #define MAX_BALL_VARS 64
 

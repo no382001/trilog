@@ -159,3 +159,11 @@ sort(L, Sorted) :- msort(L, M), '$dedup'(M, Sorted).
 '$dedup'([X], [X]) :- !.
 '$dedup'([X,Y|T], R) :- compare(=, X, Y), !, '$dedup'([Y|T], R).
 '$dedup'([X,Y|T], [X|R]) :- '$dedup'([Y|T], R).
+
+% --- with_output_to/2 ---
+% $capture_start/$capture_stop (solve.c) swap the write_str hook for a
+% buffer; same known gap as findall - a throw from Goal skips $capture_stop.
+with_output_to(atom(A), Goal) :-
+    '$capture_start',
+    (call(Goal) -> '$capture_stop'(A) ; '$capture_stop'(_), fail).
+with_output_to(codes(Cs), Goal) :- with_output_to(atom(A), Goal), atom_codes(A, Cs).

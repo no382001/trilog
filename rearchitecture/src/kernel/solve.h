@@ -45,4 +45,4 @@ void solve_init(void);
 
 void db_add(tterm_t *head, tterm_t **body, int32_t nbody, int32_t nvars);
 
-void run_query(tterm_t **goals, int32_t ngoals, int32_t nvars, const char **varnames);
+void run_query(tterm_t **goals, int32_t ngoals, int32_t nvars, const char **varnames, int interactive);

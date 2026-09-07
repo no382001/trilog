@@ -28,6 +28,7 @@ tterm_t *tt_struct(const char *name, int32_t arity, tterm_t **args);
 size_t heap_copy(tterm_t *t, size_t *rename, size_t cut_barrier);
 
 void print_term(size_t r);
+void print_term_quoted(size_t r);
 
 tterm_t *heap_to_template(size_t r, int32_t *nvars_out);
 

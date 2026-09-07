@@ -2,5 +2,126 @@ keep in its entirety:
     io interaction layer
     ffi
 
+improvements:
+    as much logic in prolog as possible
+    smallest achievable kernel possible
+    proper gc
+    some more complicated mm
+
 iso builtins and regression tests for all of the issues we had before
 
+old test suite to port over, as a checklist 
+(don't consider a feature area ported until its tests pass against the new binary too):
+    test/builtins_quad.pl    674 lines, ~178 queries
+    test/core_quad.pl        409 lines, ~110 queries
+    test/cuts_quad.pl         21 lines,    2 queries
+    test/dynamic_quad.pl     158 lines,   37 queries
+    test/errors_quad.pl      161 lines,   38 queries
+    test/float_quad.pl       201 lines,   59 queries
+    test/iso_quad.pl        1620 lines,  462 queries  (Ulrich's ISO suite)
+    test/ledit_quad.pl       352 lines,   66 queries
+    test/list_consult_quad.pl 60 lines,   15 queries
+    test/op_quad.pl           98 lines,   24 queries
+    test/parser_quad.pl      210 lines,   35 queries
+    test/regressions_quad.pl  73 lines,   14 queries
+    test/solver_quad.pl      229 lines,   53 queries
+    test/stdlib_quad.pl      304 lines,   79 queries
+    test/strings_quad.pl     263 lines,   59 queries
+    test/ulrich/*.pl (11 files) 955 lines total - append/between/call_nth/
+        countall/foldl/length/maplist/member/nth/number_chars/succ
+    test/*.bats: ledit(10), reclaim(8), stress(17), system(44)
+    -> rearchitecture's own test/system.bats (56) is a fresh start, not a
+       port of any of the above yet
+    -> old test/system.bats 27/44 pass
+       missing:
+       - CLI flags (-f/-v/-h, ~/.trilog init)
+       - quad_cli/junit
+       - ISO error terms
+       - string-as-chars
+       term_to_atom/atom_to_term, copy_term
+
+
+# last main's pipeline Results:
+
+| File | Tests | Passed | Failed | Crashed |
+|---|---|---|---|---|
+| test/*.bats | 79 | 79 | 0 | 0 |
+| test/builtins_quad.pl | 178 | 177 | 1 | 0 |
+| test/core_quad.pl | 110 | 109 | 1 | 0 |
+| test/cuts_quad.pl | 2 | 2 | 0 | 0 |
+| test/dynamic_quad.pl | 37 | 37 | 0 | 0 |
+| test/errors_quad.pl | 38 | 38 | 0 | 0 |
+| test/float_quad.pl | 59 | 59 | 0 | 0 |
+| test/iso_quad.pl | 462 | 313 | 149 | 1 |
+| test/ledit_quad.pl | 66 | 66 | 0 | 0 |
+| test/list_consult_quad.pl | 15 | 15 | 0 | 0 |
+| test/op_quad.pl | 24 | 24 | 0 | 0 |
+| test/parser_quad.pl | 35 | 35 | 0 | 0 |
+| test/regressions_quad.pl | 14 | 14 | 0 | 0 |
+| test/solver_quad.pl | 53 | 53 | 0 | 0 |
+| test/stdlib_quad.pl | 79 | 79 | 0 | 0 |
+| test/strings_quad.pl | 59 | 59 | 0 | 0 |
+| test/ulrich/append_quad.pl | 5 | 1 | 4 | 1 |
+| test/ulrich/between_quad.pl | 8 | 3 | 5 | 0 |
+| test/ulrich/call_nth_quad.pl | 17 | 0 | 17 | 0 |
+| test/ulrich/countall_quad.pl | 9 | 6 | 3 | 0 |
+| test/ulrich/foldl_quad.pl | 1 | 0 | 1 | 0 |
+| test/ulrich/length_quad.pl | 4 | 1 | 3 | 2 |
+| test/ulrich/maplist_quad.pl | 3 | 2 | 1 | 1 |
+| test/ulrich/member_quad.pl | 5 | 4 | 1 | 1 |
+| test/ulrich/nth_quad.pl | 9 | 3 | 6 | 3 |
+| test/ulrich/number_chars_quad.pl | 71 | 10 | 61 | 0 |
+| test/ulrich/select_quad.pl | 3 | 1 | 2 | 1 |
+| test/ulrich/succ_quad.pl | 10 | 2 | 8 | 0 |
+| **TOTAL** | **1455** | **1192** | **263** | **10** |
+
+
+we mainly restarted because of issue #26 and #24:
+    "max_arity hardcoded to 8 is too low for large structures"
+    -> already structurally fixed here: FUNCTOR.arity is int32_t, argument
+       cells are just contiguous heap cells, no fixed-size array anywhere.
+       confirm this stays true - don't reintroduce a compile-time cap
+       when adding compound-term builtins.
+    "dev branch may be able to move more of the logic to Prolog"
+
+closed github issues = bugs already found and fixed once - don't
+reintroduce when porting/reimplementing the same feature:
+    #23 current_prolog_flag/2 must return integers for max_integer/
+        min_integer/max_arity, not atoms
+    #22 -f means fast startup (skip ~/.trilog), not something else
+    #20 read_from_chars/2, read_term_from_chars/3, write_term_to_chars/3 -
+        chars, not atoms, as the text representation (reclaimed faster)
+    #19 false/0 must exist as a builtin
+    #16 atom '1' must read back as the atom '1', not the integer 1
+    #15 undefined predicate -> existence_error(procedure, Name/Arity),
+        not silent failure
+    #14 double-quoted string chars that look like digits ('1') must stay
+        chars, not get coerced to integers
+    #13 current_prolog_flag(F,V) must enumerate all pairs on backtracking
+        when F is unbound; type_error is wrong for an atom that's just
+        not a valid flag - domain_error is correct (8.17.2.2 b)
+    #12 writeq/1 must escape control chars properly (writeq('\n') -> '\n')
+    #11 "abc" must read as a list of one-char atoms (chars), not codes
+    #4  functor(X,Y,Z) with X,Y,Z all unbound, or X is Y with Y unbound,
+        must throw instantiation_error, not fail
+    #1  [L|Ls] = "abc" must unify against a double-quoted string like any
+        other list - string representation must actually be a list
+
+still-open issues, relevant if the feature area comes up:
+    #28 top-level answer sequence interruption not indicated
+    #27 readability: allow more chars in predicate names
+    #7  number_chars/2 flagged as a good correctness baseline to start
+        parsing from
+    #24 dev branch note: more logic could move to Prolog (this restart's
+       whole premise)
+
+known bugs from old trilog's own TODO, found via test/ulrich/ and
+test/iso_quad.pl - re-verify these can't happen in the new heap/arena
+design before considering a feature "done":
+    - builtin_atom_concat: stack-use-after-return once the concatenated
+      atom got large (old MAX_NAME 16k) - triggered by ulrich/select_quad.pl
+    - term.c make_var: MAX_VARS table exhaustion was a hard abort()
+    - sub_atom/atom_concat split by byte offset, not UTF-8 char offset -
+      can produce invalid truncated multi-byte sequences
+    - no occurs-check, no cycle detection: self-referential unification
+      (member(X,X), select(E,Xs,Xs)) hangs or crashes the printer

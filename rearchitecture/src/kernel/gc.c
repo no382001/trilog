@@ -1,5 +1,6 @@
 #include "gc.h"
 #include "heap.h"
+#include "io.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -246,10 +247,13 @@ void gc_maybe_run(size_t *cn, frame_t *frames, size_t nframes, size_t *rename, i
     heap_set_capacity(gc_threshold);
     shrink_scratch_to(new_top + 1);
 
-    if (getenv("TRILOG_GC_DEBUG"))
-        fprintf(stderr,
-                "gc: heap %zu -> %zu, trail %zu -> %zu, nframes=%zu, mark_visits=%zu, threshold=%zu, "
-                "heap_cap=%zu, new_index_cap=%zu\n",
-                old_top, new_top, old_trail_top, new_trail_top, nframes, mark_visit_count, gc_threshold,
-                heap_capacity(), new_index_cap);
+    if (getenv("TRILOG_GC_DEBUG")) {
+        char msg[300];
+        snprintf(msg, sizeof msg,
+                 "gc: heap %zu -> %zu, trail %zu -> %zu, nframes=%zu, mark_visits=%zu, threshold=%zu, "
+                 "heap_cap=%zu, new_index_cap=%zu\n",
+                 old_top, new_top, old_trail_top, new_trail_top, nframes, mark_visit_count, gc_threshold,
+                 heap_capacity(), new_index_cap);
+        io_write_err(msg);
+    }
 }

@@ -167,8 +167,8 @@ TRILOG="./trilog"
 
 @test "univ =.. decomposes and constructs both ways" {
   run "$TRILOG" -e "foo(a,b,c) =.. L, T =.. [foo,a,b,c]."
-  [[ "$output" == *"L=[foo,a,b,c]"* ]]
-  [[ "$output" == *"T=foo(a,b,c)"* ]]
+  [[ "$output" == *"L=[foo, a, b, c]"* ]]
+  [[ "$output" == *"T=foo(a, b, c)"* ]]
 }
 
 @test "compare/3 gives standard order of terms" {
@@ -180,11 +180,11 @@ TRILOG="./trilog"
 
 @test "atom_codes, char_code, and number_codes round-trip both ways" {
   run "$TRILOG" -e "atom_codes(hi, L1), atom_codes(A, [104,105]), char_code(a, C), char_code(Ch, 97), number_codes(42, L2), number_codes(N, [52,50])."
-  [[ "$output" == *"L1=[104,105]"* ]]
+  [[ "$output" == *"L1=[104, 105]"* ]]
   [[ "$output" == *"A=hi"* ]]
   [[ "$output" == *"C=97"* ]]
   [[ "$output" == *"Ch=a"* ]]
-  [[ "$output" == *"L2=[52,50]"* ]]
+  [[ "$output" == *"L2=[52, 50]"* ]]
   [[ "$output" == *"N=42"* ]]
 }
 
@@ -205,9 +205,9 @@ TRILOG="./trilog"
 
 @test "append, member, memberchk, reverse, length" {
   run "$TRILOG" -e "append([1,2],[3,4],L1), append(X,[3,4],[1,2,3,4]), member(2,[1,2,3]), \\+ member(5,[1,2,3]), memberchk(2,[1,2,2,3]), reverse([1,2,3],R), length([a,b,c],N), length(L2,3)."
-  [[ "$output" == *"L1=[1,2,3,4]"* ]]
-  [[ "$output" == *"X=[1,2]"* ]]
-  [[ "$output" == *"R=[3,2,1]"* ]]
+  [[ "$output" == *"L1=[1, 2, 3, 4]"* ]]
+  [[ "$output" == *"X=[1, 2]"* ]]
+  [[ "$output" == *"R=[3, 2, 1]"* ]]
   [[ "$output" == *"N=3"* ]]
 }
 
@@ -219,12 +219,12 @@ TRILOG="./trilog"
   [[ "$output" == *"S=10"* ]]
   [[ "$output" == *"Mx=5"* ]]
   [[ "$output" == *"Mn=1"* ]]
-  [[ "$output" == *"NL=[1,2,3,4,5]"* ]]
+  [[ "$output" == *"NL=[1, 2, 3, 4, 5]"* ]]
 }
 
 @test "between enumerates and checks, forall, succ, plus" {
   run "$TRILOG" -e "findall(X, between(1,5,X), L), between(1,5,3), \\+ between(1,5,9), forall(member(Y,[1,2,3]),Y>0), succ(3,S1), succ(S2,4), plus(2,3,P)."
-  [[ "$output" == *"L=[1,2,3,4,5]"* ]]
+  [[ "$output" == *"L=[1, 2, 3, 4, 5]"* ]]
   [[ "$output" == *"S1=4"* ]]
   [[ "$output" == *"S2=3"* ]]
   [[ "$output" == *"P=5"* ]]
@@ -233,23 +233,23 @@ TRILOG="./trilog"
 @test "call/2,3,4 dispatch through univ, including partial application" {
   run "$TRILOG" -e "call(=,1,1), call(is,X,1+2), maplist(plus(10),[1,2,3],L)."
   [[ "$output" == *"X=3"* ]]
-  [[ "$output" == *"L=[11,12,13]"* ]]
+  [[ "$output" == *"L=[11, 12, 13]"* ]]
 }
 
 @test "maplist/2,3,4, foldl, include, exclude, partition" {
   run "$TRILOG" test/family.pl -e "maplist(integer,[1,2,3]), \\+ maplist(integer,[1,foo,3]), maplist(succ,[1,2,3],L1), foldl(plus,[1,2,3,4],0,S), include(integer,[1,foo,2,bar,3],L2), exclude(integer,[1,foo,2,bar,3],L3), partition(integer,[1,foo,2,bar,3],Inc,Exc)."
-  [[ "$output" == *"L1=[2,3,4]"* ]]
+  [[ "$output" == *"L1=[2, 3, 4]"* ]]
   [[ "$output" == *"S=10"* ]]
-  [[ "$output" == *"L2=[1,2,3]"* ]]
-  [[ "$output" == *"L3=[foo,bar]"* ]]
-  [[ "$output" == *"Inc=[1,2,3]"* ]]
-  [[ "$output" == *"Exc=[foo,bar]"* ]]
+  [[ "$output" == *"L2=[1, 2, 3]"* ]]
+  [[ "$output" == *"L3=[foo, bar]"* ]]
+  [[ "$output" == *"Inc=[1, 2, 3]"* ]]
+  [[ "$output" == *"Exc=[foo, bar]"* ]]
 }
 
 @test "sort dedups and orders, msort keeps duplicates" {
   run "$TRILOG" -e "sort([3,1,4,1,5,9,2,6], L1), msort([3,1,4,1,5,9,2,6], L2)."
-  [[ "$output" == *"L1=[1,2,3,4,5,6,9]"* ]]
-  [[ "$output" == *"L2=[1,1,2,3,4,5,6,9]"* ]]
+  [[ "$output" == *"L1=[1, 2, 3, 4, 5, 6, 9]"* ]]
+  [[ "$output" == *"L2=[1, 1, 2, 3, 4, 5, 6, 9]"* ]]
 }
 
 # --- first-argument indexing ---
@@ -335,7 +335,7 @@ TRILOG="./trilog"
 
 @test "findall/3 collects every solution in order" {
   run "$TRILOG" test/family.pl -e "findall(X, choice(X), L)."
-  [[ "$output" == *"L=[a,b,c]"* ]]
+  [[ "$output" == *"L=[a, b, c]"* ]]
 }
 
 @test "findall/3 gives an empty list, not failure, for no solutions" {
@@ -346,13 +346,13 @@ TRILOG="./trilog"
 
 @test "findall/3 applies the template, not just the goal's bindings" {
   run "$TRILOG" test/family.pl -e "findall(Y, (choice(X), Y = pair(X,X)), L)."
-  [[ "$output" == *"L=[pair(a,a),pair(b,b),pair(c,c)]"* ]]
+  [[ "$output" == *"L=[pair(a, a), pair(b, b), pair(c, c)]"* ]]
 }
 
 @test "nested findall/3 does not conflate inner and outer items (regression)" {
   # regression: unqualified '$findall_item' facts let a nested findall sweep up an outer call's leftover items; fixed via a unique id per call.
   run "$TRILOG" test/family.pl -e "findall(Outer, (choice(_), findall(Inner, inner_choice(Inner), Outer)), L)."
-  [[ "$output" == *"L=[[a,b,c],[a,b,c],[a,b,c]]"* ]]
+  [[ "$output" == *"L=[[a, b, c], [a, b, c], [a, b, c]]"* ]]
 }
 
 # --- assertz/1, asserta/1, retract/1 ---
@@ -404,7 +404,7 @@ TRILOG="./trilog"
   # regression: gc_maybe_run built trail_new_index AFTER compact_trail() had already mutated trail[], wrongly unbinding a still-live variable.
   run env TRILOG_GC_THRESHOLD=100 timeout 10 "$TRILOG" -e "numlist(1,20,L), length(L,N)."
   [ "$status" -eq 0 ]
-  [[ "$output" == *"L=[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]"* ]]
+  [[ "$output" == *"L=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]"* ]]
   [[ "$output" == *"N=20"* ]]
 }
 

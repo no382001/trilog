@@ -2,6 +2,9 @@
 #include "arena.h"
 #include "gc.h"
 #include "heap.h"
+#include "io.h"
+#include "parse.h"
+#include "streams.h"
 #include "unify.h"
 #include <inttypes.h>
 #include <stdio.h>
@@ -330,12 +333,97 @@ static int term_compare(size_t a, size_t b) {
     }
 }
 
+static int resolve_stream_id(size_t arg, int *id_out) {
+    size_t s = heap_deref(arg);
+    if (heap[s].tag != TAG_STR) return 0;
+    size_t sf = heap[s].as.ptr;
+    if (heap[sf].as.func.atom_id != atom_intern("$stream") || heap[sf].as.func.arity != 1) return 0;
+    size_t idv = heap_deref(sf + 1);
+    if (heap[idv].tag != TAG_INT) return 0;
+    *id_out = (int)heap[idv].as.ival;
+    return 1;
+}
+
+static int resolve_output_handle(size_t arg, void **handle_out) {
+    size_t s = heap_deref(arg);
+    if (heap[s].tag == TAG_ATOM) {
+        const char *n = atom_name(heap[s].as.atom_id);
+        if (strcmp(n, "user_output") && strcmp(n, "user")) return 0;
+        *handle_out = NULL;
+        return 1;
+    }
+    int id;
+    void *h;
+    if (!resolve_stream_id(arg, &id) || !(h = stream_handle(id))) return 0;
+    *handle_out = h;
+    return 1;
+}
+
+// Redirects write_str into a file handle for the duration of one print.
+static void *redirect_handle;
+static void redirect_write_str(const char *str, void *ud) {
+    (void)ud;
+    io_file_write(redirect_handle, str);
+}
+static void print_term_to(void *handle, size_t r, int quoted) {
+    io_hooks_t saved = io_hooks_get();
+    redirect_handle = handle;
+    io_hooks_t tmp = saved;
+    tmp.write_str = redirect_write_str;
+    io_hooks_replace(tmp);
+    if (quoted) print_term_quoted(r);
+    else print_term(r);
+    io_hooks_restore(saved);
+}
+
+// Same trick, relayed to the write_err hook instead - for the one term
+// (an uncaught exception's ball) that belongs on the error stream.
+static void err_relay_write_str(const char *str, void *ud) {
+    (void)ud;
+    io_write_err(str);
+}
+static void print_term_err(size_t r) {
+    io_hooks_t saved = io_hooks_get();
+    io_hooks_t tmp = saved;
+    tmp.write_str = err_relay_write_str;
+    io_hooks_replace(tmp);
+    print_term(r);
+    io_hooks_restore(saved);
+}
+
+// with_output_to/2's C half (see boot/core.pl). Not reentrant: a nested
+// with_output_to before the outer's $capture_stop mixes both into one buffer.
+#define CAPTURE_BUF_SIZE 4096
+static char capture_buf[CAPTURE_BUF_SIZE];
+static int capture_pos;
+static io_hooks_t capture_saved;
+static void capture_write_str(const char *str, void *ud) {
+    (void)ud;
+    int len = (int)strlen(str);
+    int rem = CAPTURE_BUF_SIZE - capture_pos - 1;
+    if (len > rem) len = rem;
+    if (len > 0) {
+        memcpy(capture_buf + capture_pos, str, (size_t)len);
+        capture_pos += len;
+        capture_buf[capture_pos] = '\0';
+    }
+}
+
 static int dispatch_builtin(size_t goal, int *ok) {
     size_t g = heap_deref(goal);
-    if (heap[g].tag != TAG_STR) return 0;
-    size_t f = heap[g].as.ptr;
-    int32_t arity = heap[f].as.func.arity;
-    const char *name = atom_name(heap[f].as.func.atom_id);
+    size_t f = 0;
+    int32_t arity;
+    const char *name;
+    if (heap[g].tag == TAG_ATOM) {
+        arity = 0;
+        name = atom_name(heap[g].as.atom_id);
+    } else if (heap[g].tag == TAG_STR) {
+        f = heap[g].as.ptr;
+        arity = heap[f].as.func.arity;
+        name = atom_name(heap[f].as.func.atom_id);
+    } else {
+        return 0;
+    }
 
     if (arity == 2 && !strcmp(name, "is")) {
         int aok = 1;
@@ -363,13 +451,95 @@ static int dispatch_builtin(size_t goal, int *ok) {
     }
     if (arity == 1 && !strcmp(name, "put_code")) {
         size_t a = heap_deref(f + 1);
-        putchar((int)heap[a].as.ival);
+        char c[2] = {(char)heap[a].as.ival, '\0'};
+        io_write_str(c);
         *ok = 1;
         return 1;
     }
     if (arity == 1 && !strcmp(name, "get_code")) {
-        int c = getchar();
-        *ok = unify(f + 1, heap_new_int(c == EOF ? -1 : c));
+        int c = io_read_char();
+        *ok = unify(f + 1, heap_new_int(c == -1 ? -1 : c));
+        return 1;
+    }
+    if (arity == 1 && !strcmp(name, "get_char")) {
+        int c = io_read_char();
+        size_t r;
+        if (c == -1) r = heap_new_atom(atom_intern("end_of_file"));
+        else { char buf[2] = {(char)c, '\0'}; r = heap_new_atom(atom_intern(buf)); }
+        *ok = unify(f + 1, r);
+        return 1;
+    }
+    if (arity == 0 && !strcmp(name, "nl")) {
+        io_write_str("\n");
+        *ok = 1;
+        return 1;
+    }
+    if (arity == 1 && !strcmp(name, "nl")) {
+        void *h;
+        if (!resolve_output_handle(f + 1, &h)) { *ok = 0; return 1; }
+        if (h) io_file_write(h, "\n");
+        else io_write_str("\n");
+        *ok = 1;
+        return 1;
+    }
+    if (arity == 1 && (!strcmp(name, "write") || !strcmp(name, "writeq"))) {
+        if (!strcmp(name, "writeq")) print_term_quoted(f + 1);
+        else print_term(f + 1);
+        *ok = 1;
+        return 1;
+    }
+    if (arity == 2 && (!strcmp(name, "write") || !strcmp(name, "writeq"))) {
+        void *h;
+        if (!resolve_output_handle(f + 1, &h)) { *ok = 0; return 1; }
+        int quoted = !strcmp(name, "writeq");
+        if (h) print_term_to(h, f + 2, quoted);
+        else if (quoted) print_term_quoted(f + 2);
+        else print_term(f + 2);
+        *ok = 1;
+        return 1;
+    }
+    if (arity == 3 && !strcmp(name, "open")) {
+        size_t path_d = heap_deref(f + 1);
+        size_t mode_d = heap_deref(f + 2);
+        if (heap[path_d].tag != TAG_ATOM || heap[mode_d].tag != TAG_ATOM) { *ok = 0; return 1; }
+        const char *mn = atom_name(heap[mode_d].as.atom_id);
+        const char *fmode =
+            !strcmp(mn, "read") ? "r" : !strcmp(mn, "write") ? "w" : !strcmp(mn, "append") ? "a" : NULL;
+        if (!fmode) { *ok = 0; return 1; }
+        int id = stream_open(atom_name(heap[path_d].as.atom_id), fmode);
+        if (id < 0) { *ok = 0; return 1; }
+        size_t id_arg[1] = {heap_new_int(id)};
+        *ok = unify(f + 3, heap_new_struct(atom_intern("$stream"), 1, id_arg));
+        return 1;
+    }
+    if (arity == 1 && !strcmp(name, "close")) {
+        int id;
+        if (!resolve_stream_id(f + 1, &id)) { *ok = 0; return 1; }
+        stream_close(id);
+        *ok = 1;
+        return 1;
+    }
+    // Fragile: a directive in the consulted file runs via a nested
+    // run_query while this one is still on the C stack, and sp is global.
+    if (arity == 1 && !strcmp(name, "consult")) {
+        size_t path_d = heap_deref(f + 1);
+        if (heap[path_d].tag != TAG_ATOM) { *ok = 0; return 1; }
+        *ok = consult_file(atom_name(heap[path_d].as.atom_id));
+        return 1;
+    }
+    if (arity == 0 && !strcmp(name, "$capture_start")) {
+        capture_saved = io_hooks_get();
+        capture_pos = 0;
+        capture_buf[0] = '\0';
+        io_hooks_t tmp = capture_saved;
+        tmp.write_str = capture_write_str;
+        io_hooks_replace(tmp);
+        *ok = 1;
+        return 1;
+    }
+    if (arity == 1 && !strcmp(name, "$capture_stop")) {
+        io_hooks_restore(capture_saved);
+        *ok = unify(f + 1, heap_new_atom(atom_intern(capture_buf)));
         return 1;
     }
 
@@ -561,12 +731,13 @@ static void rename_init(size_t *rename, int32_t n) {
     for (int32_t i = 0; i < n; i++) rename[i] = (size_t)-1;
 }
 
-void run_query(tterm_t **goals, int32_t ngoals, int32_t nvars, const char **varnames) {
+void run_query(tterm_t **goals, int32_t ngoals, int32_t nvars, const char **varnames, int interactive) {
     size_t rename[nvars > 0 ? nvars : 1];
     rename_init(rename, nvars);
 
     sp = 0;
     size_t hmark = heap_mark(), tmark = trail_mark(), cut_barrier = 0;
+    int any_found = 0;
 
     size_t qgoals[ngoals > 0 ? ngoals : 1];
     for (int32_t i = 0; i < ngoals; i++) qgoals[i] = heap_copy(goals[i], rename, cut_barrier);
@@ -584,13 +755,30 @@ A:
         // wrongly ends the query.
         size_t cnd = heap_deref(cn);
         if (heap[cnd].tag == TAG_ATOM && heap[cnd].as.atom_id == atom_true) {
-            printf("yes:");
-            for (int32_t i = 0; i < nvars; i++)
-                if (rename[i] != (size_t)-1) {
-                    printf(" %s=", varnames[i]);
-                    print_term(rename[i]);
-                }
-            printf("\n");
+            if (interactive) {
+                io_write_str(any_found ? "\n;  " : "   ");
+                any_found = 1;
+                int any_var = 0;
+                for (int32_t i = 0; i < nvars; i++)
+                    if (rename[i] != (size_t)-1) {
+                        char buf[300];
+                        snprintf(buf, sizeof buf, "%s%s = ", any_var ? ", " : "", varnames[i]);
+                        io_write_str(buf);
+                        print_term(rename[i]);
+                        any_var = 1;
+                    }
+                if (!any_var) io_write_str("true");
+            } else {
+                io_write_str("yes:");
+                for (int32_t i = 0; i < nvars; i++)
+                    if (rename[i] != (size_t)-1) {
+                        char buf[300];
+                        snprintf(buf, sizeof buf, " %s=", varnames[i]);
+                        io_write_str(buf);
+                        print_term(rename[i]);
+                    }
+                io_write_str("\n");
+            }
             goto C;
         }
     }
@@ -648,9 +836,9 @@ A:
                 size_t idx = active_catch;
                 for (;;) {
                     if (idx == (size_t)-1) {
-                        printf("uncaught exception: ");
-                        print_term(ball);
-                        printf("\n");
+                        io_write_err("uncaught exception: ");
+                        print_term_err(ball);
+                        io_write_err("\n");
                         return;
                     }
                     catch_frame_t entry = catch_stack[idx];
@@ -668,7 +856,8 @@ A:
                     idx = entry.outer_active_catch;
                 }
             }
-            if (fd_arity == 1 && (!strcmp(fd_name, "assertz") || !strcmp(fd_name, "asserta"))) {
+            if (fd_arity == 1 &&
+                (!strcmp(fd_name, "assertz") || !strcmp(fd_name, "assert") || !strcmp(fd_name, "asserta"))) {
                 size_t clause = heap_deref(cf + 1);
                 size_t body_refs[MAX_ASSERT_GOALS];
                 size_t head, all_terms[1 + MAX_ASSERT_GOALS];
@@ -766,7 +955,10 @@ B:
     }
 
 C:
-    if (sp == 0) return;
+    if (sp == 0) {
+        if (interactive) io_write_str(any_found ? ".\n" : "   false.\n");
+        return;
+    }
     {
         frame_t f = stack[--sp];
         cn = f.goals;

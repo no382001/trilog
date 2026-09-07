@@ -1,7 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 #include "parse.h"
 #include "arena.h"
-#include "heap.h" // atom_intern/atom_name, for op-name interning consistency
+#include "heap.h"
+#include "io.h"
 #include "solve.h"
 #include <ctype.h>
 #include <setjmp.h>
@@ -380,7 +381,7 @@ static void run_directive(tterm_t *goal, int32_t nvars) {
     tterm_t **goals = flatten_conj(goal, &n);
     const char **names = arena_alloc((size_t)(nvars > 0 ? nvars : 1) * sizeof(char *));
     for (int32_t i = 0; i < nvars; i++) names[i] = arena_strdup(var_names[i]);
-    run_query(goals, n, nvars, names);
+    run_query(goals, n, nvars, names, 0);
 }
 
 static void assemble_clause(tterm_t *t, int32_t nvars) {
@@ -401,7 +402,9 @@ static void assemble_clause(tterm_t *t, int32_t nvars) {
 bool consult_file(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) {
-        fprintf(stderr, "cannot open %s\n", path);
+        char msg[300];
+        snprintf(msg, sizeof msg, "cannot open %s\n", path);
+        io_write_err(msg);
         return false;
     }
     fseek(f, 0, SEEK_END);
@@ -415,7 +418,9 @@ bool consult_file(const char *path) {
 
     P = buf;
     if (setjmp(err_jmp)) {
-        fprintf(stderr, "parse error in %s: %s\n", path, err_msg);
+        char msg[300 + sizeof err_msg];
+        snprintf(msg, sizeof msg, "parse error in %s: %s\n", path, err_msg);
+        io_write_err(msg);
         return false;
     }
     for (;;) {
@@ -435,7 +440,9 @@ bool parse_query(const char *src, tterm_t ***goals_out, int32_t *ngoals_out, int
                   const char ***varnames_out) {
     P = src;
     if (setjmp(err_jmp)) {
-        fprintf(stderr, "parse error: %s\n", err_msg);
+        char msg[32 + sizeof err_msg];
+        snprintf(msg, sizeof msg, "parse error: %s\n", err_msg);
+        io_write_err(msg);
         return false;
     }
     vartab_reset();
