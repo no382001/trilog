@@ -241,7 +241,8 @@ static tterm_t *parse_string(void) {
   tterm_t *acc = tt_atom("[]");
   size_t n = strlen(buf);
   for (size_t i = n; i-- > 0;) {
-    tterm_t *cons[2] = {tt_int((unsigned char)buf[i]), acc};
+    char c[2] = {buf[i], '\0'};
+    tterm_t *cons[2] = {tt_atom(c), acc};
     acc = tt_struct(".", 2, cons);
   }
   return acc;
