@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L // clock_gettime/CLOCK_MONOTONIC (get_time_ms/1)
 #include "solve.h"
 #include "arena.h"
 #include "gc.h"
@@ -10,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static clause_t *db = NULL;
 static int32_t db_count = 0, db_cap = 0;
@@ -143,7 +145,8 @@ static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_put_code,
     atom_atom_to_term, atom_clause_candidates, atom_choice_mark, atom_cut_to,
     atom_arith_le, atom_arith_ge, atom_arith_eq, atom_arith_ne, atom_term_eq,
     atom_term_ne, atom_term_lt, atom_term_gt, atom_term_le, atom_term_ge,
-    atom_var_addr, atom_fail, atom_false, atom_halt, atom_flush_output;
+    atom_var_addr, atom_fail, atom_false, atom_halt, atom_flush_output,
+    atom_get_time_ms;
 
 static size_t pending_error_ball = (size_t)-1;
 
@@ -225,6 +228,7 @@ void solve_init(void) {
   atom_false = atom_intern("false");
   atom_halt = atom_intern("halt");
   atom_flush_output = atom_intern("flush_output");
+  atom_get_time_ms = atom_intern("get_time_ms");
   atom_var = atom_intern("var");
   atom_kw_atom = atom_intern("atom");
   atom_integer = atom_intern("integer");
@@ -751,6 +755,7 @@ static void capture_write_str(const char *str, void *ud) {
     capture_buf[capture_pos] = '\0';
   }
 }
+static void capture_flush_noop(void *ud) { (void)ud; }
 
 static char tta_buf[CAPTURE_BUF_SIZE];
 static int tta_pos;
@@ -799,8 +804,19 @@ static int dispatch_builtin(size_t goal, int *ok) {
   // flush_output/0 always flushes stdout specifically (not whichever stream
   // write/2 last targeted) - ISO's default.
   if (arity == 0 && id == atom_flush_output) {
-    fflush(stdout);
+    io_flush();
     *ok = 1;
+    return 1;
+  }
+
+  if (arity == 1 && id == atom_get_time_ms) {
+    static long long epoch_ms = -1;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    long long now_ms = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    if (epoch_ms < 0)
+      epoch_ms = now_ms;
+    *ok = unify(f + 1, heap_new_int(now_ms - epoch_ms));
     return 1;
   }
 
@@ -961,6 +977,7 @@ static int dispatch_builtin(size_t goal, int *ok) {
     capture_buf[0] = '\0';
     io_hooks_t tmp = capture_saved;
     tmp.write_str = capture_write_str;
+    tmp.flush = capture_flush_noop;
     io_hooks_replace(tmp);
     *ok = 1;
     return 1;

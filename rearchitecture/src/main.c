@@ -35,7 +35,7 @@ static void repl(void) {
   for (;;) {
     if (interactive) {
       io_write_str("?- ");
-      fflush(stdout);
+      io_flush();
     }
     if (!io_read_line(line, sizeof line))
       break;

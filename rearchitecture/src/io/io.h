@@ -4,6 +4,7 @@
 typedef struct {
   void (*write_str)(const char *str, void *ud);
   void (*write_err)(const char *str, void *ud);
+  void (*flush)(void *ud);
   int (*read_char)(void *ud);
   char *(*read_line)(char *buf, int size, void *ud);
   int (*read_key)(void *ud);
@@ -24,6 +25,7 @@ void io_hooks_restore(io_hooks_t saved);
 
 void io_write_str(const char *str);
 void io_write_err(const char *str);
+void io_flush(void);
 int io_read_char(void);
 char *io_read_line(char *buf, int size);
 int io_read_key(void);

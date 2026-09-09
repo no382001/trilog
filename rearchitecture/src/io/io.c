@@ -12,6 +12,10 @@ static void default_write_err(const char *str, void *ud) {
   (void)ud;
   fputs(str, stderr);
 }
+static void default_flush(void *ud) {
+  (void)ud;
+  fflush(stdout);
+}
 static int default_read_char(void *ud) {
   (void)ud;
   return getchar();
@@ -57,6 +61,7 @@ void io_hooks_init_default(void) {
   hooks = (io_hooks_t){
       .write_str = default_write_str,
       .write_err = default_write_err,
+      .flush = default_flush,
       .read_char = default_read_char,
       .read_line = default_read_line,
       .read_key = default_read_key,
@@ -81,6 +86,10 @@ void io_write_str(const char *str) {
 void io_write_err(const char *str) {
   if (hooks.write_err)
     hooks.write_err(str, hooks.userdata);
+}
+void io_flush(void) {
+  if (hooks.flush)
+    hooks.flush(hooks.userdata);
 }
 int io_read_char(void) {
   return hooks.read_char ? hooks.read_char(hooks.userdata) : -1;
