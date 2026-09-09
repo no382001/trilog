@@ -401,10 +401,18 @@ atom_length(A, L) :- atom_codes(A, C), length(C, L).
 %!  atom_concat(?Atom1, ?Atom2, ?Atom3) is nondet.
 %   Nondet split falls out of append/3's own backtracking.
 atom_concat(A, B, C) :-
-    nonvar(A), nonvar(B), !,
-    atom_codes(A, CA), atom_codes(B, CB), append(CA, CB, CC), atom_codes(C, CC).
+    nonvar(A),
+    nonvar(B),
+    !,
+    atom_codes(A, CA),
+    atom_codes(B, CB),
+    append(CA, CB, CC),
+    atom_codes(C, CC).
 atom_concat(A, B, C) :-
-    atom_codes(C, CC), append(CA, CB, CC), atom_codes(A, CA), atom_codes(B, CB).
+    atom_codes(C, CC),
+    append(CA, CB, CC),
+    atom_codes(A, CA),
+    atom_codes(B, CB).
 
 %!  sub_atom(+Atom, ?Before, ?Length, ?After, ?Sub) is nondet.
 sub_atom(Atom, Before, Length, After, Sub) :-
@@ -418,20 +426,33 @@ sub_atom(Atom, Before, Length, After, Sub) :-
 
 %!  atom_chars(?Atom, ?Chars) is det.
 atom_chars(A, Chars) :-
-    nonvar(A), !, atom_codes(A, Codes), maplist(char_code, Chars, Codes).
+    nonvar(A),
+    !,
+    atom_codes(A, Codes),
+    maplist(char_code, Chars, Codes).
 atom_chars(A, Chars) :-
-    maplist(char_code, Chars, Codes), atom_codes(A, Codes).
+    maplist(char_code, Chars, Codes),
+    atom_codes(A, Codes).
 
 %!  atom_number(?Atom, ?Number) is semidet.
 atom_number(A, N) :-
-    nonvar(A), !, atom_codes(A, C), number_codes(N, C).
-atom_number(A, N) :- number_codes(N, C), atom_codes(A, C).
+    nonvar(A),
+    !,
+    atom_codes(A, C),
+    number_codes(N, C).
+atom_number(A, N) :-
+    number_codes(N, C),
+    atom_codes(A, C).
 
 %!  number_chars(?Number, ?Chars) is det.
 number_chars(N, Chars) :-
-    nonvar(N), !, number_codes(N, Codes), maplist(char_code, Chars, Codes).
+    nonvar(N),
+    !,
+    number_codes(N, Codes),
+    maplist(char_code, Chars, Codes).
 number_chars(N, Chars) :-
-    maplist(char_code, Chars, Codes), number_codes(N, Codes).
+    maplist(char_code, Chars, Codes),
+    number_codes(N, Codes).
 
 %!  retractall(+Head) is det.
 retractall(Head) :- ( retract(Head) -> retractall(Head) ; true ).
