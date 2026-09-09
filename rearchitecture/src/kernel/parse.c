@@ -506,6 +506,7 @@ static void assemble_clause(tterm_t *t, int32_t nvars) {
     run_directive(t->as.str.args[0], nvars);
     return;
   }
+  db_add(t, NULL, 0, nvars); // a fact - neither a rule nor a directive
 }
 
 bool consult_file(const char *path) {
