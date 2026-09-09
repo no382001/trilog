@@ -313,6 +313,34 @@ TRILOG="./trilog"
   [[ "$output" == *"X=done"* ]]
 }
 
+@test "atom_length, atom_concat (all 3 modes + nondet split), sub_atom, current_op" {
+  run "$TRILOG" -e "atom_length(hello,L1), atom_concat(foo,bar,C1), atom_concat(foo,C2,foobar), atom_concat(C3,bar,foobar), findall(X-Y,atom_concat(X,Y,ab),Splits), sub_atom(hello,1,3,_,Sub), current_op(700,xfx,is)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"L1=5"* ]]
+  [[ "$output" == *"C1=foobar"* ]]
+  [[ "$output" == *"C2=bar"* ]]
+  [[ "$output" == *"C3=foo"* ]]
+  [[ "$output" == *"Splits=[''-ab, a-b, ab-'']"* ]]
+  [[ "$output" == *"Sub=ell"* ]]
+  [[ "$output" == *"yes:"* ]]
+}
+
+@test "atom_chars, atom_number, number_chars (both modes), writeln, retractall, abolish" {
+  run "$TRILOG" -e "atom_chars(hi,Chars), atom_chars(A1,[h,i]), atom_number('42',N1), atom_number(A2,42), number_chars(42,NC), number_chars(N2,['4','2']), assertz(tmp(1)), assertz(tmp(2)), retractall(tmp(_)), \\+ tmp(_), assertz(tmp2(1,2)), abolish(tmp2/2), \\+ tmp2(_,_)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Chars=[h, i]"* ]]
+  [[ "$output" == *"A1=hi"* ]]
+  [[ "$output" == *"N1=42"* ]]
+  [[ "$output" == *"A2='42'"* ]]
+  [[ "$output" == *"NC=[4, 2]"* ]]
+  [[ "$output" == *"N2=42"* ]]
+  [[ "$output" == *"yes:"* ]]
+
+  run "$TRILOG" -e "writeln(hi)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"hi"* ]]
+}
+
 @test "between enumerates and checks, forall, succ, plus" {
   run "$TRILOG" -e "findall(X, between(1,5,X), L), between(1,5,3), \\+ between(1,5,9), forall(member(Y,[1,2,3]),Y>0), succ(3,S1), succ(S2,4), plus(2,3,P)."
   [[ "$output" == *"L=[1, 2, 3, 4, 5]"* ]]

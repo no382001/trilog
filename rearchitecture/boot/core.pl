@@ -384,11 +384,64 @@ writeq(S, T) :-
 nl :- write('\n').
 nl(S) :- write(S, '\n').
 
+%!  writeln(@Term) is det.
+%!  writeln(+Stream, @Term) is det.
+writeln(T) :- write(T), nl.
+writeln(S, T) :- write(S, T), nl(S).
+
 %!  char_code(?Char, ?Code) is det.
 char_code(Char, Code) :- atom_codes(Char, [Code]).
 
 %!  get_char(-Char) is det.
 get_char(Char) :- get_code(C), (C == -1 -> Char = end_of_file ; char_code(Char, C)).
+
+%!  atom_length(+Atom, -Length) is det.
+atom_length(A, L) :- atom_codes(A, C), length(C, L).
+
+%!  atom_concat(?Atom1, ?Atom2, ?Atom3) is nondet.
+%   Nondet split falls out of append/3's own backtracking.
+atom_concat(A, B, C) :-
+    nonvar(A), nonvar(B), !,
+    atom_codes(A, CA), atom_codes(B, CB), append(CA, CB, CC), atom_codes(C, CC).
+atom_concat(A, B, C) :-
+    atom_codes(C, CC), append(CA, CB, CC), atom_codes(A, CA), atom_codes(B, CB).
+
+%!  sub_atom(+Atom, ?Before, ?Length, ?After, ?Sub) is nondet.
+sub_atom(Atom, Before, Length, After, Sub) :-
+    atom_codes(Atom, Codes),
+    append(BC, RestC, Codes),
+    length(BC, Before),
+    append(SC, AC, RestC),
+    length(SC, Length),
+    length(AC, After),
+    atom_codes(Sub, SC).
+
+%!  atom_chars(?Atom, ?Chars) is det.
+atom_chars(A, Chars) :-
+    nonvar(A), !, atom_codes(A, Codes), maplist(char_code, Chars, Codes).
+atom_chars(A, Chars) :-
+    maplist(char_code, Chars, Codes), atom_codes(A, Codes).
+
+%!  atom_number(?Atom, ?Number) is semidet.
+atom_number(A, N) :-
+    nonvar(A), !, atom_codes(A, C), number_codes(N, C).
+atom_number(A, N) :- number_codes(N, C), atom_codes(A, C).
+
+%!  number_chars(?Number, ?Chars) is det.
+number_chars(N, Chars) :-
+    nonvar(N), !, number_codes(N, Codes), maplist(char_code, Chars, Codes).
+number_chars(N, Chars) :-
+    maplist(char_code, Chars, Codes), number_codes(N, Codes).
+
+%!  retractall(+Head) is det.
+retractall(Head) :- ( retract(Head) -> retractall(Head) ; true ).
+
+%!  abolish(+Name/Arity) is det.
+abolish(Name/Arity) :- functor(Head, Name, Arity), retractall(Head).
+
+%!  current_op(?Priority, ?Type, ?Name) is nondet.
+%   Just queries '$$op'/3, the same bucket op/3 asserts into.
+current_op(P, T, N) :- '$$op'(P, T, N).
 
 % --- DCG ---
 
