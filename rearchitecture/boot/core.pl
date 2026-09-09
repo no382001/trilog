@@ -472,7 +472,11 @@ setof(Template, Goal, Set) :-
 %   Sink is atom(-A) or codes(-Cs).
 with_output_to(atom(A), Goal) :-
     '$$capture_start',
-    (call(Goal) -> '$$capture_stop'(A) ; '$$capture_stop'(_), fail).
+    % must pop the capture level even if Goal throws, or output stays silently swallowed after.
+    ( catch(call(Goal), Ball, ('$$capture_stop'(_), throw(Ball)))
+    -> '$$capture_stop'(A)
+    ;  '$$capture_stop'(_), fail
+    ).
 with_output_to(codes(Cs), Goal) :- with_output_to(atom(A), Goal), atom_codes(A, Cs).
 
 '$stream_alias'(user_output, 0).

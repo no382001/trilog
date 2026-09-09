@@ -1,2 +1,3 @@
 trilog
 *.o
+_build/

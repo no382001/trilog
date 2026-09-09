@@ -1,7 +1,8 @@
 % Runs the "*_quad.pl" test files against this engine.
 % consult_dcg/dcg_translate are NOT needed: this engine's own consult/1
 % already handles op/3 and DCG rules natively.
-% JUnit XML output is not implemented yet - TAP-style output only for now.
+% JUnit XML output and crash-resume checkpointing: see quad_cli_junit/3
+% and the Makefile's quad-junit target for the retry loop.
 
 % --- line-buffering utilities ---
 
@@ -219,6 +220,7 @@ run_one_test(QueryRaw, AnswerRaw, Pass) :-
     strip_terminating_dot(Query0, Query),
     parse_expected(AnswerRaw, Expected, Mode),
     quad_display(Query, Display),
+    quad_ckpt_before(Display),
     get_time_ms(T0),
     ( atom_to_term(Query, QueryTerm, NameVars)
     -> ( catch(
@@ -240,8 +242,26 @@ run_one_test(QueryRaw, AnswerRaw, Pass) :-
     TMs1 is TMs0 + ElapsedMs,
     assertz(quad_stat(TestNum, P1, F1, TMs1)),
     assertz(quad_record(TestNum, Display, Pass, Reason, ElapsedMs)),
+    quad_ckpt_after(Display, Pass, Reason, ElapsedMs),
     quad_report(TestNum, Display, Pass, Reason, ElapsedMs),
     !.
+
+% JUnit-mode crash checkpointing: when set, each test durably records itself before/after, so a crash mid-file is recoverable (quad_cli_junit/3).
+:- dynamic(quad_ckpt_ctx/3).
+
+quad_ckpt_before(Display) :-
+    ( quad_ckpt_ctx(ProgressPath, _, _)
+    -> catch((open(ProgressPath, write, S), write(S, Display), nl(S), close(S)), _, true)
+    ;  true
+    ).
+
+quad_ckpt_after(Display, Pass, Reason, ElapsedMs) :-
+    ( quad_ckpt_ctx(_, PartialPath, Suite)
+    -> catch((open(PartialPath, append, S),
+              write_testcase(S, Suite, Display, Pass, Reason, ElapsedMs),
+              close(S)), _, true)
+    ;  true
+    ).
 
 % error(Type, _) balls reduce to Type; any other thrown term is used as-is.
 quad_error_type(error(Type, _), Type) :- !.
@@ -313,12 +333,13 @@ quad_report(TestNum, Display, true, _, ElapsedMs) :-
     !,
     ms_to_secs_atom(ElapsedMs, TimeAtom),
     write('ok '), write(TestNum), write(' - ?- '), write(Display),
-    write(' # time='), write(TimeAtom), write('s'), nl.
+    write(' # time='), write(TimeAtom), write('s'), nl, flush_output.
 quad_report(TestNum, Display, false, Reason, ElapsedMs) :-
     ms_to_secs_atom(ElapsedMs, TimeAtom),
     write('not ok '), write(TestNum), write(' - ?- '), write(Display),
     write(' # time='), write(TimeAtom), write('s'), nl,
-    write_reason_lines(Reason).
+    write_reason_lines(Reason),
+    flush_output.
 
 write_reason_lines(Reason) :-
     split_nl(Reason, Lines),
@@ -420,5 +441,192 @@ qf_clause_step(S, ClauseBuf0, Line, Trimmed, Skip, SeenCount) :-
 
 quad_cli(File) :-
     once(run_quad_file(File)),
+    quad_stat(_, _, Failed, _),
+    ( Failed > 0 -> halt(1) ; halt(0) ).
+
+% --- JUnit XML output, with crash-resume support ---
+
+last_path_segment(Path, Seg) :-
+    atom_codes(Path, Cs),
+    ( append(_, [0'/|SegCs], Cs), \+ member(0'/, SegCs) -> true ; SegCs = Cs ),
+    atom_codes(Seg, SegCs).
+
+strip_ext(Atom, Base) :-
+    atom_codes(Atom, Cs),
+    ( append(BaseCs, [0'.|Rest], Cs), \+ member(0'., Rest) -> true ; BaseCs = Cs ),
+    atom_codes(Base, BaseCs).
+
+quad_suite_name(File, Suite) :- last_path_segment(File, Seg), strip_ext(Seg, Suite).
+
+xml_escape(Atom, Escaped) :- atom_codes(Atom, Cs), xesc_codes(Cs, Out), atom_codes(Escaped, Out).
+
+xesc_codes([], []).
+xesc_codes([0'&|Cs], [0'&, 0'a, 0'm, 0'p, 0';|Out]) :- !, xesc_codes(Cs, Out).
+xesc_codes([0'<|Cs], [0'&, 0'l, 0't, 0';|Out]) :- !, xesc_codes(Cs, Out).
+xesc_codes([0'>|Cs], [0'&, 0'g, 0't, 0';|Out]) :- !, xesc_codes(Cs, Out).
+xesc_codes([0'"|Cs], [0'&, 0'q, 0'u, 0'o, 0't, 0';|Out]) :- !, xesc_codes(Cs, Out).
+xesc_codes([0'\n|Cs], [0'&, 0'#, 0'1, 0'0, 0';|Out]) :- !, xesc_codes(Cs, Out).
+xesc_codes([0'\r|Cs], [0'&, 0'#, 0'1, 0'3, 0';|Out]) :- !, xesc_codes(Cs, Out).
+xesc_codes([C|Cs], [C|Out]) :- xesc_codes(Cs, Out).
+
+write_testcase(Strm, Suite, Name, true, _, ElapsedMs) :-
+    !,
+    xml_escape(Name, EscName),
+    ms_to_secs_atom(ElapsedMs, TimeAtom),
+    format_atom('  <testcase name="~w" classname="~w" time="~w"/>', [EscName, Suite, TimeAtom], Line),
+    write(Strm, Line), nl(Strm).
+write_testcase(Strm, Suite, Name, false, Reason, ElapsedMs) :-
+    xml_escape(Name, EscName),
+    xml_escape(Reason, EscReason),
+    ms_to_secs_atom(ElapsedMs, TimeAtom),
+    format_atom('  <testcase name="~w" classname="~w" time="~w">', [EscName, Suite, TimeAtom], Open),
+    write(Strm, Open), nl(Strm),
+    format_atom('    <failure message="~w"/>', [EscReason], FailLine),
+    write(Strm, FailLine), nl(Strm),
+    write(Strm, '  </testcase>'), nl(Strm).
+
+run_quad_file_junit(File, Dir) :- run_quad_file_junit(File, Dir, 0).
+
+% Skip > 0: resuming after a crash, so keep the existing scratch files
+% instead of truncating them.
+run_quad_file_junit(File, Dir, Skip) :-
+    quad_suite_name(File, Suite),
+    atom_concat(Dir, '/', D1),
+    atom_concat(D1, Suite, D2),
+    atom_concat(D2, '.progress', ProgressPath),
+    atom_concat(D2, '.xml.partial', PartialPath),
+    ( Skip =:= 0
+    -> catch((open(ProgressPath, write, S1), close(S1)), _, true),
+       catch((open(PartialPath, write, S2), close(S2)), _, true)
+    ;  true
+    ),
+    retractall(quad_ckpt_ctx(_, _, _)),
+    assertz(quad_ckpt_ctx(ProgressPath, PartialPath, Suite)),
+    run_quad_file(File, Skip),
+    retractall(quad_ckpt_ctx(_, _, _)),
+    quad_finalize_junit(File, Suite, Dir).
+
+read_whole_file(Path, Whole) :- open(Path, read, S), rwf_loop(S, '', Whole), close(S).
+
+rwf_loop(S, Acc, Whole) :-
+    read_line_to_atom(S, Line),
+    ( Line == end_of_file
+    -> Whole = Acc
+    ;  atom_concat(Line, '\n', L1), atom_concat(Acc, L1, Acc1), rwf_loop(S, Acc1, Whole)
+    ).
+
+% one line at a time, no atom_concat accumulation over the whole file.
+count_partial(Path, TestcaseCount, FailureCount, TotalMs) :-
+    catch(
+        ( open(Path, read, S),
+          cp_loop(S, stat(0, 0, 0), stat(TestcaseCount, FailureCount, TotalMs)),
+          close(S)
+        ), _, ( TestcaseCount = 0, FailureCount = 0, TotalMs = 0 )).
+
+cp_loop(S, stat(AccT, AccF, AccMs), Stat) :-
+    read_line_to_atom(S, Line),
+    ( Line == end_of_file
+    -> Stat = stat(AccT, AccF, AccMs)
+    ;  ( line_has_prefix(Line, '  <testcase ')
+       -> AccT1 is AccT + 1,
+          ( line_time_ms(Line, LineMs) -> AccMs1 is AccMs + LineMs ; AccMs1 = AccMs )
+       ;  AccT1 = AccT, AccMs1 = AccMs
+       ),
+       ( line_has_prefix(Line, '    <failure ') -> AccF1 is AccF + 1 ; AccF1 = AccF ),
+       cp_loop(S, stat(AccT1, AccF1, AccMs1), Stat)
+    ).
+
+% copies Path's lines verbatim to the already-open OutStrm, one line at a
+% time - same reasoning as count_partial/4, no atom_concat accumulation.
+stream_copy_lines(Path, OutStrm) :-
+    catch((open(Path, read, S), scl_loop(S, OutStrm), close(S)), _, true).
+
+scl_loop(S, OutStrm) :-
+    read_line_to_atom(S, Line),
+    ( Line == end_of_file
+    -> true
+    ;  write(OutStrm, Line), nl(OutStrm), scl_loop(S, OutStrm)
+    ).
+
+line_has_prefix(Line, Prefix) :-
+    atom_length(Prefix, Len),
+    atom_length(Line, LineLen),
+    LineLen >= Len,
+    sub_atom(Line, 0, Len, _, Prefix).
+
+% pulls the time="S.mmm" attribute out of a <testcase> line and converts
+% it back to milliseconds (mirrors ms_to_secs_atom/2's "S.mmm" format).
+line_time_ms(Line, Ms) :-
+    sub_atom(Line, Before, 6, _, 'time="'),
+    !,
+    Start is Before + 6,
+    sub_atom(Line, Start, _, 0, Rest),
+    sub_atom(Rest, EndBefore, _, _, '"'),
+    !,
+    sub_atom(Rest, 0, EndBefore, _, TimeStr),
+    secs_atom_to_ms(TimeStr, Ms).
+
+secs_atom_to_ms(Atom, Ms) :-
+    ( sub_atom(Atom, B, 1, A, '.')
+    -> sub_atom(Atom, 0, B, _, SecsPart),
+       sub_atom(Atom, _, A, 0, FracPart),
+       atom_number(SecsPart, Secs),
+       atom_number(FracPart, FracMs),
+       Ms is Secs * 1000 + FracMs
+    ;  atom_number(Atom, Secs), Ms is Secs * 1000
+    ).
+
+% appends a synthetic "crashed here" <testcase> naming the in-flight
+% query, so the next resume attempt's Skip steps past it too.
+quad_mark_crash(Suite, Dir) :-
+    atom_concat(Dir, '/', D1),
+    atom_concat(D1, Suite, D2),
+    atom_concat(D2, '.progress', ProgressPath),
+    atom_concat(D2, '.xml.partial', PartialPath),
+    ( catch(read_whole_file(ProgressPath, CrashedRaw), _, fail)
+    -> trim_trailing(CrashedRaw, CrashedDisplay)
+    ;  CrashedDisplay = 'unknown query (no checkpoint recorded)'
+    ),
+    xml_escape(CrashedDisplay, EscCrashed),
+    format_atom('  <testcase name="~w (trilog crashed here)" classname="~w" time="0.000">',
+                [EscCrashed, Suite], CrashOpen),
+    open(PartialPath, append, Strm),
+    write(Strm, CrashOpen), nl(Strm),
+    write(Strm, '    <failure message="trilog crashed while running this test (see harness log for details)"/>'), nl(Strm),
+    write(Strm, '  </testcase>'), nl(Strm),
+    close(Strm).
+
+quad_resolved_count(Suite, Dir, Count) :-
+    atom_concat(Dir, '/', D1),
+    atom_concat(D1, Suite, D2),
+    atom_concat(D2, '.xml.partial', PartialPath),
+    count_partial(PartialPath, Count, _Failed, _TotalMs).
+
+% two passes: counts need to be known before the opening tag is written,
+% so pass 1 counts and pass 2 streams the body across.
+quad_finalize_junit(File, Suite, Dir) :-
+    atom_concat(Dir, '/', D1),
+    atom_concat(D1, Suite, D2),
+    atom_concat(D2, '.xml', XmlPath),
+    atom_concat(D2, '.progress', ProgressPath),
+    atom_concat(D2, '.xml.partial', PartialPath),
+    count_partial(PartialPath, Total, Failed, TotalMs),
+    xml_escape(File, EscFile),
+    ms_to_secs_atom(TotalMs, TotalTimeAtom),
+    open(XmlPath, write, Strm),
+    write(Strm, '<?xml version="1.0" encoding="UTF-8"?>'), nl(Strm),
+    format_atom('<testsuite name="~w" file="~w" tests="~w" failures="~w" errors="0" time="~w">',
+                [Suite, EscFile, Total, Failed, TotalTimeAtom], Header),
+    write(Strm, Header), nl(Strm),
+    stream_copy_lines(PartialPath, Strm),
+    write(Strm, '</testsuite>'), nl(Strm),
+    close(Strm),
+    catch((open(ProgressPath, write, S1), close(S1)), _, true),
+    catch((open(PartialPath, write, S2), close(S2)), _, true).
+
+quad_cli_junit(File, Dir) :- quad_cli_junit(File, Dir, 0).
+
+quad_cli_junit(File, Dir, Skip) :-
+    once(run_quad_file_junit(File, Dir, Skip)),
     quad_stat(_, _, Failed, _),
     ( Failed > 0 -> halt(1) ; halt(0) ).
