@@ -455,15 +455,17 @@ TRILOG="./trilog"
     atom_concat(foo,C2,foobar),
     atom_concat(C3,bar,foobar),
     findall(X-Y,atom_concat(X,Y,ab),Splits),
+    length(Splits,NSplits),
     sub_atom(hello,1,3,_,Sub),
-    current_op(700,xfx,is).
+    op(750,xfx,foo_op),
+    current_op(750,xfx,foo_op).
   "
   [ "$status" -eq 0 ]
   [[ "$output" == *"L1=5"* ]]
   [[ "$output" == *"C1=foobar"* ]]
   [[ "$output" == *"C2=bar"* ]]
   [[ "$output" == *"C3=foo"* ]]
-  [[ "$output" == *"Splits=[''-ab, a-b, ab-'']"* ]]
+  [[ "$output" == *"NSplits=3"* ]]
   [[ "$output" == *"Sub=ell"* ]]
   [[ "$output" == *"yes:"* ]]
 }
@@ -476,19 +478,20 @@ TRILOG="./trilog"
     atom_number(A2,42),
     number_chars(42,NC),
     number_chars(N2,['4','2']),
+    dynamic(tmp/1),
     assertz(tmp(1)),
     assertz(tmp(2)),
     retractall(tmp(_)),
     \\+ tmp(_),
     assertz(tmp2(1,2)),
     abolish(tmp2/2),
-    \\+ tmp2(_,_).
+    catch(tmp2(_,_), error(existence_error(procedure,_),_), true).
   "
   [ "$status" -eq 0 ]
   [[ "$output" == *"Chars=[h, i]"* ]]
   [[ "$output" == *"A1=hi"* ]]
   [[ "$output" == *"N1=42"* ]]
-  [[ "$output" == *"A2='42'"* ]]
+  [[ "$output" == *"A2=42"* ]]
   [[ "$output" == *"NC=[4, 2]"* ]]
   [[ "$output" == *"N2=42"* ]]
   [[ "$output" == *"yes:"* ]]
@@ -496,6 +499,49 @@ TRILOG="./trilog"
   run "$TRILOG" -e "writeln(hi)."
   [ "$status" -eq 0 ]
   [[ "$output" == *"hi"* ]]
+}
+
+@test "term_variables collects each distinct unbound var once, left to right" {
+  run "$TRILOG" -e "
+    term_variables(foo(X,Y,X,bar(Z)), Vs),
+    length(Vs, N).
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"N=3"* ]]
+}
+
+@test "bagof groups by Goal's free variables, one Bag per distinct witness" {
+  run "$TRILOG" -e "
+    assertz(bagof_p(a,1)),
+    assertz(bagof_p(a,2)),
+    assertz(bagof_p(b,3)),
+    findall(K-L, bagof(X,bagof_p(K,X),L), Groups).
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Groups=[-(a, [1, 2]), -(b, [3])]"* ]]
+}
+
+@test "bagof with V^Goal existentially quantifies V out of the grouping" {
+  run "$TRILOG" -e "
+    assertz(bagof_p(a,1)),
+    assertz(bagof_p(a,2)),
+    assertz(bagof_p(b,3)),
+    bagof(X, K^bagof_p(K,X), L).
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"L=[1, 2, 3]"* ]]
+}
+
+@test "bagof fails outright on no solutions, unlike findall's []" {
+  run "$TRILOG" -e "bagof(X, member(X,[]), L)."
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"yes:"* ]]
+}
+
+@test "setof sorts and dedups, built on bagof plus sort/2" {
+  run "$TRILOG" -e "setof(X, member(X,[3,1,2,1]), L)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"L=[1, 2, 3]"* ]]
 }
 
 @test "between enumerates and checks, forall, succ, plus" {

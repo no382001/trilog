@@ -349,6 +349,76 @@ clause(Head, Body) :-
     '$$clause_candidates'(Head, Candidates),
     member(Head - Body, Candidates).
 
+%!  term_variables(@Term, -Vars) is det.
+%   Vars in first-occurrence order, each exactly once.
+term_variables(Term, Vars) :-
+    '$term_variables'(Term, [], Vs0),
+    reverse(Vs0, Vars).
+
+'$term_variables'(Term, Seen, Vars) :-
+    var(Term),
+    !,
+    ( '$var_memberchk'(Term, Seen) -> Vars = Seen ; Vars = [Term|Seen] ).
+'$term_variables'(Term, Seen, Vars) :-
+    compound(Term),
+    !,
+    functor(Term, _, Arity),
+    '$term_variables_args'(1, Arity, Term, Seen, Vars).
+'$term_variables'(_, Seen, Seen).
+
+'$term_variables_args'(I, N, _, Seen, Seen) :- I > N, !.
+'$term_variables_args'(I, N, Term, Seen0, Vars) :-
+    arg(I, Term, A),
+    '$term_variables'(A, Seen0, Seen1),
+    I1 is I + 1,
+    '$term_variables_args'(I1, N, Term, Seen1, Vars).
+
+'$var_memberchk'(V, [W|_]) :- V == W, !.
+'$var_memberchk'(V, [_|T]) :- '$var_memberchk'(V, T).
+
+'$var_subtract'([], _, []).
+'$var_subtract'([V|Vs], Excl, Result) :-
+    ( '$var_memberchk'(V, Excl) -> '$var_subtract'(Vs, Excl, Result)
+    ; Result = [V|Rest], '$var_subtract'(Vs, Excl, Rest)
+    ).
+
+%!  bagof(+Template, :Goal, -Bag) is nondet.
+%   Backtracks over one Bag per distinct binding of Goal's free variables
+%   (unlike findall/3, fails outright if Goal has no solutions at all).
+bagof(Template, Goal0, Bag) :-
+    '$bagof_strip'(Goal0, ExVars, Goal),
+    term_variables(Goal, GoalVars),
+    term_variables(Template, TemplVars),
+    '$var_subtract'(GoalVars, TemplVars, FreeVars0),
+    '$var_subtract'(FreeVars0, ExVars, FreeVars),
+    Witness =.. [w|FreeVars],
+    findall(Witness - Template, Goal, Pairs),
+    Pairs \= [],
+    '$bagof_group'(Pairs, Groups),
+    member(Witness - Bag, Groups).
+
+'$bagof_strip'(V ^ G0, [V|Vs], G) :- !, '$bagof_strip'(G0, Vs, G).
+'$bagof_strip'(G, [], G).
+
+'$bagof_group'([], []).
+'$bagof_group'([W - T|Rest], [W - Bag|Groups]) :-
+    '$bagof_partition'(Rest, W, Same, Diff),
+    Bag = [T|Same],
+    '$bagof_group'(Diff, Groups).
+
+'$bagof_partition'([], _, [], []).
+'$bagof_partition'([W1 - T1|Rest], W, [T1|Same], Diff) :-
+    W1 == W,
+    !,
+    '$bagof_partition'(Rest, W, Same, Diff).
+'$bagof_partition'([Pair|Rest], W, Same, [Pair|Diff]) :-
+    '$bagof_partition'(Rest, W, Same, Diff).
+
+%!  setof(+Template, :Goal, -Set) is nondet.
+setof(Template, Goal, Set) :-
+    bagof(Template, Goal, Bag),
+    sort(Bag, Set).
+
 % --- I/O ---
 % put_code/1, get_code/1 are native.
 
@@ -455,7 +525,9 @@ number_chars(N, Chars) :-
     number_codes(N, Codes).
 
 %!  retractall(+Head) is det.
-retractall(Head) :- ( retract(Head) -> retractall(Head) ; true ).
+%   Fresh copy_term per attempt: retract/1 binds Head on success, so reusing it would re-search for that value, not the pattern.
+retractall(Head) :-
+    ( copy_term(Head, Fresh), retract(Fresh) -> retractall(Head) ; true ).
 
 %!  abolish(+Name/Arity) is det.
 abolish(Name/Arity) :- functor(Head, Name, Arity), retractall(Head).
