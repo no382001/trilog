@@ -271,7 +271,52 @@ static tterm_t *parse_string(void) {
   return acc;
 }
 
+// 0'c: the character code of c. A doubled quote (0''') is a literal
+// quote, matching how a quoted atom escapes one; not a quoted-atom opener.
+static tterm_t *parse_char_code(void) {
+  P += 2; // "0'"
+  int code;
+  if (*P == '\\') {
+    P++;
+    char c = *P++;
+    switch (c) {
+    case 'n':
+      code = '\n';
+      break;
+    case 't':
+      code = '\t';
+      break;
+    case 'r':
+      code = '\r';
+      break;
+    case 'a':
+      code = '\a';
+      break;
+    case 'b':
+      code = '\b';
+      break;
+    case 'f':
+      code = '\f';
+      break;
+    case 'v':
+      code = '\v';
+      break;
+    default:
+      code = (unsigned char)c;
+      break;
+    }
+  } else if (P[0] == '\'' && P[1] == '\'') {
+    code = '\'';
+    P += 2;
+  } else {
+    code = (unsigned char)*P++;
+  }
+  return tt_int(code);
+}
+
 static tterm_t *parse_number(void) {
+  if (P[0] == '0' && P[1] == '\'')
+    return parse_char_code();
   const char *start = P;
   if (*P == '-')
     P++;
@@ -393,8 +438,21 @@ static tterm_t *parse_primary(void) {
   }
   if (is_symbol_char((unsigned char)*P)) {
     read_while(name, is_symbol_char);
+    if (*P == '(') {
+      P++;
+      skip_ws();
+      tterm_t *args[MAX_ARITY];
+      int32_t n = parse_arglist(args);
+      skip_ws();
+      if (*P != ')')
+        perr("expected ')'");
+      P++;
+      return tt_struct(name, n, args);
+    }
     op_t pre;
-    if (find_prefix(name, &pre)) {
+    int have_pre = find_prefix(name, &pre);
+    if (have_pre && *P != '\0' && !at_clause_end() && *P != ')' && *P != ',' &&
+        *P != ']' && *P != '|') {
       tterm_t *arg = parse_expr(pre.assoc == FY ? pre.pri : pre.pri - 1);
       return tt_struct(name, 1, &arg);
     }

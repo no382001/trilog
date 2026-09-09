@@ -130,6 +130,16 @@ TRILOG="./trilog"
   [[ "$output" == *"A=hithere"* ]]
 }
 
+@test "with_output_to/2 nests correctly, each level popping its own slice (regression)" {
+  run "$TRILOG" -e "
+    with_output_to(atom(A), (write(hi), with_output_to(atom(B), write(inner)), write(there))),
+    write(A-B),
+    nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"-(hithere, inner)"* ]]
+}
+
 @test "get_time_ms/1 returns a non-negative integer, monotonic across two calls" {
   run "$TRILOG" -e "
     get_time_ms(T0),
@@ -375,6 +385,51 @@ TRILOG="./trilog"
   [[ "$output" == *"L1=line one"* ]]
   [[ "$output" == *"L2=line two"* ]]
   [[ "$output" == *"L3=end_of_file"* ]]
+}
+
+@test "0'c character-code literals, including escapes and the doubled quote" {
+  run "$TRILOG" -e "
+    A is 0'a,
+    B is 0'\\ ,
+    C is 0'\\n,
+    D is 0'\\t,
+    E is 0'\\\\,
+    F is 0'''.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"A=97"* ]]
+  [[ "$output" == *"B=32"* ]]
+  [[ "$output" == *"C=10"* ]]
+  [[ "$output" == *"D=9"* ]]
+  [[ "$output" == *"E=92"* ]]
+  [[ "$output" == *"F=39"* ]]
+}
+
+@test "Op(Args) compound-term syntax works even when Op is also an operator" {
+  run "$TRILOG" -e "
+    X = -(1,2),
+    Y = ==(a,b),
+    Z is -(5).
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"X=-(1, 2)"* ]]
+  [[ "$output" == *"Y===(a, b)"* ]]
+  [[ "$output" == *"Z=-5"* ]]
+
+  run "$TRILOG" -e "X = 3, Y is -X."
+  [[ "$output" == *"Y=-3"* ]]
+}
+
+@test "a bare operator atom parses as a plain atom in argument position" {
+  run "$TRILOG" -e "
+    X = \\+,
+    Y = -,
+    Z = [\\+, -, +].
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"X=\\+"* ]]
+  [[ "$output" == *"Y=-"* ]]
+  [[ "$output" == *"Z=[\\+, -, +]"* ]]
 }
 
 # --- boot/core.pl library ---
