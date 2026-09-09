@@ -353,6 +353,30 @@ TRILOG="./trilog"
   [[ "$output" == *"N=42"* ]]
 }
 
+@test "atom_to_term/3 populates NameVars, sharing repeated vars, skipping bare _" {
+  run "$TRILOG" -e "atom_to_term('foo(X,Y,X,_)', T, NV), write(T-NV), nl."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"foo(_G"* ]]
+  [[ "$output" == *"=(X, _G"* ]]
+  [[ "$output" == *"=(Y, _G"* ]]
+}
+
+@test "read_line_to_atom/2 reads one line at a time, end_of_file at EOF" {
+  path="$BATS_TEST_TMPDIR/read_line.txt"
+  printf 'line one\nline two\n' > "$path"
+  run "$TRILOG" -e "
+    open('$path', read, S),
+    read_line_to_atom(S, L1),
+    read_line_to_atom(S, L2),
+    read_line_to_atom(S, L3),
+    close(S).
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"L1=line one"* ]]
+  [[ "$output" == *"L2=line two"* ]]
+  [[ "$output" == *"L3=end_of_file"* ]]
+}
+
 # --- boot/core.pl library ---
 
 @test "term-order comparisons: ==, \\==, @<, @>, @=<, @>=, \\=" {

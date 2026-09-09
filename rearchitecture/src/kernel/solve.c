@@ -148,7 +148,7 @@ static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_put_code,
     atom_arith_le, atom_arith_ge, atom_arith_eq, atom_arith_ne, atom_term_eq,
     atom_term_ne, atom_term_lt, atom_term_gt, atom_term_le, atom_term_ge,
     atom_var_addr, atom_fail, atom_false, atom_halt, atom_flush_output,
-    atom_get_time_ms;
+    atom_get_time_ms, atom_read_line_to_atom, atom_end_of_file;
 // eval_arith bitwise operator names.
 static int32_t atom_bitand, atom_bitor, atom_bitxor, atom_shl, atom_shr,
     atom_bitnot;
@@ -241,6 +241,8 @@ void solve_init(void) {
   atom_halt = atom_intern("halt");
   atom_flush_output = atom_intern("flush_output");
   atom_get_time_ms = atom_intern("get_time_ms");
+  atom_read_line_to_atom = atom_intern("read_line_to_atom");
+  atom_end_of_file = atom_intern("end_of_file");
   atom_bitand = atom_intern("/\\");
   atom_bitor = atom_intern("\\/");
   atom_bitxor = atom_intern("xor");
@@ -1066,6 +1068,26 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = 1;
     return 1;
   }
+  if (arity == 2 && id == atom_read_line_to_atom) {
+    int sid;
+    if (!resolve_stream_id(f + 1, &sid)) {
+      *ok = 0;
+      return 1;
+    }
+    char buf[8192];
+    char *got = io_file_read_line(stream_handle(sid), buf, sizeof buf);
+    size_t line;
+    if (!got) {
+      line = heap_new_atom(atom_end_of_file);
+    } else {
+      size_t len = strlen(got);
+      while (len > 0 && (got[len - 1] == '\n' || got[len - 1] == '\r'))
+        got[--len] = '\0';
+      line = heap_new_atom(atom_intern(got));
+    }
+    *ok = unify(f + 2, line);
+    return 1;
+  }
   // Fragile: a directive in the consulted file runs via a nested
   // run_query while this one is still on the C stack, and sp is global.
   if (arity == 1 && id == atom_consult) {
@@ -1179,8 +1201,6 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = unify(term_arg, fresh_copy_term(t, nvars));
     return 1;
   }
-  // Bindings is always []
-  // TODO: this is fine for now, but not a complete impl
   if (arity == 3 && id == atom_atom_to_term) {
     size_t atom_arg = heap_deref(f + 1);
     if (heap[atom_arg].tag != TAG_ATOM) {
@@ -1195,8 +1215,21 @@ static int dispatch_builtin(size_t goal, int *ok) {
       *ok = 0;
       return 1;
     }
-    *ok = unify(f + 2, fresh_copy_term(t, nvars)) &&
-          unify(f + 3, heap_new_atom(atom_nil));
+    size_t rn[nvars > 0 ? nvars : 1];
+    rename_init(rn, nvars);
+    size_t term_copy = heap_copy(t, rn, 0);
+    // 'Name'=Var per named source variable; skips bare "_" and any slot
+    // heap_copy never visited.
+    size_t namevars = heap_new_atom(atom_nil);
+    for (int32_t i = nvars - 1; i >= 0; i--) {
+      if (!strcmp(names[i], "_") || rn[i] == (size_t)-1)
+        continue;
+      size_t pair_args[2] = {heap_new_atom(atom_intern(names[i])), rn[i]};
+      size_t cons_args[2] = {heap_new_struct(atom_unify_op, 2, pair_args),
+                             namevars};
+      namevars = heap_new_struct(atom_dot, 2, cons_args);
+    }
+    *ok = unify(f + 2, term_copy) && unify(f + 3, namevars);
     return 1;
   }
 
