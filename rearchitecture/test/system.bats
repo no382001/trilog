@@ -106,6 +106,17 @@ TRILOG="./trilog"
   [[ "$output" == *"Hi"* ]]
 }
 
+@test "halt/0 and halt/1 terminate the process with the given status" {
+  run "$TRILOG" -e "write(before), nl, halt(3), write(after)."
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"before"* ]]
+  [[ "$output" != *"after"* ]]
+
+  run "$TRILOG" -e "write(before), nl, halt."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"before"* ]]
+}
+
 # --- type checks, term inspection, atom/number <-> codes, compare/3 ---
 # The small C primitives boot/*.pl's library builds on.
 
@@ -635,4 +646,38 @@ PLEOF
   run "$TRILOG" -e "assertz((greeting --> [hello],[world])), phrase(greeting,[hello,world])."
   [ "$status" -eq 0 ]
   [[ "$output" == *"yes:"* ]]
+}
+
+# --- features not yet implemented ---
+
+@test "flush_output/0 is callable (upstream gap)" {
+  run "$TRILOG" -e "write(x), flush_output, write(y), nl."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"xy"* ]]
+}
+
+@test "get_time_ms/1 returns a non-negative integer, monotonic across two calls (upstream gap)" {
+  run "$TRILOG" -e "get_time_ms(T0), between(1,200000,_), fail; true, get_time_ms(T1), (T1 >= T0 -> write(ok) ; write(bad)), nl."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ok"* ]]
+}
+
+@test "bitwise operators in is/2: /\\, \\/, xor, <<, >>, unary \\ (upstream gap)" {
+  # exact values: 6/\3=2, 6\/3=7, 6 xor 3=5, 1<<4=16, 32>>2=8, \0=-1
+  run "$TRILOG" -e 'A is 6 /\ 3, B is 6 \/ 3, C is 6 xor 3, D is 1 << 4, E is 32 >> 2, F is \ 0, write(A-B-C-D-E-F), nl.'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"2-7-5-16-8--1"* ]]
+}
+
+@test "division by zero throws evaluation_error(zero_divisor), not a silent failure (upstream gap)" {
+  # exact ball: error(evaluation_error(zero_divisor), is/2)
+  run "$TRILOG" -e "catch(X is 1/0, E, true), write(E), nl."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"evaluation_error(zero_divisor)"* ]]
+}
+
+@test "integer overflow throws evaluation_error(int_overflow), not silent wraparound (upstream gap)" {
+  run "$TRILOG" -e "catch((X is 2000000000 * 2000000000 * 3), E, true), write(E), nl."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"evaluation_error(int_overflow)"* ]]
 }

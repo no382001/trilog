@@ -143,7 +143,7 @@ static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_put_code,
     atom_atom_to_term, atom_clause_candidates, atom_choice_mark, atom_cut_to,
     atom_arith_le, atom_arith_ge, atom_arith_eq, atom_arith_ne, atom_term_eq,
     atom_term_ne, atom_term_lt, atom_term_gt, atom_term_le, atom_term_ge,
-    atom_var_addr, atom_fail, atom_false;
+    atom_var_addr, atom_fail, atom_false, atom_halt;
 
 static size_t pending_error_ball = (size_t)-1;
 
@@ -223,6 +223,7 @@ void solve_init(void) {
   atom_capture_stop = atom_intern("$$capture_stop");
   atom_fail = atom_intern("fail");
   atom_false = atom_intern("false");
+  atom_halt = atom_intern("halt");
   atom_var = atom_intern("var");
   atom_kw_atom = atom_intern("atom");
   atom_integer = atom_intern("integer");
@@ -783,6 +784,15 @@ static int dispatch_builtin(size_t goal, int *ok) {
   if (arity == 0 && (id == atom_fail || id == atom_false)) {
     *ok = 0;
     return 1;
+  }
+
+  if (arity == 1 && id == atom_halt) {
+    size_t d = heap_deref(f + 1);
+    if (heap[d].tag != TAG_INT) {
+      *ok = 0;
+      return 1;
+    }
+    exit((int)heap[d].as.ival);
   }
 
   if (arity == 2 && id == atom_is) {

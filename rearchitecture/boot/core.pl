@@ -53,6 +53,9 @@ once(G) :- call(G), !.
 %!  forall(:Cond, :Action) is semidet.
 forall(Cond, Action) :- \+ (Cond, \+ Action).
 
+%!  halt is det.
+halt :- halt(0).
+
 % --- lists ---
 
 %!  append(?List1, ?List2, ?List3) is nondet.

@@ -40,8 +40,6 @@ static void repl(void) {
     if (!io_read_line(line, sizeof line))
       break;
     line[strcspn(line, "\n")] = '\0';
-    if (!strcmp(line, "halt."))
-      break;
 
     int blank = 1;
     for (char *p = line; *p; p++)
