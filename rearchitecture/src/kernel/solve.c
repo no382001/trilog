@@ -857,12 +857,17 @@ static int resolve_write_target(size_t target, int *kind_out,
   return 1;
 }
 
-// with_output_to/2's C half (see boot/core.pl). Not reentrant: a nested
-// with_output_to before the outer's $$capture_stop mixes both into one buffer.
+// with_output_to/2's C half. capture_buf is a stack arena: each nested capture
+// pops back to its own start on $$capture_stop, so nesting works.
 #define CAPTURE_BUF_SIZE 4096
+#define CAPTURE_STACK_MAX 32
 static char capture_buf[CAPTURE_BUF_SIZE];
 static int capture_pos;
-static io_hooks_t capture_saved;
+static struct {
+  io_hooks_t saved;
+  int start;
+} capture_stack[CAPTURE_STACK_MAX];
+static int capture_sp;
 static void capture_write_str(const char *str, void *ud) {
   (void)ud;
   int len = (int)strlen(str);
@@ -1121,10 +1126,14 @@ static int dispatch_builtin(size_t goal, int *ok) {
     return 1;
   }
   if (arity == 0 && id == atom_capture_start) {
-    capture_saved = io_hooks_get();
-    capture_pos = 0;
-    capture_buf[0] = '\0';
-    io_hooks_t tmp = capture_saved;
+    if (capture_sp >= CAPTURE_STACK_MAX) {
+      *ok = 0;
+      return 1;
+    }
+    capture_stack[capture_sp].saved = io_hooks_get();
+    capture_stack[capture_sp].start = capture_pos;
+    capture_sp++;
+    io_hooks_t tmp = capture_stack[capture_sp - 1].saved;
     tmp.write_str = capture_write_str;
     tmp.flush = capture_flush_noop;
     io_hooks_replace(tmp);
@@ -1132,8 +1141,17 @@ static int dispatch_builtin(size_t goal, int *ok) {
     return 1;
   }
   if (arity == 1 && id == atom_capture_stop) {
-    io_hooks_restore(capture_saved);
-    *ok = unify(f + 1, heap_new_atom(atom_intern(capture_buf)));
+    if (capture_sp <= 0) {
+      *ok = 0;
+      return 1;
+    }
+    capture_sp--;
+    int start = capture_stack[capture_sp].start;
+    size_t result = heap_new_atom(atom_intern(capture_buf + start));
+    capture_buf[start] = '\0'; // pop this level's slice back off the arena
+    capture_pos = start;
+    io_hooks_restore(capture_stack[capture_sp].saved);
+    *ok = unify(f + 1, result);
     return 1;
   }
   if (arity == 2 && id == atom_copy_term) {
