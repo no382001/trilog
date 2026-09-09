@@ -1676,8 +1676,13 @@ B:
       goto C; // declared dynamic - no clauses is a normal fail, not
               // existence_error
     if (!predicate_known) {
-      size_t ball = make_existence_error("procedure", caller_key.pred_id,
-                                         caller_key.pred_arity);
+      // pred_id == -1: `first` was never callable (key_of_goal's "no key"
+      // sentinel) - feeding that into make_existence_error would
+      // heap_new_atom(-1) and later corrupt the heap.
+      size_t ball = caller_key.pred_id == -1
+                        ? make_type_error("callable", heap_deref(first))
+                        : make_existence_error("procedure", caller_key.pred_id,
+                                               caller_key.pred_arity);
       if (do_throw(ball, &cn, &active_catch))
         goto A;
       return;

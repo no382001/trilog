@@ -617,6 +617,23 @@ TRILOG="./trilog"
   [[ "$output" != *"yes:"* ]]
 }
 
+@test "calling a non-callable term throws type_error(callable, _), not a crash (regression)" {
+  # a bare integer as a goal used to corrupt the heap: key_of_goal's
+  # "not callable" sentinel (pred_id = -1) fed straight into
+  # make_existence_error, which built an atom cell from that -1.
+  run "$TRILOG" -e "catch(call(42), error(type_error(callable, 42), _), true), write(ok), nl."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ok"* ]]
+}
+
+@test "bagof with an unbound Goal argument doesn't loop forever (regression)" {
+  # '$bagof_strip' used to unify an unbound Goal0 with V^G0 itself,
+  # binding fresh vars and recursing on those forever.
+  run "$TRILOG" -e "catch(bagof(_X,_Y^_Z,_L), error(type_error(callable, _), _), true), write(ok), nl."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ok"* ]]
+}
+
 @test "setof sorts and dedups, built on bagof plus sort/2" {
   run "$TRILOG" -e "setof(X, member(X,[3,1,2,1]), L)."
   [ "$status" -eq 0 ]

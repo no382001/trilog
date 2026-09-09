@@ -443,7 +443,13 @@ bagof(Template, Goal0, Bag) :-
     '$bagof_group'(Pairs, Groups),
     member(Witness - Bag, Groups).
 
-'$bagof_strip'(V ^ G0, [V|Vs], G) :- !, '$bagof_strip'(G0, Vs, G).
+% nonvar first: an unbound Goal0 would otherwise unify with V^G0
+% itself (binding fresh vars) and recurse on that fresh var forever.
+'$bagof_strip'(Goal0, [V|Vs], G) :-
+    nonvar(Goal0),
+    Goal0 = V ^ G0,
+    !,
+    '$bagof_strip'(G0, Vs, G).
 '$bagof_strip'(G, [], G).
 
 '$bagof_group'([], []).
