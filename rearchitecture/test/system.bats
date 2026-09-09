@@ -175,14 +175,6 @@ TRILOG="./trilog"
   [ "$status" -eq 0 ]
   [[ "$output" != *"yes:"* ]]
 
-  run "$TRILOG" -e "X is 1/0."
-  [ "$status" -eq 0 ]
-  [[ "$output" != *"yes:"* ]]
-
-  run "$TRILOG" -e "X is 5 mod 0."
-  [ "$status" -eq 0 ]
-  [[ "$output" != *"yes:"* ]]
-
   run "$TRILOG" -e "X is foo(1,2)."
   [ "$status" -eq 0 ]
   [[ "$output" != *"yes:"* ]]
@@ -191,6 +183,20 @@ TRILOG="./trilog"
   run "$TRILOG" -e "X is 1 + 2 * 3, Y is X mod 5."
   [[ "$output" == *"X=7"* ]]
   [[ "$output" == *"Y=2"* ]]
+}
+
+@test "division by zero throws evaluation_error(zero_divisor), not a silent failure" {
+  run "$TRILOG" -e "catch(X is 1/0, E, true)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"evaluation_error(zero_divisor)"* ]]
+  run "$TRILOG" -e "catch(X is 5 mod 0, E, true)."
+  [[ "$output" == *"evaluation_error(zero_divisor)"* ]]
+}
+
+@test "integer overflow throws evaluation_error(int_overflow), not silent wraparound" {
+  run "$TRILOG" -e "catch((X is 2000000000 * 2000000000 * 3), E, true)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"evaluation_error(int_overflow)"* ]]
 }
 
 @test "functor/3 decomposes and constructs both ways" {
@@ -677,19 +683,4 @@ PLEOF
   run "$TRILOG" -e "assertz((greeting --> [hello],[world])), phrase(greeting,[hello,world])."
   [ "$status" -eq 0 ]
   [[ "$output" == *"yes:"* ]]
-}
-
-# --- features not yet implemented ---
-
-@test "division by zero throws evaluation_error(zero_divisor), not a silent failure (upstream gap)" {
-  # exact ball: error(evaluation_error(zero_divisor), is/2)
-  run "$TRILOG" -e "catch(X is 1/0, E, true), write(E), nl."
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"evaluation_error(zero_divisor)"* ]]
-}
-
-@test "integer overflow throws evaluation_error(int_overflow), not silent wraparound (upstream gap)" {
-  run "$TRILOG" -e "catch((X is 2000000000 * 2000000000 * 3), E, true), write(E), nl."
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"evaluation_error(int_overflow)"* ]]
 }

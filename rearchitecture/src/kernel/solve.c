@@ -125,7 +125,8 @@ static size_t catch_stack_push(catch_frame_t f) {
 static int32_t atom_true, atom_comma, atom_dot, atom_nil;
 // Interned once here, not per call site - atom_intern is a linear scan.
 static int32_t atom_ruleop, atom_slash, atom_error, atom_instantiation_error,
-    atom_type_error, atom_existence_error, atom_stream, atom_uncatch, atom_cut,
+    atom_type_error, atom_existence_error, atom_evaluation_error,
+    atom_zero_divisor, atom_int_overflow, atom_stream, atom_uncatch, atom_cut,
     atom_catch, atom_throw, atom_assertz, atom_assert, atom_asserta,
     atom_retract, atom_call;
 // eval_arith operator names.
@@ -174,6 +175,10 @@ static size_t make_existence_error(const char *obj_type, int32_t pred_id,
   return make_existence_error_term(obj_type,
                                    heap_new_struct(atom_slash, 2, pi_args));
 }
+static size_t make_evaluation_error(int32_t what_atom) {
+  size_t args[1] = {heap_new_atom(what_atom)};
+  return make_error(heap_new_struct(atom_evaluation_error, 1, args));
+}
 void solve_init(void) {
   atom_true = atom_intern("true");
   atom_comma = atom_intern(",");
@@ -185,6 +190,9 @@ void solve_init(void) {
   atom_instantiation_error = atom_intern("instantiation_error");
   atom_type_error = atom_intern("type_error");
   atom_existence_error = atom_intern("existence_error");
+  atom_evaluation_error = atom_intern("evaluation_error");
+  atom_zero_divisor = atom_intern("zero_divisor");
+  atom_int_overflow = atom_intern("int_overflow");
   atom_stream = atom_intern("$stream");
   atom_uncatch = atom_intern("$$uncatch");
   atom_cut = atom_intern("$$cut");
@@ -565,17 +573,28 @@ static int64_t eval_arith(size_t r, int *ok) {
       int64_t b = *ok ? eval_arith(f + 2, ok) : 0;
       if (!*ok)
         return 0;
+      int64_t res;
+      int overflowed = 0;
       if (id == atom_plus)
-        return a + b;
-      if (id == atom_minus)
-        return a - b;
-      if (id == atom_star)
-        return a * b;
-      if (id == atom_slash || id == atom_intdiv || id == atom_mod) {
-        if (b == 0) {
+        overflowed = __builtin_add_overflow(a, b, &res);
+      else if (id == atom_minus)
+        overflowed = __builtin_sub_overflow(a, b, &res);
+      else if (id == atom_star)
+        overflowed = __builtin_mul_overflow(a, b, &res);
+      if (id == atom_plus || id == atom_minus || id == atom_star) {
+        if (overflowed) {
+          pending_error_ball = make_evaluation_error(atom_int_overflow);
           *ok = 0;
           return 0;
-        } // would be a C-level SIGFPE otherwise
+        }
+        return res;
+      }
+      if (id == atom_slash || id == atom_intdiv || id == atom_mod) {
+        if (b == 0) {
+          pending_error_ball = make_evaluation_error(atom_zero_divisor);
+          *ok = 0;
+          return 0;
+        }
         if (id == atom_mod)
           return ((a % b) + b) % b; // ISO: result takes the sign of the divisor
         return a / b;
