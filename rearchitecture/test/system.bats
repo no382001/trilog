@@ -294,6 +294,25 @@ TRILOG="./trilog"
   [[ "$output" == *"NL=[1, 2, 3, 4, 5]"* ]]
 }
 
+@test "select, delete, subtract, intersection, union, permutation" {
+  run "$TRILOG" -e "select(2,[1,2,3],R1), delete([1,2,1,3,1],1,R2), subtract([1,2,3,4],[2,4],R3), intersection([1,2,3,4],[2,4,5],R4), union([1,2,3],[2,3,4],R5), findall(P,permutation([1,2],P),Ps)."
+  [[ "$output" == *"R1=[1, 3]"* ]]
+  [[ "$output" == *"R2=[2, 3]"* ]]
+  [[ "$output" == *"R3=[1, 3]"* ]]
+  [[ "$output" == *"R4=[2, 4]"* ]]
+  [[ "$output" == *"R5=[1, 2, 3, 4]"* ]]
+  [[ "$output" == *"Ps=[[1, 2], [2, 1]]"* ]]
+}
+
+@test "flatten, list_to_set, max_member, min_member, repeat" {
+  run "$TRILOG" -e "flatten([1,[2,[3,4],5],6],R1), list_to_set([1,2,1,3,2],R2), max_member(Mx,[3,1,4,1,5]), min_member(Mn,[3,1,4,1,5]), (repeat, X=done, !)."
+  [[ "$output" == *"R1=[1, 2, 3, 4, 5, 6]"* ]]
+  [[ "$output" == *"R2=[1, 2, 3]"* ]]
+  [[ "$output" == *"Mx=5"* ]]
+  [[ "$output" == *"Mn=1"* ]]
+  [[ "$output" == *"X=done"* ]]
+}
+
 @test "between enumerates and checks, forall, succ, plus" {
   run "$TRILOG" -e "findall(X, between(1,5,X), L), between(1,5,3), \\+ between(1,5,9), forall(member(Y,[1,2,3]),Y>0), succ(3,S1), succ(S2,4), plus(2,3,P)."
   [[ "$output" == *"L=[1, 2, 3, 4, 5]"* ]]

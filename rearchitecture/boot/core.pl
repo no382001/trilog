@@ -117,6 +117,67 @@ min_list([H|T], M) :- '$min_list'(T, H, M).
 '$min_list'([], M, M).
 '$min_list'([H|T], M0, M) :- (H < M0 -> M1 = H ; M1 = M0), '$min_list'(T, M1, M).
 
+%!  select(?Elem, ?List, ?Rest) is nondet.
+select(E, [E|Xs], Xs).
+select(E, [X|Xs], [X|Ys]) :- select(E, Xs, Ys).
+
+%!  delete(+List, @Elem, -Result) is det.
+delete([], _, []).
+delete([X|Xs], Y, Zs) :- \+ X \= Y, !, delete(Xs, Y, Zs).
+delete([X|Xs], Y, [X|Zs]) :- delete(Xs, Y, Zs).
+
+%!  subtract(+Set1, +Set2, -Difference) is det.
+subtract([], _, []).
+subtract([X|Xs], Ys, Zs) :-
+    ( memberchk(X, Ys) -> subtract(Xs, Ys, Zs)
+    ; Zs = [X|Zs1], subtract(Xs, Ys, Zs1)
+    ).
+
+%!  intersection(+Set1, +Set2, -Intersection) is det.
+intersection([], _, []).
+intersection([X|Xs], Ys, Zs) :-
+    ( memberchk(X, Ys) -> Zs = [X|Zs1] ; Zs = Zs1 ),
+    intersection(Xs, Ys, Zs1).
+
+%!  union(+Set1, +Set2, -Union) is det.
+union([], L, L).
+union([X|Xs], Ys, Zs) :-
+    ( memberchk(X, Ys) -> union(Xs, Ys, Zs)
+    ; Zs = [X|Zs1], union(Xs, Ys, Zs1)
+    ).
+
+%!  flatten(+NestedList, -FlatList) is det.
+flatten(List, FlatList) :- '$flatten'(List, [], FlatList).
+'$flatten'(Var, Tl, [Var|Tl]) :- var(Var), !.
+'$flatten'([], Tl, Tl) :- !.
+'$flatten'([Hd|Tl], Tail, List) :-
+    !, '$flatten'(Hd, FlatHeadTail, List), '$flatten'(Tl, Tail, FlatHeadTail).
+'$flatten'(NonList, Tl, [NonList|Tl]).
+
+%!  list_to_set(+List, -Set) is det.
+list_to_set(List, Set) :- '$list_to_set'(List, [], Set).
+'$list_to_set'([], _, []).
+'$list_to_set'([X|Xs], Seen, Set) :-
+    ( memberchk(X, Seen) -> '$list_to_set'(Xs, Seen, Set)
+    ; Set = [X|Set1], '$list_to_set'(Xs, [X|Seen], Set1)
+    ).
+
+%!  max_member(-Max, +List) is semidet.
+max_member(Max, [X|Xs]) :- foldl('$max_member', Xs, X, Max).
+'$max_member'(X, M0, M) :- ( X @> M0 -> M = X ; M = M0 ).
+
+%!  min_member(-Min, +List) is semidet.
+min_member(Min, [X|Xs]) :- foldl('$min_member', Xs, X, Min).
+'$min_member'(X, M0, M) :- ( X @< M0 -> M = X ; M = M0 ).
+
+%!  permutation(?List, ?Perm) is nondet.
+permutation([], []).
+permutation(List, [X|Perm]) :- select(X, List, Rest), permutation(Rest, Perm).
+
+%!  repeat is nondet.
+repeat.
+repeat :- repeat.
+
 %!  numlist(+Low, +High, -List) is det.
 numlist(L, H, []) :- L > H, !.
 numlist(L, H, [L|T]) :- L =< H, L1 is L + 1, numlist(L1, H, T).
