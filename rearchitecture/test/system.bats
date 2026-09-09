@@ -153,6 +153,17 @@ TRILOG="./trilog"
   [[ "$output" == *"V=7"* ]]
 }
 
+@test "bitwise operators in is/2: /\\, \\/, xor, <<, >>, unary \\" {
+  run "$TRILOG" -e 'A is 6 /\ 3, B is 6 \/ 3, C is 6 xor 3, D is 1 << 4, E is 32 >> 2, F is \ 0.'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"A=2"* ]]
+  [[ "$output" == *"B=7"* ]]
+  [[ "$output" == *"C=5"* ]]
+  [[ "$output" == *"D=16"* ]]
+  [[ "$output" == *"E=8"* ]]
+  [[ "$output" == *"F=-1"* ]]
+}
+
 @test "unevaluable arithmetic fails the goal instead of crashing the process (regression)" {
   # eval_arith used to exit(1) on anything unevaluable instead of just
   # failing the goal.
@@ -669,13 +680,6 @@ PLEOF
 }
 
 # --- features not yet implemented ---
-
-@test "bitwise operators in is/2: /\\, \\/, xor, <<, >>, unary \\ (upstream gap)" {
-  # exact values: 6/\3=2, 6\/3=7, 6 xor 3=5, 1<<4=16, 32>>2=8, \0=-1
-  run "$TRILOG" -e 'A is 6 /\ 3, B is 6 \/ 3, C is 6 xor 3, D is 1 << 4, E is 32 >> 2, F is \ 0, write(A-B-C-D-E-F), nl.'
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"2-7-5-16-8--1"* ]]
-}
 
 @test "division by zero throws evaluation_error(zero_divisor), not a silent failure (upstream gap)" {
   # exact ball: error(evaluation_error(zero_divisor), is/2)

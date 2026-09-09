@@ -40,6 +40,8 @@ static const op_t OPS[] = {
     {"@=<", 700, XFX}, {"@>=", 700, XFX},  {"+", 500, YFX},
     {"-", 500, YFX},   {"*", 400, YFX},    {"/", 400, YFX},
     {"mod", 400, YFX}, {"-", 200, FY},     {"+", 200, FY},
+    {"\\/", 500, YFX}, {"xor", 400, YFX},  {"<<", 400, YFX},
+    {">>", 400, YFX},  {"/\\", 400, YFX},  {"\\", 200, FY},
 };
 #define NOPS (int)(sizeof(OPS) / sizeof(OPS[0]))
 

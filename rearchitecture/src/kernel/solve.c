@@ -147,6 +147,9 @@ static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_put_code,
     atom_term_ne, atom_term_lt, atom_term_gt, atom_term_le, atom_term_ge,
     atom_var_addr, atom_fail, atom_false, atom_halt, atom_flush_output,
     atom_get_time_ms;
+// eval_arith bitwise operator names.
+static int32_t atom_bitand, atom_bitor, atom_bitxor, atom_shl, atom_shr,
+    atom_bitnot;
 
 static size_t pending_error_ball = (size_t)-1;
 
@@ -229,6 +232,12 @@ void solve_init(void) {
   atom_halt = atom_intern("halt");
   atom_flush_output = atom_intern("flush_output");
   atom_get_time_ms = atom_intern("get_time_ms");
+  atom_bitand = atom_intern("/\\");
+  atom_bitor = atom_intern("\\/");
+  atom_bitxor = atom_intern("xor");
+  atom_shl = atom_intern("<<");
+  atom_shr = atom_intern(">>");
+  atom_bitnot = atom_intern("\\");
   atom_var = atom_intern("var");
   atom_kw_atom = atom_intern("atom");
   atom_integer = atom_intern("integer");
@@ -575,6 +584,16 @@ static int64_t eval_arith(size_t r, int *ok) {
         return a < b ? a : b;
       if (id == atom_max)
         return a > b ? a : b;
+      if (id == atom_bitand)
+        return a & b;
+      if (id == atom_bitor)
+        return a | b;
+      if (id == atom_bitxor)
+        return a ^ b;
+      if (id == atom_shl)
+        return a << b;
+      if (id == atom_shr)
+        return a >> b;
     } else if (arity == 1) {
       int64_t a = eval_arith(f + 1, ok);
       if (!*ok)
@@ -587,6 +606,8 @@ static int64_t eval_arith(size_t r, int *ok) {
         return a < 0 ? -a : a;
       if (id == atom_sign)
         return (a > 0) - (a < 0);
+      if (id == atom_bitnot)
+        return ~a;
       if (id == atom_floor || id == atom_ceiling || id == atom_round ||
           id == atom_truncate)
         return a;
