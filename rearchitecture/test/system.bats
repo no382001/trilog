@@ -106,6 +106,12 @@ TRILOG="./trilog"
   [[ "$output" == *"Hi"* ]]
 }
 
+@test "flush_output/0 is callable" {
+  run "$TRILOG" -e "write(x), flush_output, write(y), nl."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"xy"* ]]
+}
+
 @test "halt/0 and halt/1 terminate the process with the given status" {
   run "$TRILOG" -e "write(before), nl, halt(3), write(after)."
   [ "$status" -eq 3 ]
@@ -649,12 +655,6 @@ PLEOF
 }
 
 # --- features not yet implemented ---
-
-@test "flush_output/0 is callable (upstream gap)" {
-  run "$TRILOG" -e "write(x), flush_output, write(y), nl."
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"xy"* ]]
-}
 
 @test "get_time_ms/1 returns a non-negative integer, monotonic across two calls (upstream gap)" {
   run "$TRILOG" -e "get_time_ms(T0), between(1,200000,_), fail; true, get_time_ms(T1), (T1 >= T0 -> write(ok) ; write(bad)), nl."
