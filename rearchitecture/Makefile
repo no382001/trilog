@@ -7,7 +7,7 @@ SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/main.c
 HDRS = $(wildcard src/kernel/*.h) $(wildcard src/io/*.h)
 
 trilog: format $(SRCS) src/kernel/*.h src/io/*.h
-	$(CC) $(CFLAGS) -o trilog $(SRCS)
+	$(CC) $(CFLAGS) -o trilog $(SRCS) -lm
 
 .PHONY: test test-upstream clean format format-check
 test: trilog

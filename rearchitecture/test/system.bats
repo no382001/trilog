@@ -164,6 +164,32 @@ TRILOG="./trilog"
   [[ "$output" == *"F=-1"* ]]
 }
 
+@test "float arithmetic in is/2: mixed-mode promotion, //, float/1" {
+  run "$TRILOG" -e "A is 1.5 + 2, B is 4/2, integer(B), C is 4/3, integer(C), D is min(1, 2.5), float(D), E is max(1.5, 2), float(E), F is abs(-1.5), G is floor(3.7), H is truncate(-3.7), I is float(3), float(I), J is 7 // 2, integer(J), K is 7.0 / 2."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"yes:"* ]]
+  [[ "$output" == *"A=3.5"* ]]
+  [[ "$output" == *"B=2"* ]]
+  [[ "$output" == *"C=1"* ]]
+  [[ "$output" == *"F=1.5"* ]]
+  [[ "$output" == *"G=3"* ]]
+  [[ "$output" == *"H=-3"* ]]
+  [[ "$output" == *"J=3"* ]]
+  [[ "$output" == *"K=3.5"* ]]
+  [[ "$output" == *"D=1.0"* ]]
+  [[ "$output" == *"E=2.0"* ]]
+  [[ "$output" == *"I=3.0"* ]]
+}
+
+@test "float arithmetic rejects int-only operators" {
+  run "$TRILOG" -e "catch(X is 5 mod 2.0, E, true)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"type_error(integer, 2.0)"* ]]
+
+  run "$TRILOG" -e "catch(X is 1/0.0, E, true)."
+  [[ "$output" == *"evaluation_error(zero_divisor)"* ]]
+}
+
 @test "unevaluable arithmetic fails the goal instead of crashing the process (regression)" {
   # eval_arith used to exit(1) on anything unevaluable instead of just
   # failing the goal.

@@ -8,6 +8,7 @@
 #include "streams.h"
 #include "unify.h"
 #include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -555,81 +556,158 @@ static void split_clause_whole(size_t clause, size_t *head_out,
   *body_out = heap_new_atom(atom_true);
 }
 
-static int64_t eval_arith(size_t r, int *ok) {
+static double arith_dbl(size_t v) {
+  return heap[v].tag == TAG_FLT ? heap[v].as.fval : (double)heap[v].as.ival;
+}
+
+// //, mod, bitwise ops reject a float operand outright.
+static int arith_require_int(size_t v, int64_t *out, int *ok) {
+  if (heap[v].tag == TAG_FLT) {
+    pending_error_ball = make_type_error("integer", v);
+    *ok = 0;
+    return 0;
+  }
+  *out = heap[v].as.ival;
+  return 1;
+}
+
+static size_t eval_arith(size_t r, int *ok) {
   r = heap_deref(r);
   if (heap[r].tag == TAG_REF) {
     pending_error_ball = make_instantiation_error();
     *ok = 0;
     return 0;
   }
-  if (heap[r].tag == TAG_INT)
-    return heap[r].as.ival;
+  if (heap[r].tag == TAG_INT || heap[r].tag == TAG_FLT)
+    return r;
   if (heap[r].tag == TAG_STR) {
     size_t f = heap[r].as.ptr;
     int32_t arity = heap[f].as.func.arity;
     int32_t id = heap[f].as.func.atom_id;
     if (arity == 2) {
-      int64_t a = eval_arith(f + 1, ok);
-      int64_t b = *ok ? eval_arith(f + 2, ok) : 0;
+      size_t a = eval_arith(f + 1, ok);
+      size_t b = *ok ? eval_arith(f + 2, ok) : 0;
       if (!*ok)
         return 0;
-      int64_t res;
-      int overflowed = 0;
-      if (id == atom_plus)
-        overflowed = __builtin_add_overflow(a, b, &res);
-      else if (id == atom_minus)
-        overflowed = __builtin_sub_overflow(a, b, &res);
-      else if (id == atom_star)
-        overflowed = __builtin_mul_overflow(a, b, &res);
+      int mixed = heap[a].tag == TAG_FLT || heap[b].tag == TAG_FLT;
+
       if (id == atom_plus || id == atom_minus || id == atom_star) {
+        if (mixed) {
+          double da = arith_dbl(a), db = arith_dbl(b);
+          if (id == atom_plus)
+            return heap_new_flt(da + db);
+          if (id == atom_minus)
+            return heap_new_flt(da - db);
+          return heap_new_flt(da * db);
+        }
+        int64_t res;
+        int overflowed;
+        if (id == atom_plus)
+          overflowed =
+              __builtin_add_overflow(heap[a].as.ival, heap[b].as.ival, &res);
+        else if (id == atom_minus)
+          overflowed =
+              __builtin_sub_overflow(heap[a].as.ival, heap[b].as.ival, &res);
+        else
+          overflowed =
+              __builtin_mul_overflow(heap[a].as.ival, heap[b].as.ival, &res);
         if (overflowed) {
           pending_error_ball = make_evaluation_error(atom_int_overflow);
           *ok = 0;
           return 0;
         }
-        return res;
+        return heap_new_int(res);
       }
-      if (id == atom_slash || id == atom_intdiv || id == atom_mod) {
-        if (b == 0) {
+      // "/" is polymorphic: int/int truncates, any float divides exactly.
+      if (id == atom_slash) {
+        if (mixed) {
+          double db = arith_dbl(b);
+          if (db == 0.0) {
+            pending_error_ball = make_evaluation_error(atom_zero_divisor);
+            *ok = 0;
+            return 0;
+          }
+          return heap_new_flt(arith_dbl(a) / db);
+        }
+        if (heap[b].as.ival == 0) {
+          pending_error_ball = make_evaluation_error(atom_zero_divisor);
+          *ok = 0;
+          return 0;
+        }
+        return heap_new_int(heap[a].as.ival / heap[b].as.ival);
+      }
+      if (id == atom_intdiv || id == atom_mod) {
+        int64_t ai, bi;
+        if (!arith_require_int(a, &ai, ok) || !arith_require_int(b, &bi, ok))
+          return 0;
+        if (bi == 0) {
           pending_error_ball = make_evaluation_error(atom_zero_divisor);
           *ok = 0;
           return 0;
         }
         if (id == atom_mod)
-          return ((a % b) + b) % b; // ISO: result takes the sign of the divisor
-        return a / b;
+          return heap_new_int(((ai % bi) + bi) % bi); // sign of the divisor
+        return heap_new_int(ai / bi);
       }
-      if (id == atom_min)
-        return a < b ? a : b;
-      if (id == atom_max)
-        return a > b ? a : b;
-      if (id == atom_bitand)
-        return a & b;
-      if (id == atom_bitor)
-        return a | b;
-      if (id == atom_bitxor)
-        return a ^ b;
-      if (id == atom_shl)
-        return a << b;
-      if (id == atom_shr)
-        return a >> b;
+      // min(1, 2.5) = 1.0, not 1: the winner goes float if either side is.
+      if (id == atom_min || id == atom_max) {
+        int a_wins = id == atom_min ? arith_dbl(a) <= arith_dbl(b)
+                                    : arith_dbl(a) >= arith_dbl(b);
+        size_t winner = a_wins ? a : b;
+        if (mixed && heap[winner].tag != TAG_FLT)
+          return heap_new_flt(arith_dbl(winner));
+        return winner;
+      }
+      if (id == atom_bitand || id == atom_bitor || id == atom_bitxor ||
+          id == atom_shl || id == atom_shr) {
+        int64_t ai, bi;
+        if (!arith_require_int(a, &ai, ok) || !arith_require_int(b, &bi, ok))
+          return 0;
+        if (id == atom_bitand)
+          return heap_new_int(ai & bi);
+        if (id == atom_bitor)
+          return heap_new_int(ai | bi);
+        if (id == atom_bitxor)
+          return heap_new_int(ai ^ bi);
+        if (id == atom_shl)
+          return heap_new_int(ai << bi);
+        return heap_new_int(ai >> bi);
+      }
     } else if (arity == 1) {
-      int64_t a = eval_arith(f + 1, ok);
+      size_t a = eval_arith(f + 1, ok);
       if (!*ok)
         return 0;
+      int a_flt = heap[a].tag == TAG_FLT;
       if (id == atom_minus)
-        return -a;
+        return a_flt ? heap_new_flt(-heap[a].as.fval)
+                     : heap_new_int(-heap[a].as.ival);
       if (id == atom_plus)
         return a;
       if (id == atom_abs)
-        return a < 0 ? -a : a;
-      if (id == atom_sign)
-        return (a > 0) - (a < 0);
-      if (id == atom_bitnot)
-        return ~a;
-      if (id == atom_floor || id == atom_ceiling || id == atom_round ||
-          id == atom_truncate)
-        return a;
+        return a_flt ? heap_new_flt(fabs(heap[a].as.fval))
+                     : heap_new_int(heap[a].as.ival < 0 ? -heap[a].as.ival
+                                                        : heap[a].as.ival);
+      // sign/1 rejects a float by falling through.
+      if (id == atom_sign && !a_flt)
+        return heap_new_int((heap[a].as.ival > 0) - (heap[a].as.ival < 0));
+      if (id == atom_bitnot) {
+        int64_t ai;
+        if (!arith_require_int(a, &ai, ok))
+          return 0;
+        return heap_new_int(~ai);
+      }
+      if (id == atom_kw_float)
+        return a_flt ? a : heap_new_flt((double)heap[a].as.ival);
+      if (id == atom_floor)
+        return heap_new_int(a_flt ? (int64_t)floor(heap[a].as.fval)
+                                  : heap[a].as.ival);
+      if (id == atom_ceiling)
+        return heap_new_int(a_flt ? (int64_t)ceil(heap[a].as.fval)
+                                  : heap[a].as.ival);
+      if (id == atom_round)
+        return heap_new_int(a_flt ? llround(heap[a].as.fval) : heap[a].as.ival);
+      if (id == atom_truncate)
+        return heap_new_int(a_flt ? (int64_t)heap[a].as.fval : heap[a].as.ival);
     }
     pending_error_ball = make_type_error(
         "evaluable",
@@ -862,8 +940,8 @@ static int dispatch_builtin(size_t goal, int *ok) {
 
   if (arity == 2 && id == atom_is) {
     int aok = 1;
-    int64_t v = eval_arith(f + 2, &aok);
-    *ok = aok && unify(f + 1, heap_new_int(v));
+    size_t v = eval_arith(f + 2, &aok);
+    *ok = aok && unify(f + 1, v);
     return 1;
   }
   if (arity == 2 && id == atom_unify_op) {
@@ -874,24 +952,33 @@ static int dispatch_builtin(size_t goal, int *ok) {
       (id == atom_lt || id == atom_gt || id == atom_arith_le ||
        id == atom_arith_ge || id == atom_arith_eq || id == atom_arith_ne)) {
     int aok = 1;
-    int64_t a = eval_arith(f + 1, &aok);
-    int64_t b = aok ? eval_arith(f + 2, &aok) : 0;
+    size_t av = eval_arith(f + 1, &aok);
+    size_t bv = aok ? eval_arith(f + 2, &aok) : 0;
     if (!aok) {
       *ok = 0;
       return 1;
     }
+    // exact int64 compare unless a float forces double comparison.
+    int cmp;
+    if (heap[av].tag == TAG_FLT || heap[bv].tag == TAG_FLT) {
+      double a = arith_dbl(av), b = arith_dbl(bv);
+      cmp = a < b ? -1 : a > b ? 1 : 0;
+    } else {
+      int64_t a = heap[av].as.ival, b = heap[bv].as.ival;
+      cmp = a < b ? -1 : a > b ? 1 : 0;
+    }
     if (id == atom_lt)
-      *ok = a < b;
+      *ok = cmp < 0;
     else if (id == atom_gt)
-      *ok = a > b;
+      *ok = cmp > 0;
     else if (id == atom_arith_le)
-      *ok = a <= b;
+      *ok = cmp <= 0;
     else if (id == atom_arith_ge)
-      *ok = a >= b;
+      *ok = cmp >= 0;
     else if (id == atom_arith_eq)
-      *ok = a == b;
+      *ok = cmp == 0;
     else
-      *ok = a != b;
+      *ok = cmp != 0;
     return 1;
   }
   if (arity == 2 &&

@@ -188,6 +188,8 @@ static void print_term_ex(size_t r, int quoted, emit_fn emit) {
     break;
   case TAG_FLT:
     snprintf(buf, sizeof buf, "%g", heap[r].as.fval);
+    if (!strpbrk(buf, ".eEnN")) // force a decimal point: 2.0, not 2
+      strncat(buf, ".0", sizeof buf - strlen(buf) - 1);
     emit(buf);
     break;
   case TAG_STR: {
