@@ -154,7 +154,14 @@ TRILOG="./trilog"
 }
 
 @test "bitwise operators in is/2: /\\, \\/, xor, <<, >>, unary \\" {
-  run "$TRILOG" -e 'A is 6 /\ 3, B is 6 \/ 3, C is 6 xor 3, D is 1 << 4, E is 32 >> 2, F is \ 0.'
+  run "$TRILOG" -e '
+    A is 6 /\ 3,
+    B is 6 \/ 3,
+    C is 6 xor 3,
+    D is 1 << 4,
+    E is 32 >> 2,
+    F is \ 0.
+  '
   [ "$status" -eq 0 ]
   [[ "$output" == *"A=2"* ]]
   [[ "$output" == *"B=7"* ]]
@@ -165,7 +172,19 @@ TRILOG="./trilog"
 }
 
 @test "float arithmetic in is/2: mixed-mode promotion, //, float/1" {
-  run "$TRILOG" -e "A is 1.5 + 2, B is 4/2, integer(B), C is 4/3, integer(C), D is min(1, 2.5), float(D), E is max(1.5, 2), float(E), F is abs(-1.5), G is floor(3.7), H is truncate(-3.7), I is float(3), float(I), J is 7 // 2, integer(J), K is 7.0 / 2."
+  run "$TRILOG" -e "
+    A is 1.5 + 2,
+    B is 4/2, integer(B),
+    C is 4/3, integer(C),
+    D is min(1, 2.5), float(D),
+    E is max(1.5, 2), float(E),
+    F is abs(-1.5),
+    G is floor(3.7),
+    H is truncate(-3.7),
+    I is float(3), float(I),
+    J is 7 // 2, integer(J),
+    K is 7.0 / 2.
+  "
   [ "$status" -eq 0 ]
   [[ "$output" == *"yes:"* ]]
   [[ "$output" == *"A=3.5"* ]]
@@ -295,7 +314,14 @@ TRILOG="./trilog"
 }
 
 @test "select, delete, subtract, intersection, union, permutation" {
-  run "$TRILOG" -e "select(2,[1,2,3],R1), delete([1,2,1,3,1],1,R2), subtract([1,2,3,4],[2,4],R3), intersection([1,2,3,4],[2,4,5],R4), union([1,2,3],[2,3,4],R5), findall(P,permutation([1,2],P),Ps)."
+  run "$TRILOG" -e "
+    select(2,[1,2,3],R1),
+    delete([1,2,1,3,1],1,R2),
+    subtract([1,2,3,4],[2,4],R3),
+    intersection([1,2,3,4],[2,4,5],R4),
+    union([1,2,3],[2,3,4],R5),
+    findall(P,permutation([1,2],P),Ps).
+  "
   [[ "$output" == *"R1=[1, 3]"* ]]
   [[ "$output" == *"R2=[2, 3]"* ]]
   [[ "$output" == *"R3=[1, 3]"* ]]
@@ -305,7 +331,13 @@ TRILOG="./trilog"
 }
 
 @test "flatten, list_to_set, max_member, min_member, repeat" {
-  run "$TRILOG" -e "flatten([1,[2,[3,4],5],6],R1), list_to_set([1,2,1,3,2],R2), max_member(Mx,[3,1,4,1,5]), min_member(Mn,[3,1,4,1,5]), (repeat, X=done, !)."
+  run "$TRILOG" -e "
+    flatten([1,[2,[3,4],5],6],R1),
+    list_to_set([1,2,1,3,2],R2),
+    max_member(Mx,[3,1,4,1,5]),
+    min_member(Mn,[3,1,4,1,5]),
+    (repeat, X=done, !).
+  "
   [[ "$output" == *"R1=[1, 2, 3, 4, 5, 6]"* ]]
   [[ "$output" == *"R2=[1, 2, 3]"* ]]
   [[ "$output" == *"Mx=5"* ]]
@@ -314,7 +346,15 @@ TRILOG="./trilog"
 }
 
 @test "atom_length, atom_concat (all 3 modes + nondet split), sub_atom, current_op" {
-  run "$TRILOG" -e "atom_length(hello,L1), atom_concat(foo,bar,C1), atom_concat(foo,C2,foobar), atom_concat(C3,bar,foobar), findall(X-Y,atom_concat(X,Y,ab),Splits), sub_atom(hello,1,3,_,Sub), current_op(700,xfx,is)."
+  run "$TRILOG" -e "
+    atom_length(hello,L1),
+    atom_concat(foo,bar,C1),
+    atom_concat(foo,C2,foobar),
+    atom_concat(C3,bar,foobar),
+    findall(X-Y,atom_concat(X,Y,ab),Splits),
+    sub_atom(hello,1,3,_,Sub),
+    current_op(700,xfx,is).
+  "
   [ "$status" -eq 0 ]
   [[ "$output" == *"L1=5"* ]]
   [[ "$output" == *"C1=foobar"* ]]
@@ -326,7 +366,21 @@ TRILOG="./trilog"
 }
 
 @test "atom_chars, atom_number, number_chars (both modes), writeln, retractall, abolish" {
-  run "$TRILOG" -e "atom_chars(hi,Chars), atom_chars(A1,[h,i]), atom_number('42',N1), atom_number(A2,42), number_chars(42,NC), number_chars(N2,['4','2']), assertz(tmp(1)), assertz(tmp(2)), retractall(tmp(_)), \\+ tmp(_), assertz(tmp2(1,2)), abolish(tmp2/2), \\+ tmp2(_,_)."
+  run "$TRILOG" -e "
+    atom_chars(hi,Chars),
+    atom_chars(A1,[h,i]),
+    atom_number('42',N1),
+    atom_number(A2,42),
+    number_chars(42,NC),
+    number_chars(N2,['4','2']),
+    assertz(tmp(1)),
+    assertz(tmp(2)),
+    retractall(tmp(_)),
+    \\+ tmp(_),
+    assertz(tmp2(1,2)),
+    abolish(tmp2/2),
+    \\+ tmp2(_,_).
+  "
   [ "$status" -eq 0 ]
   [[ "$output" == *"Chars=[h, i]"* ]]
   [[ "$output" == *"A1=hi"* ]]
