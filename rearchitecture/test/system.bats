@@ -544,6 +544,41 @@ TRILOG="./trilog"
   [[ "$output" == *"L=[1, 2, 3]"* ]]
 }
 
+@test "must_be throws type_error/domain_error/instantiation_error" {
+  run "$TRILOG" -e "
+    catch(must_be(integer, foo), E1, true),
+    catch(must_be(not_less_than_zero, -1), E2, true),
+    catch(must_be(var, foo), E3, true),
+    catch(must_be(atom, X), E4, true).
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"type_error(integer, foo)"* ]]
+  [[ "$output" == *"domain_error(not_less_than_zero, -1)"* ]]
+  [[ "$output" == *"uninstantiation_error(foo)"* ]]
+  [[ "$output" == *"E4=error(instantiation_error,"* ]]
+}
+
+@test "must_be passes valid terms silently, boolean/1 and character/1 delegate through call/2" {
+  run "$TRILOG" -e "
+    must_be(integer, 5),
+    must_be(boolean, true),
+    must_be(list, [1,2,3]),
+    character(a),
+    \\+ character(ab).
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"yes:"* ]]
+}
+
+@test "can_be passes an unbound Term without throwing, unlike must_be" {
+  run "$TRILOG" -e "can_be(integer, X)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"yes:"* ]]
+
+  run "$TRILOG" -e "catch(can_be(integer, foo), E, true)."
+  [[ "$output" == *"type_error(integer, foo)"* ]]
+}
+
 @test "between enumerates and checks, forall, succ, plus" {
   run "$TRILOG" -e "
     findall(X, between(1,5,X), L),
