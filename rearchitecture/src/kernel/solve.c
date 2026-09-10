@@ -1316,6 +1316,18 @@ static int dispatch_builtin(size_t goal, int *ok) {
   if (arity == 2 && id == atom_clause_candidates) {
     idx_key_t want = key_of_goal(f + 1);
     size_t list = heap_new_atom(atom_nil);
+    // These 15 stay purely native - a stray same-name assertz must never
+    // silently shadow real unification/comparison.
+    int32_t pid = want.pred_id, par = want.pred_arity;
+    if ((par == 2 &&
+         (pid == atom_unify_op || pid == atom_is || pid == atom_lt ||
+          pid == atom_gt || pid == atom_arith_le || pid == atom_arith_ge ||
+          pid == atom_arith_eq || pid == atom_arith_ne || pid == atom_term_eq ||
+          pid == atom_term_ne || pid == atom_term_lt || pid == atom_term_gt ||
+          pid == atom_term_le || pid == atom_term_ge || pid == atom_univ))) {
+      *ok = unify(f + 2, list);
+      return 1;
+    }
     pred_bucket_t *bucket = pred_bucket_find(want.pred_id, want.pred_arity);
     for (int32_t bi = bucket ? bucket->count - 1 : -1; bi >= 0; bi--) {
       clause_t *c = &db[bucket->indices[bi]];
