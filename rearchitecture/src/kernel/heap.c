@@ -1,8 +1,20 @@
 #define _POSIX_C_SOURCE 200809L
 #include "heap.h"
 #include "arena.h"
+#include "io.h"
 #include <stdlib.h>
 #include <string.h>
+
+// A failed realloc used to go unchecked, corrupting on the NULL it
+// produced instead of reporting the OOM.
+static void *heap_realloc_or_die(void *p, size_t n) {
+  void *r = realloc(p, n);
+  if (!r && n != 0) {
+    io_write_err("out of memory\n");
+    exit(1);
+  }
+  return r;
+}
 
 cell_t *heap = NULL;
 static size_t heap_cap = 0, heap_top = 0;
@@ -31,7 +43,7 @@ size_t heap_alloc(size_t n) {
   if (heap_top + n > heap_cap) {
     while (heap_top + n > heap_cap)
       heap_cap *= 2;
-    heap = realloc(heap, heap_cap * sizeof(cell_t));
+    heap = heap_realloc_or_die(heap, heap_cap * sizeof(cell_t));
   }
   size_t base = heap_top;
   heap_top += n;
@@ -94,7 +106,7 @@ void heap_bind(size_t var, size_t target) {
   heap[var].as.ref = target;
   if (trail_top >= trail_cap) {
     trail_cap *= 2;
-    trail = realloc(trail, trail_cap * sizeof(size_t));
+    trail = heap_realloc_or_die(trail, trail_cap * sizeof(size_t));
   }
   trail[trail_top++] = var;
 }
@@ -114,7 +126,7 @@ int32_t atom_intern(const char *name) {
       return i;
   if (atom_count >= atom_cap) {
     atom_cap *= 2;
-    atoms = realloc(atoms, atom_cap * sizeof(char *));
+    atoms = heap_realloc_or_die(atoms, atom_cap * sizeof(char *));
   }
   atoms[atom_count] = arena_strdup(name);
   return atom_count++;
@@ -136,7 +148,7 @@ void heap_set_capacity(size_t n) {
   if (n == heap_cap)
     return;
   heap_cap = n;
-  heap = realloc(heap, heap_cap * sizeof(cell_t));
+  heap = heap_realloc_or_die(heap, heap_cap * sizeof(cell_t));
 }
 
 size_t heap_capacity(void) { return heap_cap; }

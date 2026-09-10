@@ -6,6 +6,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+// A failed realloc used to go unchecked, corrupting on the NULL it
+// produced instead of reporting the OOM.
+static void *gc_realloc_or_die(void *p, size_t n) {
+  void *r = realloc(p, n);
+  if (!r && n != 0) {
+    io_write_err("out of memory during garbage collection\n");
+    exit(1);
+  }
+  return r;
+}
+
 // ---- mark phase: DFS via pointer reversal (O(1) space), marking
 // everything reachable from a root; unmarked cells get deleted.
 
@@ -18,7 +29,7 @@ static void ensure_marked_cap(size_t n) {
   size_t new_cap = marked_cap ? marked_cap : 1024;
   while (new_cap < n)
     new_cap *= 2;
-  marked = realloc(marked, new_cap);
+  marked = gc_realloc_or_die(marked, new_cap);
   memset(marked + marked_cap, 0, new_cap - marked_cap);
   marked_cap = new_cap;
 }
@@ -112,7 +123,7 @@ static void ensure_index_cap(size_t n) {
   size_t new_cap = new_index_cap ? new_index_cap : 1024;
   while (new_cap < n)
     new_cap *= 2;
-  new_index = realloc(new_index, new_cap * sizeof(size_t));
+  new_index = gc_realloc_or_die(new_index, new_cap * sizeof(size_t));
   new_index_cap = new_cap;
 }
 
@@ -124,15 +135,15 @@ static void shrink_scratch_to(size_t n) {
   if (n < 1024)
     n = 1024;
   if (marked_cap > n) {
-    marked = realloc(marked, n);
+    marked = gc_realloc_or_die(marked, n);
     marked_cap = n;
   }
   if (new_index_cap > n) {
-    new_index = realloc(new_index, n * sizeof(size_t));
+    new_index = gc_realloc_or_die(new_index, n * sizeof(size_t));
     new_index_cap = n;
   }
   if (trail_new_index_cap > n) {
-    trail_new_index = realloc(trail_new_index, n * sizeof(size_t));
+    trail_new_index = gc_realloc_or_die(trail_new_index, n * sizeof(size_t));
     trail_new_index_cap = n;
   }
 }
@@ -224,8 +235,8 @@ void gc_maybe_run(size_t *cn, frame_t *frames, size_t nframes, size_t *rename,
   // before compact_trail() mutates it in place
   if (old_trail_top + 1 > trail_new_index_cap) {
     trail_new_index_cap = old_trail_top + 1;
-    trail_new_index =
-        realloc(trail_new_index, trail_new_index_cap * sizeof(size_t));
+    trail_new_index = gc_realloc_or_die(trail_new_index,
+                                        trail_new_index_cap * sizeof(size_t));
   }
   {
     size_t *trail = trail_array();
