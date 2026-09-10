@@ -481,13 +481,33 @@ bagof(Template, Goal0, Bag) :-
     Bag = [T|Same],
     '$bagof_group'(Diff, Groups).
 
+% Wholly-unbound witnesses come back from findall/3 as distinct variable
+% identities per solution despite being the same shape - variant/2 (not
+% ==) is what still collapses them into one bag.
 '$bagof_partition'([], _, [], []).
 '$bagof_partition'([W1 - T1|Rest], W, [T1|Same], Diff) :-
-    W1 == W,
+    '$variant'(W1, W),
     !,
     '$bagof_partition'(Rest, W, Same, Diff).
 '$bagof_partition'([Pair|Rest], W, Same, [Pair|Diff]) :-
     '$bagof_partition'(Rest, W, Same, Diff).
+
+% Structural equality up to variable renaming: canonicalize each side's
+% variables to the same ground marker sequence, then compare with ==.
+'$variant'(A, B) :-
+    copy_term(A, CA), '$canon_vars'(CA, 0, N),
+    copy_term(B, CB), '$canon_vars'(CB, 0, N),
+    CA == CB.
+
+'$canon_vars'(Term, N0, N) :-
+    term_variables(Term, Vars),
+    '$canon_bind'(Vars, N0, N).
+
+'$canon_bind'([], N, N).
+'$canon_bind'([V|Vs], N0, N) :-
+    V = '$vn'(N0),
+    N1 is N0 + 1,
+    '$canon_bind'(Vs, N1, N).
 
 %!  setof(+Template, :Goal, -Set) is nondet.
 setof(Template, Goal, Set) :-
@@ -614,6 +634,26 @@ abolish(Name/Arity) :- functor(Head, Name, Arity), retractall(Head).
 %!  current_op(?Priority, ?Type, ?Name) is nondet.
 %   Just queries '$$op'/3, the same bucket op/3 asserts into.
 current_op(P, T, N) :- '$$op'(P, T, N).
+
+% --- prolog flags ---
+
+%!  current_prolog_flag(?Flag, ?Value) is nondet.
+%   Flags are fixed - no set_prolog_flag/2. Values come from
+%   '$$prolog_flag_value'/2, reading this engine's own real constants.
+current_prolog_flag(Flag, Value) :-
+    '$prolog_flag_name'(Flag),
+    '$$prolog_flag_value'(Flag, Value).
+current_prolog_flag(Flag, _) :-
+    nonvar(Flag),
+    \+ '$prolog_flag_name'(Flag),
+    throw(error(domain_error(prolog_flag, Flag), _)).
+
+'$prolog_flag_name'(bounded).
+'$prolog_flag_name'(max_integer).
+'$prolog_flag_name'(min_integer).
+'$prolog_flag_name'(integer_rounding_function).
+'$prolog_flag_name'(max_arity).
+'$prolog_flag_name'(double_quotes).
 
 % --- DCG ---
 

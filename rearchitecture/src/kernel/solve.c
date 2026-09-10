@@ -14,6 +14,20 @@
 #include <string.h>
 #include <time.h>
 
+// real cap enforced by functor/3 and =../2 below; current_prolog_flag(max_arity, V) reports this exact number.
+#define MAX_ARITY 255
+
+// A failed realloc used to go unchecked, corrupting on the NULL it
+// produced instead of reporting the OOM.
+static void *solve_realloc_or_die(void *p, size_t n) {
+  void *r = realloc(p, n);
+  if (!r && n != 0) {
+    io_write_err("out of memory\n");
+    exit(1);
+  }
+  return r;
+}
+
 static clause_t *db = NULL;
 static int32_t db_count = 0, db_cap = 0;
 
@@ -57,7 +71,8 @@ static void pred_bucket_grow_if_needed(pred_bucket_t *b) {
   if (b->count < b->cap)
     return;
   b->cap = b->cap ? b->cap * 2 : 4;
-  b->indices = realloc(b->indices, (size_t)b->cap * sizeof(int32_t));
+  b->indices =
+      solve_realloc_or_die(b->indices, (size_t)b->cap * sizeof(int32_t));
 }
 
 static void pred_bucket_add_index(int32_t pred_id, int32_t pred_arity,
@@ -117,7 +132,8 @@ size_t catch_stack_size(void) { return catch_sp; }
 static size_t catch_stack_push(catch_frame_t f) {
   if (catch_sp >= catch_cap) {
     catch_cap = catch_cap ? catch_cap * 2 : 16;
-    catch_stack = realloc(catch_stack, catch_cap * sizeof(catch_frame_t));
+    catch_stack =
+        solve_realloc_or_die(catch_stack, catch_cap * sizeof(catch_frame_t));
   }
   catch_stack[catch_sp] = f;
   return catch_sp++;
@@ -149,7 +165,10 @@ static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_put_code,
     atom_term_ne, atom_term_lt, atom_term_gt, atom_term_le, atom_term_ge,
     atom_var_addr, atom_fail, atom_false, atom_halt, atom_flush_output,
     atom_get_time_ms, atom_read_line_to_atom, atom_end_of_file,
-    atom_is_static_pred;
+    atom_is_static_pred, atom_prolog_flag_value, atom_flag_bounded,
+    atom_flag_max_integer, atom_flag_min_integer,
+    atom_flag_integer_rounding_function, atom_flag_max_arity,
+    atom_flag_double_quotes, atom_toward_zero, atom_chars_kw;
 // eval_arith bitwise operator names.
 static int32_t atom_bitand, atom_bitor, atom_bitxor, atom_shl, atom_shr,
     atom_bitnot;
@@ -247,6 +266,16 @@ void solve_init(void) {
   atom_read_line_to_atom = atom_intern("read_line_to_atom");
   atom_end_of_file = atom_intern("end_of_file");
   atom_is_static_pred = atom_intern("$$is_static");
+  atom_prolog_flag_value = atom_intern("$$prolog_flag_value");
+  atom_flag_bounded = atom_intern("bounded");
+  atom_flag_max_integer = atom_intern("max_integer");
+  atom_flag_min_integer = atom_intern("min_integer");
+  atom_flag_integer_rounding_function =
+      atom_intern("integer_rounding_function");
+  atom_flag_max_arity = atom_intern("max_arity");
+  atom_flag_double_quotes = atom_intern("double_quotes");
+  atom_toward_zero = atom_intern("toward_zero");
+  atom_chars_kw = atom_intern("chars");
   atom_bitand = atom_intern("/\\");
   atom_bitor = atom_intern("\\/");
   atom_bitxor = atom_intern("xor");
@@ -385,7 +414,7 @@ static void db_ensure_cap(void) {
   if (db_count < db_cap)
     return;
   db_cap = db_cap ? db_cap * 2 : 8;
-  db = realloc(db, (size_t)db_cap * sizeof(clause_t));
+  db = solve_realloc_or_die(db, (size_t)db_cap * sizeof(clause_t));
 }
 
 // "static" = clause came from literal source text (assemble_clause's own
@@ -415,8 +444,8 @@ static void mark_consulted(int32_t pred_id, int32_t pred_arity) {
     return;
   if (consulted_count >= consulted_cap) {
     consulted_cap = consulted_cap ? consulted_cap * 2 : 8;
-    consulted_decls =
-        realloc(consulted_decls, (size_t)consulted_cap * sizeof(pred_decl_t));
+    consulted_decls = solve_realloc_or_die(
+        consulted_decls, (size_t)consulted_cap * sizeof(pred_decl_t));
   }
   consulted_decls[consulted_count++] = (pred_decl_t){pred_id, pred_arity};
 }
@@ -487,8 +516,8 @@ static int32_t dynamic_count = 0, dynamic_cap = 0;
 static void dynamic_declare(int32_t pred_id, int32_t pred_arity) {
   if (dynamic_count >= dynamic_cap) {
     dynamic_cap = dynamic_cap ? dynamic_cap * 2 : 8;
-    dynamic_decls =
-        realloc(dynamic_decls, (size_t)dynamic_cap * sizeof(dyn_decl_t));
+    dynamic_decls = solve_realloc_or_die(dynamic_decls, (size_t)dynamic_cap *
+                                                            sizeof(dyn_decl_t));
   }
   dynamic_decls[dynamic_count++] = (dyn_decl_t){pred_id, pred_arity};
   unmark_consulted(pred_id, pred_arity);
@@ -505,7 +534,7 @@ static int is_dynamic(int32_t pred_id, int32_t pred_arity) {
 static void stack_push(frame_t f) {
   if (sp >= stack_cap) {
     stack_cap = stack_cap ? stack_cap * 2 : 64;
-    stack = realloc(stack, stack_cap * sizeof(frame_t));
+    stack = solve_realloc_or_die(stack, stack_cap * sizeof(frame_t));
   }
   stack[sp++] = f;
 }
@@ -751,16 +780,26 @@ static size_t eval_arith(size_t r, int *ok) {
       }
       if (id == atom_kw_float)
         return a_flt ? a : heap_new_flt((double)heap[a].as.ival);
-      if (id == atom_floor)
-        return heap_new_int(a_flt ? (int64_t)floor(heap[a].as.fval)
-                                  : heap[a].as.ival);
-      if (id == atom_ceiling)
-        return heap_new_int(a_flt ? (int64_t)ceil(heap[a].as.fval)
-                                  : heap[a].as.ival);
-      if (id == atom_round)
-        return heap_new_int(a_flt ? llround(heap[a].as.fval) : heap[a].as.ival);
-      if (id == atom_truncate)
-        return heap_new_int(a_flt ? (int64_t)heap[a].as.fval : heap[a].as.ival);
+      // casting a double outside [-2^63, 2^63) to int64_t is undefined
+      // behavior in C, not just an overflow like +/-/*.
+      if ((id == atom_floor || id == atom_ceiling || id == atom_round ||
+           id == atom_truncate) &&
+          a_flt) {
+        double rounded = id == atom_floor     ? floor(heap[a].as.fval)
+                         : id == atom_ceiling ? ceil(heap[a].as.fval)
+                         : id == atom_round   ? round(heap[a].as.fval)
+                                              : trunc(heap[a].as.fval);
+        if (!(rounded >= -9223372036854775808.0 &&
+              rounded < 9223372036854775808.0)) {
+          pending_error_ball = make_evaluation_error(atom_int_overflow);
+          *ok = 0;
+          return 0;
+        }
+        return heap_new_int((int64_t)rounded);
+      }
+      if (id == atom_floor || id == atom_ceiling || id == atom_round ||
+          id == atom_truncate)
+        return heap_new_int(heap[a].as.ival);
     }
     pending_error_ball = make_type_error(
         "evaluable",
@@ -850,7 +889,13 @@ static int term_compare(size_t a, size_t b) {
         heap[a].tag == TAG_INT ? (double)heap[a].as.ival : heap[a].as.fval;
     double bv =
         heap[b].tag == TAG_INT ? (double)heap[b].as.ival : heap[b].as.fval;
-    return av < bv ? -1 : (av > bv ? 1 : 0);
+    if (av != bv)
+      return av < bv ? -1 : 1;
+    // standard order of terms: same-valued numbers compare by type,
+    // Float before Int (1.0 @< 1).
+    if (heap[a].tag == heap[b].tag)
+      return 0;
+    return heap[a].tag == TAG_FLT ? -1 : 1;
   }
   case 2: {
     if (heap[a].as.atom_id == heap[b].as.atom_id)
@@ -1200,6 +1245,35 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = was_consulted(pid, par);
     return 1;
   }
+  if (arity == 2 && id == atom_prolog_flag_value) {
+    // real values - this engine's actual int64_t arithmetic and
+    // MAX_ARITY, not borrowed numbers.
+    size_t name_d = heap_deref(f + 1);
+    if (heap[name_d].tag != TAG_ATOM) {
+      *ok = 0;
+      return 1;
+    }
+    int32_t nid = heap[name_d].as.atom_id;
+    size_t val;
+    if (nid == atom_flag_bounded)
+      val = heap_new_atom(atom_true);
+    else if (nid == atom_flag_max_integer)
+      val = heap_new_int(INT64_MAX);
+    else if (nid == atom_flag_min_integer)
+      val = heap_new_int(INT64_MIN);
+    else if (nid == atom_flag_integer_rounding_function)
+      val = heap_new_atom(atom_toward_zero);
+    else if (nid == atom_flag_max_arity)
+      val = heap_new_int(MAX_ARITY);
+    else if (nid == atom_flag_double_quotes)
+      val = heap_new_atom(atom_chars_kw);
+    else {
+      *ok = 0;
+      return 1;
+    }
+    *ok = unify(f + 2, val);
+    return 1;
+  }
   if (arity == 0 && id == atom_capture_start) {
     if (capture_sp >= CAPTURE_STACK_MAX) {
       *ok = 0;
@@ -1374,7 +1448,7 @@ static int dispatch_builtin(size_t goal, int *ok) {
       *ok = unify(term, name_d);
       return 1;
     }
-    if (ar < 1 || ar > 255 || heap[name_d].tag != TAG_ATOM) {
+    if (ar < 1 || ar > MAX_ARITY || heap[name_d].tag != TAG_ATOM) {
       *ok = 0;
       return 1;
     }
@@ -1448,12 +1522,12 @@ static int dispatch_builtin(size_t goal, int *ok) {
       return 1;
     }
     size_t cur = heap_deref(df + 2);
-    size_t elems[255];
+    size_t elems[MAX_ARITY];
     int32_t ne = 0;
     while (heap[cur].tag == TAG_STR) {
       size_t cf = heap[cur].as.ptr;
       if (heap[cf].as.func.atom_id != atom_dot || heap[cf].as.func.arity != 2 ||
-          ne >= 255)
+          ne >= MAX_ARITY)
         break;
       elems[ne++] = heap_deref(cf + 1);
       cur = heap_deref(cf + 2);
