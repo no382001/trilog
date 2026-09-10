@@ -382,7 +382,7 @@ retract(Clause) :- '$check_static'(Clause), '$$retract'(Clause).
 '$check_static'(Clause) :-
     '$clause_head'(Clause, Head),
     functor(Head, Name, Arity),
-    ( '$$was_consulted'(Name, Arity), \+ '$$is_dynamic'(Name, Arity)
+    ( '$$is_static'(Name, Arity)
     -> throw(error(permission_error(modify, static_procedure, Name/Arity), _))
     ;  true
     ).

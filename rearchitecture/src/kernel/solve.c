@@ -149,7 +149,7 @@ static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_put_code,
     atom_term_ne, atom_term_lt, atom_term_gt, atom_term_le, atom_term_ge,
     atom_var_addr, atom_fail, atom_false, atom_halt, atom_flush_output,
     atom_get_time_ms, atom_read_line_to_atom, atom_end_of_file,
-    atom_was_consulted, atom_is_dynamic_pred;
+    atom_is_static_pred;
 // eval_arith bitwise operator names.
 static int32_t atom_bitand, atom_bitor, atom_bitxor, atom_shl, atom_shr,
     atom_bitnot;
@@ -246,8 +246,7 @@ void solve_init(void) {
   atom_get_time_ms = atom_intern("get_time_ms");
   atom_read_line_to_atom = atom_intern("read_line_to_atom");
   atom_end_of_file = atom_intern("end_of_file");
-  atom_was_consulted = atom_intern("$$was_consulted");
-  atom_is_dynamic_pred = atom_intern("$$is_dynamic");
+  atom_is_static_pred = atom_intern("$$is_static");
   atom_bitand = atom_intern("/\\");
   atom_bitor = atom_intern("\\/");
   atom_bitxor = atom_intern("xor");
@@ -399,6 +398,10 @@ typedef struct {
 static pred_decl_t *consulted_decls = NULL;
 static int32_t consulted_count = 0, consulted_cap = 0;
 
+static int is_dynamic(int32_t pred_id, int32_t pred_arity); // below
+
+// static == was_consulted: dynamic_declare removes from consulted_decls on
+// declaration, so the two sets stay complementary either order.
 static int was_consulted(int32_t pred_id, int32_t pred_arity) {
   for (int32_t i = 0; i < consulted_count; i++)
     if (consulted_decls[i].pred_id == pred_id &&
@@ -408,7 +411,7 @@ static int was_consulted(int32_t pred_id, int32_t pred_arity) {
 }
 
 static void mark_consulted(int32_t pred_id, int32_t pred_arity) {
-  if (was_consulted(pred_id, pred_arity))
+  if (is_dynamic(pred_id, pred_arity) || was_consulted(pred_id, pred_arity))
     return;
   if (consulted_count >= consulted_cap) {
     consulted_cap = consulted_cap ? consulted_cap * 2 : 8;
@@ -416,6 +419,15 @@ static void mark_consulted(int32_t pred_id, int32_t pred_arity) {
         realloc(consulted_decls, (size_t)consulted_cap * sizeof(pred_decl_t));
   }
   consulted_decls[consulted_count++] = (pred_decl_t){pred_id, pred_arity};
+}
+
+static void unmark_consulted(int32_t pred_id, int32_t pred_arity) {
+  for (int32_t i = 0; i < consulted_count; i++)
+    if (consulted_decls[i].pred_id == pred_id &&
+        consulted_decls[i].pred_arity == pred_arity) {
+      consulted_decls[i] = consulted_decls[--consulted_count];
+      return;
+    }
 }
 
 void db_add(tterm_t *head, tterm_t **body, int32_t nbody, int32_t nvars,
@@ -479,6 +491,7 @@ static void dynamic_declare(int32_t pred_id, int32_t pred_arity) {
         realloc(dynamic_decls, (size_t)dynamic_cap * sizeof(dyn_decl_t));
   }
   dynamic_decls[dynamic_count++] = (dyn_decl_t){pred_id, pred_arity};
+  unmark_consulted(pred_id, pred_arity);
 }
 
 static int is_dynamic(int32_t pred_id, int32_t pred_arity) {
@@ -1163,7 +1176,7 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = 1;
     return 1;
   }
-  if (arity == 2 && (id == atom_was_consulted || id == atom_is_dynamic_pred)) {
+  if (arity == 2 && id == atom_is_static_pred) {
     size_t name_d = heap_deref(f + 1);
     size_t arity_d = heap_deref(f + 2);
     if (heap[name_d].tag != TAG_ATOM || heap[arity_d].tag != TAG_INT) {
@@ -1171,8 +1184,7 @@ static int dispatch_builtin(size_t goal, int *ok) {
       return 1;
     }
     int32_t pid = heap[name_d].as.atom_id, par = (int32_t)heap[arity_d].as.ival;
-    *ok = id == atom_was_consulted ? was_consulted(pid, par)
-                                   : is_dynamic(pid, par);
+    *ok = was_consulted(pid, par);
     return 1;
   }
   if (arity == 0 && id == atom_capture_start) {
