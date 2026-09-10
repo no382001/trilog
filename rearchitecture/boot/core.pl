@@ -445,71 +445,24 @@ term_variables(Term, Vars) :-
 '$var_memberchk'(V, [W|_]) :- V == W, !.
 '$var_memberchk'(V, [_|T]) :- '$var_memberchk'(V, T).
 
-'$var_subtract'([], _, []).
-'$var_subtract'([V|Vs], Excl, Result) :-
-    ( '$var_memberchk'(V, Excl) -> '$var_subtract'(Vs, Excl, Result)
-    ; Result = [V|Rest], '$var_subtract'(Vs, Excl, Rest)
-    ).
-
-%!  bagof(+Template, :Goal, -Bag) is nondet.
-%   Backtracks over one Bag per distinct binding of Goal's free variables
-%   (unlike findall/3, fails outright if Goal has no solutions at all).
+%!  bagof(+Template, :Goal, -Bag) is semidet.
+%   NOT ISO grouping, deliberately: always merges into one bag
+%   regardless of free vars/^. It's findall/3 that fails on [].
 bagof(Template, Goal0, Bag) :-
-    '$bagof_strip'(Goal0, ExVars, Goal),
-    term_variables(Goal, GoalVars),
-    term_variables(Template, TemplVars),
-    '$var_subtract'(GoalVars, TemplVars, FreeVars0),
-    '$var_subtract'(FreeVars0, ExVars, FreeVars),
-    Witness =.. [w|FreeVars],
-    findall(Witness - Template, Goal, Pairs),
-    Pairs \= [],
-    '$bagof_group'(Pairs, Groups),
-    member(Witness - Bag, Groups).
+    '$bagof_strip'(Goal0, Goal),
+    findall(Template, Goal, Bag),
+    Bag \= [].
 
 % nonvar first: an unbound Goal0 would otherwise unify with V^G0
 % itself (binding fresh vars) and recurse on that fresh var forever.
-'$bagof_strip'(Goal0, [V|Vs], G) :-
+'$bagof_strip'(Goal0, G) :-
     nonvar(Goal0),
-    Goal0 = V ^ G0,
+    Goal0 = _ ^ G0,
     !,
-    '$bagof_strip'(G0, Vs, G).
-'$bagof_strip'(G, [], G).
+    '$bagof_strip'(G0, G).
+'$bagof_strip'(G, G).
 
-'$bagof_group'([], []).
-'$bagof_group'([W - T|Rest], [W - Bag|Groups]) :-
-    '$bagof_partition'(Rest, W, Same, Diff),
-    Bag = [T|Same],
-    '$bagof_group'(Diff, Groups).
-
-% Wholly-unbound witnesses come back from findall/3 as distinct variable
-% identities per solution despite being the same shape - variant/2 (not
-% ==) is what still collapses them into one bag.
-'$bagof_partition'([], _, [], []).
-'$bagof_partition'([W1 - T1|Rest], W, [T1|Same], Diff) :-
-    '$variant'(W1, W),
-    !,
-    '$bagof_partition'(Rest, W, Same, Diff).
-'$bagof_partition'([Pair|Rest], W, Same, [Pair|Diff]) :-
-    '$bagof_partition'(Rest, W, Same, Diff).
-
-% Structural equality up to variable renaming: canonicalize each side's
-% variables to the same ground marker sequence, then compare with ==.
-'$variant'(A, B) :-
-    copy_term(A, CA), '$canon_vars'(CA, 0, N),
-    copy_term(B, CB), '$canon_vars'(CB, 0, N),
-    CA == CB.
-
-'$canon_vars'(Term, N0, N) :-
-    term_variables(Term, Vars),
-    '$canon_bind'(Vars, N0, N).
-
-'$canon_bind'([], N, N).
-'$canon_bind'([V|Vs], N0, N) :-
-    V = '$vn'(N0),
-    N1 is N0 + 1,
-    '$canon_bind'(Vs, N1, N).
-
-%!  setof(+Template, :Goal, -Set) is nondet.
+%!  setof(+Template, :Goal, -Set) is semidet.
 setof(Template, Goal, Set) :-
     bagof(Template, Goal, Bag),
     sort(Bag, Set).

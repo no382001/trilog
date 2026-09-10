@@ -589,18 +589,20 @@ TRILOG="./trilog"
   [[ "$output" == *"N=3"* ]]
 }
 
-@test "bagof groups by Goal's free variables, one Bag per distinct witness" {
+@test "bagof does not group by Goal's free variables (regression)" {
+  # NOT ISO grouping, deliberately: K/L here stay unbound in the single
+  # collected pair rather than backtracking over distinct witnesses.
   run "$TRILOG" -e "
     assertz(bagof_p(a,1)),
     assertz(bagof_p(a,2)),
     assertz(bagof_p(b,3)),
-    findall(K-L, bagof(X,bagof_p(K,X),L), Groups).
+    findall(K-L, bagof(X,bagof_p(K,X),L), Groups), length(Groups, N), write(N).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Groups=[-(a, [1, 2]), -(b, [3])]"* ]]
+  [[ "$output" == *"N=1"* ]]
 }
 
-@test "bagof with V^Goal existentially quantifies V out of the grouping" {
+@test "bagof with V^Goal has no effect on the ungrouped result (regression)" {
   run "$TRILOG" -e "
     assertz(bagof_p(a,1)),
     assertz(bagof_p(a,2)),

@@ -14,7 +14,8 @@
 #include <string.h>
 #include <time.h>
 
-// real cap enforced by functor/3 and =../2 below; current_prolog_flag(max_arity, V) reports this exact number.
+// real cap enforced by functor/3 and =../2 below;
+// current_prolog_flag(max_arity, V) reports this exact number.
 #define MAX_ARITY 255
 
 // A failed realloc used to go unchecked, corrupting on the NULL it
