@@ -142,21 +142,24 @@ parse_expected(AnswerRaw, Expected, Mode) :-
     ;  Mode = exact, Expected = Expected1
     ).
 
+% regression: the difference-list version this replaced left an open tail
+% that a file-ending wrapped answer could never bind, silently dropping
+% every later test with no error at all.
 pe_group([], []).
-pe_group([L|Ls], [[L]|Gs]) :- pe_group_(Ls, Gs).
+pe_group([L|Ls], Groups) :- pe_group_(Ls, [L], Groups).
 
-pe_group_([], []).
-pe_group_([L|Ls], Gs) :-
+pe_group_([], CurRev, [Cur]) :- reverse(CurRev, Cur).
+pe_group_([L|Ls], CurRev, Groups) :-
     trim_leading(L, T),
     ( T == ''
-    -> Gs = Gs1, pe_group_(Ls, Gs1)
+    -> pe_group_(Ls, CurRev, Groups)
     ;  sub_atom(T, 0, 1, _, ';')
-    -> sub_atom(T, 1, _, 0, Rest0),
+    -> reverse(CurRev, Cur),
+       sub_atom(T, 1, _, 0, Rest0),
        trim_leading(Rest0, Rest),
-       Gs = [[Rest]|Gs1],
-       pe_group_(Ls, Gs1)
-    ;  Gs = [[L|More]|Gs1],
-       pe_group_(Ls, [More|Gs1])
+       pe_group_(Ls, [Rest], Groups0),
+       Groups = [Cur|Groups0]
+    ;  pe_group_(Ls, [L|CurRev], Groups)
     ).
 
 pe_join_trim(Group, Joined) :- pe_join(Group, J0), trim_leading(J0, J1), trim_trailing(J1, Joined).
