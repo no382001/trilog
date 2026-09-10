@@ -56,6 +56,11 @@ forall(Cond, Action) :- \+ (Cond, \+ Action).
 %!  halt is det.
 halt :- halt(0).
 
+%!  [], [+File|+Files] is det.
+%   Classic consult shorthand: [foo] == consult(foo); [foo,bar] loads both in order.
+[].
+[File|Files] :- consult(File), call(Files).
+
 % --- lists ---
 
 %!  append(?List1, ?List2, ?List3) is nondet.
