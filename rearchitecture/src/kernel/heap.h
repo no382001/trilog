@@ -42,6 +42,7 @@ size_t heap_deref(size_t r);
 
 size_t heap_mark(void);
 void heap_release(size_t mark);
+size_t heap_peak_size(void);
 
 void heap_bind(size_t var, size_t target);
 size_t trail_mark(void);

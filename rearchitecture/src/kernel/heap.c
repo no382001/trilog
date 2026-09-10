@@ -17,7 +17,7 @@ static void *heap_realloc_or_die(void *p, size_t n) {
 }
 
 cell_t *heap = NULL;
-static size_t heap_cap = 0, heap_top = 0;
+static size_t heap_cap = 0, heap_top = 0, heap_peak = 0;
 
 static size_t *trail = NULL;
 static size_t trail_cap = 0, trail_top = 0;
@@ -47,8 +47,14 @@ size_t heap_alloc(size_t n) {
   }
   size_t base = heap_top;
   heap_top += n;
+  if (heap_top > heap_peak)
+    heap_peak = heap_top;
   return base;
 }
+
+// high-water mark in cells, independent of heap_top (which drops on
+// backtracking and GC compaction).
+size_t heap_peak_size(void) { return heap_peak; }
 
 size_t heap_new_var(void) {
   size_t i = heap_alloc(1);

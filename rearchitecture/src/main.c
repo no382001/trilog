@@ -63,7 +63,19 @@ static const char *usage = "Usage: trilog [options] [file...]\n"
                            "  -e GOAL   evaluate GOAL and exit\n"
                            "  -f        fast startup: skip ~/.trilog\n"
                            "  -v        verbose: echo startup consults\n"
+                           "  -s        print resource-usage stats on exit\n"
                            "  -h        show this help\n";
+
+// registered via atexit(), not called directly - halt/1 exits via a raw
+// exit(), so this is the only hook that reliably fires either way.
+static void print_exit_stats(void) {
+  char msg[128];
+  snprintf(msg, sizeof msg, "heap_peak_cells=%zu\n", heap_peak_size());
+  io_write_err(msg);
+  snprintf(msg, sizeof msg, "heap_peak_bytes=%zu\n",
+           heap_peak_size() * sizeof(cell_t));
+  io_write_err(msg);
+}
 
 static void resolve_core_path(const char *argv0, char *out, size_t out_size) {
   char exe[4096];
@@ -108,7 +120,7 @@ int main(int argc, char **argv) {
     io_hooks_replace(hooks);
   }
 
-  int fast = 0, verbose = 0;
+  int fast = 0, verbose = 0, exit_stats = 0;
   const char *query = NULL;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "-h")) {
@@ -119,10 +131,14 @@ int main(int argc, char **argv) {
       fast = 1;
     } else if (!strcmp(argv[i], "-v")) {
       verbose = 1;
+    } else if (!strcmp(argv[i], "-s")) {
+      exit_stats = 1;
     } else if (!strcmp(argv[i], "-e") && i + 1 < argc) {
       query = argv[++i];
     }
   }
+  if (exit_stats)
+    atexit(print_exit_stats);
 
   heap_init();
   term_init();
@@ -142,7 +158,8 @@ int main(int argc, char **argv) {
     load_init_file(verbose);
 
   for (int i = 1; i < argc; i++) {
-    if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "-v")) {
+    if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "-v") ||
+        !strcmp(argv[i], "-s")) {
       continue;
     } else if (!strcmp(argv[i], "-e") && i + 1 < argc) {
       i++;
