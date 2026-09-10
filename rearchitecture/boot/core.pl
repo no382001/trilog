@@ -18,12 +18,6 @@ solve(A, _Mark) :-
       solve(Body, NewMark)
     ).
 
-% --- operators ---
-
-%!  op(+Priority, +Type, +Name) is det.
-%   Declares Name as an operator for the parser.
-op(Priority, Type, Name) :- '$$assertz'('$$op'(Priority, Type, Name)).
-
 % --- control ---
 
 %!  ;/2, ->/2 is nondet.
@@ -584,9 +578,104 @@ retractall(Head) :-
 %!  abolish(+Name/Arity) is det.
 abolish(Name/Arity) :- functor(Head, Name, Arity), retractall(Head).
 
+% --- operators ---
+
+% Queried before the first op/3 call has asserted anything - without
+% this, that first query throws existence_error instead of just failing.
+:- dynamic('$$op'/3).
+
+%!  op(+Priority, +Type, +Name) is det.
+%   Priority 0 removes Name's operator in Type's class instead of
+%   adding one - `-` can be both a 500 yfx and a 200 fy at once.
+op(Priority, Type, Name) :-
+    ( integer(Priority) -> true
+    ; var(Priority) -> throw(error(instantiation_error, _))
+    ; throw(error(type_error(integer, Priority), _))
+    ),
+    ( Priority >= 0, Priority =< 1200 -> true
+    ; throw(error(domain_error(operator_priority, Priority), _))
+    ),
+    '$op_class'(Type, Class),
+    ( Name = [_|_] -> Names = Name ; Names = [Name] ),
+    forall(member(N, Names), '$op_one'(Priority, Type, Class, N)).
+
+'$op_class'(xfx, infix).
+'$op_class'(xfy, infix).
+'$op_class'(yfx, infix).
+'$op_class'(fy, prefix).
+'$op_class'(fx, prefix).
+'$op_class'(xf, postfix).
+'$op_class'(yf, postfix).
+'$op_class'(Type, _) :-
+    \+ '$op_class_known'(Type),
+    throw(error(domain_error(operator_specifier, Type), _)).
+
+'$op_class_known'(xfx). '$op_class_known'(xfy). '$op_class_known'(yfx).
+'$op_class_known'(fy).  '$op_class_known'(fx).
+'$op_class_known'(xf).  '$op_class_known'(yf).
+
+'$op_one'(_, _, _, Name) :-
+    ( Name == [] ; Name == {} ),
+    !,
+    throw(error(permission_error(create, operator, Name), _)).
+'$op_one'(Priority, Type, Class, Name) :-
+    '$op_unset'(Class, Name),
+    ( Priority =:= 0 -> true ; '$$assertz'('$$op'(Priority, Type, Name)) ).
+
+% Drop any existing operator sharing Name's class first - loops rather
+% than assume op/3 never leaves more than one such entry.
+'$op_unset'(Class, Name) :-
+    ( '$$op'(OldP, OldT, Name), '$op_class'(OldT, Class) ->
+        '$$retract'('$$op'(OldP, OldT, Name)),
+        '$op_unset'(Class, Name)
+    ; true
+    ).
+
 %!  current_op(?Priority, ?Type, ?Name) is nondet.
 %   Just queries '$$op'/3, the same bucket op/3 asserts into.
 current_op(P, T, N) :- '$$op'(P, T, N).
+
+% Seeds '$$op'/3 with the parser's own hardcoded table (parse.c's OPS[])
+% so current_op/3 can see the built-ins too - parsing itself always
+% used OPS[] directly, so this changes nothing about how they parse.
+:- op(1200, xfx, :-).
+:- op(1200, fx, :-).
+:- op(1200, fx, ?-).
+:- op(1100, xfy, ;).
+:- op(1050, xfy, ->).
+:- op(1000, xfy, ',').
+:- op(900, fy, \+).
+:- op(700, xfx, =).
+:- op(700, xfx, \=).
+:- op(700, xfx, ==).
+:- op(700, xfx, \==).
+:- op(700, xfx, is).
+:- op(700, xfx, <).
+:- op(700, xfx, >).
+:- op(700, xfx, =<).
+:- op(700, xfx, >=).
+:- op(700, xfx, =:=).
+:- op(700, xfx, =\=).
+:- op(700, xfx, =..).
+:- op(700, xfx, @<).
+:- op(700, xfx, @>).
+:- op(700, xfx, @=<).
+:- op(700, xfx, @>=).
+:- op(500, yfx, +).
+:- op(500, yfx, -).
+:- op(400, yfx, *).
+:- op(400, yfx, /).
+:- op(400, yfx, mod).
+:- op(400, yfx, //).
+:- op(200, fy, -).
+:- op(200, fy, +).
+:- op(500, yfx, \/).
+:- op(400, yfx, xor).
+:- op(400, yfx, <<).
+:- op(400, yfx, >>).
+:- op(400, yfx, /\).
+:- op(200, fy, \).
+:- op(200, xfy, ^).
 
 % --- prolog flags ---
 
