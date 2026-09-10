@@ -224,7 +224,18 @@ static int try_print_char_string(size_t r, emit_fn emit) {
   return 1;
 }
 
+// Cyclic terms (X = [X|_], no occurs-check by default) used to blow the
+// C stack - a long acyclic list is safe since the list branch below
+// walks its spine iteratively.
+static int print_depth = 0;
+#define MAX_PRINT_DEPTH 10000
+
 static void print_term_ex(size_t r, int quoted, emit_fn emit) {
+  if (print_depth >= MAX_PRINT_DEPTH) {
+    emit("...");
+    return;
+  }
+  print_depth++;
   r = heap_deref(r);
   char buf[64];
   switch (heap[r].tag) {
@@ -293,6 +304,7 @@ static void print_term_ex(size_t r, int quoted, emit_fn emit) {
   case TAG_FUNCTOR:
     break; // never a term in its own right
   }
+  print_depth--;
 }
 
 void print_term(size_t r) { print_term_ex(r, 0, io_write_str); }
