@@ -129,6 +129,7 @@ static size_t catch_sp = 0, catch_cap = 0;
 
 catch_frame_t *catch_stack_array(void) { return catch_stack; }
 size_t catch_stack_size(void) { return catch_sp; }
+void catch_stack_set_size(size_t n) { catch_sp = n; }
 
 static size_t catch_stack_push(catch_frame_t f) {
   if (catch_sp >= catch_cap) {
@@ -1653,7 +1654,7 @@ void run_query(tterm_t **goals, int32_t ngoals, int32_t nvars,
   int predicate_known = 0;
 
 A:
-  gc_maybe_run(&cn, stack, sp, rename, nvars);
+  gc_maybe_run(&cn, stack, sp, rename, nvars, &active_catch);
   {
     // check cn == true before decompose, or a mid-clause true goal
     // wrongly ends the query.

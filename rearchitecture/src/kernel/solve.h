@@ -40,6 +40,7 @@ typedef struct {
 
 catch_frame_t *catch_stack_array(void);
 size_t catch_stack_size(void);
+void catch_stack_set_size(size_t n);
 
 void solve_init(void);
 

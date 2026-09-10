@@ -201,8 +201,76 @@ static size_t gc_get_threshold(void) {
   return gc_threshold;
 }
 
+// catch_stack is append-only, so a dead entry can hold a stale heap index -
+// `catch_live` marks which indices mark_catch_chain actually reached.
+static uint8_t *catch_live = NULL;
+static size_t catch_live_cap = 0;
+
+static void ensure_catch_live_cap(size_t n) {
+  if (n <= catch_live_cap)
+    return;
+  size_t new_cap = catch_live_cap ? catch_live_cap : 64;
+  while (new_cap < n)
+    new_cap *= 2;
+  catch_live = gc_realloc_or_die(catch_live, new_cap);
+  memset(catch_live + catch_live_cap, 0, new_cap - catch_live_cap);
+  catch_live_cap = new_cap;
+}
+
+static void mark_catch_chain(size_t idx, catch_frame_t *catches) {
+  while (idx != NIL && !catch_live[idx]) {
+    catch_live[idx] = 1;
+    mark_from(catches[idx].catcher);
+    mark_from(catches[idx].recovery);
+    mark_from(catches[idx].continuation);
+    idx = catches[idx].outer_active_catch;
+  }
+}
+
+// Marking alone isn't enough: catch_sp keeps growing, so every GC pass
+// would still pay O(catch_sp) to skip the dead majority - slide live
+// entries down, same as the heap.
+static size_t *new_catch_index = NULL;
+static size_t new_catch_index_cap = 0;
+
+static void ensure_new_catch_index_cap(size_t n) {
+  if (n <= new_catch_index_cap)
+    return;
+  size_t new_cap = new_catch_index_cap ? new_catch_index_cap : 64;
+  while (new_cap < n)
+    new_cap *= 2;
+  new_catch_index =
+      gc_realloc_or_die(new_catch_index, new_cap * sizeof(size_t));
+  new_catch_index_cap = new_cap;
+}
+
+static size_t compact_catches(catch_frame_t *catches, size_t old_ncatches) {
+  size_t next_free = 0;
+  for (size_t i = 0; i < old_ncatches; i++) {
+    new_catch_index[i] = next_free;
+    if (catch_live[i])
+      next_free++;
+  }
+  for (size_t i = 0; i < old_ncatches; i++) {
+    if (!catch_live[i])
+      continue;
+    if (catches[i].outer_active_catch != NIL)
+      catches[i].outer_active_catch =
+          new_catch_index[catches[i].outer_active_catch];
+  }
+  size_t write_ptr = 0;
+  for (size_t i = 0; i < old_ncatches; i++) {
+    if (!catch_live[i])
+      continue;
+    if (write_ptr != i)
+      catches[write_ptr] = catches[i];
+    write_ptr++;
+  }
+  return write_ptr;
+}
+
 void gc_maybe_run(size_t *cn, frame_t *frames, size_t nframes, size_t *rename,
-                  int32_t nvars) {
+                  int32_t nvars, size_t *active_catch) {
   size_t old_top = heap_size();
   if (old_top < gc_get_threshold())
     return;
@@ -214,6 +282,12 @@ void gc_maybe_run(size_t *cn, frame_t *frames, size_t nframes, size_t *rename,
 
   catch_frame_t *catches = catch_stack_array();
   size_t ncatches = catch_stack_size();
+  ensure_catch_live_cap(ncatches);
+  // catch_live can still be NULL if nothing has ever pushed a catch/3
+  // frame yet.
+  if (ncatches)
+    memset(catch_live, 0, ncatches);
+  ensure_new_catch_index_cap(ncatches);
 
   mark_visit_count = 0;
   mark_from(*cn);
@@ -223,13 +297,9 @@ void gc_maybe_run(size_t *cn, frame_t *frames, size_t nframes, size_t *rename,
     if (rename[i] != NIL)
       mark_from(rename[i]);
 
-  // every catch_stack entry is marked unconditionally - simpler, always
-  // correct, occasionally over-retains.
-  for (size_t i = 0; i < ncatches; i++) {
-    mark_from(catches[i].catcher);
-    mark_from(catches[i].recovery);
-    mark_from(catches[i].continuation);
-  }
+  mark_catch_chain(*active_catch, catches);
+  for (size_t i = 0; i < nframes; i++)
+    mark_catch_chain(frames[i].active_catch, catches);
 
   // trail_new_index must be computed from the trail's ORIGINAL contents,
   // before compact_trail() mutates it in place
@@ -260,7 +330,11 @@ void gc_maybe_run(size_t *cn, frame_t *frames, size_t nframes, size_t *rename,
   for (int32_t i = 0; i < nvars; i++)
     if (rename[i] != NIL)
       rename[i] = new_index[rename[i]];
+  // only entries mark_catch_chain reached are safe to touch - a dead
+  // entry's fields can hold indices from before an earlier compaction.
   for (size_t i = 0; i < ncatches; i++) {
+    if (!catch_live[i])
+      continue;
     catches[i].catcher = new_index[catches[i].catcher];
     catches[i].recovery = new_index[catches[i].recovery];
     catches[i].continuation = new_index[catches[i].continuation];
@@ -270,7 +344,18 @@ void gc_maybe_run(size_t *cn, frame_t *frames, size_t nframes, size_t *rename,
   for (size_t i = 0; i < nframes; i++)
     frames[i].trail_mark = trail_new_index[frames[i].trail_mark];
   for (size_t i = 0; i < ncatches; i++)
-    catches[i].trail_mark = trail_new_index[catches[i].trail_mark];
+    if (catch_live[i])
+      catches[i].trail_mark = trail_new_index[catches[i].trail_mark];
+
+  // slide live catch_stack entries down and remap every reference to a
+  // catch_stack index (not a heap/trail one) accordingly.
+  size_t new_ncatches = compact_catches(catches, ncatches);
+  if (*active_catch != NIL)
+    *active_catch = new_catch_index[*active_catch];
+  for (size_t i = 0; i < nframes; i++)
+    if (frames[i].active_catch != NIL)
+      frames[i].active_catch = new_catch_index[frames[i].active_catch];
+  catch_stack_set_size(new_ncatches);
 
   heap_set_size(new_top);
   trail_set_size(new_trail_top);
