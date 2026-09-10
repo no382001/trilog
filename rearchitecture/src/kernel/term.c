@@ -171,6 +171,59 @@ static void print_atom(const char *name, int quoted, emit_fn emit) {
   emit("'");
 }
 
+// A proper list of single-character atoms (what "abc" parses to) prints as
+// "abc" for write/1 and writeq/1 alike.
+static int try_print_char_string(size_t r, emit_fn emit) {
+  size_t cell = r;
+  for (;;) {
+    size_t cf = heap[cell].as.ptr;
+    size_t head = heap_deref(cf + 1);
+    if (heap[head].tag != TAG_ATOM)
+      return 0;
+    const char *name = atom_name(heap[head].as.atom_id);
+    if (name[0] == '\0' || name[1] != '\0')
+      return 0;
+    size_t tail = heap_deref(cf + 2);
+    if (heap[tail].tag == TAG_ATOM && heap[tail].as.atom_id == atom_nil)
+      break;
+    if (heap[tail].tag != TAG_STR)
+      return 0;
+    size_t tf = heap[tail].as.ptr;
+    if (heap[tf].as.func.arity != 2 || heap[tf].as.func.atom_id != atom_dot)
+      return 0;
+    cell = tail;
+  }
+  emit("\"");
+  for (cell = r;;) {
+    size_t cf = heap[cell].as.ptr;
+    char c = atom_name(heap[heap_deref(cf + 1)].as.atom_id)[0];
+    switch (c) {
+    case '"':
+      emit("\\\"");
+      break;
+    case '\\':
+      emit("\\\\");
+      break;
+    case '\n':
+      emit("\\n");
+      break;
+    case '\t':
+      emit("\\t");
+      break;
+    default: {
+      char s[2] = {c, '\0'};
+      emit(s);
+    }
+    }
+    size_t tail = heap_deref(cf + 2);
+    if (heap[tail].tag == TAG_ATOM && heap[tail].as.atom_id == atom_nil)
+      break;
+    cell = tail;
+  }
+  emit("\"");
+  return 1;
+}
+
 static void print_term_ex(size_t r, int quoted, emit_fn emit) {
   r = heap_deref(r);
   char buf[64];
@@ -198,6 +251,8 @@ static void print_term_ex(size_t r, int quoted, emit_fn emit) {
     int32_t f_id = heap[f].as.func.atom_id;
     const char *name = atom_name(f_id);
     if (arity == 2 && f_id == atom_dot) {
+      if (try_print_char_string(r, emit))
+        break;
       emit("[");
       size_t cell = r;
       for (int first = 1;; first = 0) {

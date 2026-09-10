@@ -567,11 +567,11 @@ TRILOG="./trilog"
     catch(tmp2(_,_), error(existence_error(procedure,_),_), true).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Chars=[h, i]"* ]]
+  [[ "$output" == *"Chars=\"hi\""* ]]
   [[ "$output" == *"A1=hi"* ]]
   [[ "$output" == *"N1=42"* ]]
   [[ "$output" == *"A2=42"* ]]
-  [[ "$output" == *"NC=[4, 2]"* ]]
+  [[ "$output" == *'NC="42"'* ]]
   [[ "$output" == *"N2=42"* ]]
   [[ "$output" == *"yes:"* ]]
 
@@ -853,7 +853,7 @@ TRILOG="./trilog"
 
 @test "findall/3 collects every solution in order" {
   run "$TRILOG" test/family.pl -e "findall(X, choice(X), L)."
-  [[ "$output" == *"L=[a, b, c]"* ]]
+  [[ "$output" == *'L="abc"'* ]]
 }
 
 @test "findall/3 gives an empty list, not failure, for no solutions" {
@@ -870,7 +870,7 @@ TRILOG="./trilog"
 @test "nested findall/3 does not conflate inner and outer items (regression)" {
   # regression: unqualified '$findall_item' facts let a nested findall sweep up an outer call's leftover items; fixed via a unique id per call.
   run "$TRILOG" test/family.pl -e "findall(Outer, (choice(_), findall(Inner, inner_choice(Inner), Outer)), L)."
-  [[ "$output" == *"L=[[a, b, c], [a, b, c], [a, b, c]]"* ]]
+  [[ "$output" == *'L=["abc", "abc", "abc"]'* ]]
 }
 
 # --- assertz/1, asserta/1, retract/1 ---
@@ -1082,7 +1082,7 @@ EOF
     write(L).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"[a, b]"* ]]
+  [[ "$output" == *'"ab"'* ]]
 }
 
 @test "solve/2: findall/3 itself works, having survived every prior cut design's failure mode" {
@@ -1091,7 +1091,7 @@ EOF
     write(L).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"[a, b, c]"* ]]
+  [[ "$output" == *'"abc"'* ]]
 }
 
 @test "solve/2: two cuts in one clause body both fire, and everything after the second still runs" {
