@@ -43,7 +43,8 @@ size_t catch_stack_size(void);
 
 void solve_init(void);
 
-void db_add(tterm_t *head, tterm_t **body, int32_t nbody, int32_t nvars);
+void db_add(tterm_t *head, tterm_t **body, int32_t nbody, int32_t nvars,
+            int mark_static);
 
 enum { RUN_BATCH = 0, RUN_INTERACTIVE = 1, RUN_SILENT = 2 };
 

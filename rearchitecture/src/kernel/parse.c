@@ -555,7 +555,7 @@ static void assemble_clause(tterm_t *t, int32_t nvars) {
       t->as.str.atom_id == atom_ruleop) {
     int32_t nbody;
     tterm_t **body = flatten_conj(t->as.str.args[1], &nbody);
-    db_add(t->as.str.args[0], body, nbody, nvars);
+    db_add(t->as.str.args[0], body, nbody, nvars, 1);
     return;
   }
   if (t->tag == T_STR && t->as.str.arity == 1 &&
@@ -564,7 +564,7 @@ static void assemble_clause(tterm_t *t, int32_t nvars) {
     run_directive(t->as.str.args[0], nvars);
     return;
   }
-  db_add(t, NULL, 0, nvars); // a fact - neither a rule nor a directive
+  db_add(t, NULL, 0, nvars, 1); // a fact - neither a rule nor a directive
 }
 
 bool consult_file(const char *path) {

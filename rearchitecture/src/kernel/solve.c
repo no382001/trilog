@@ -148,7 +148,8 @@ static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_put_code,
     atom_arith_le, atom_arith_ge, atom_arith_eq, atom_arith_ne, atom_term_eq,
     atom_term_ne, atom_term_lt, atom_term_gt, atom_term_le, atom_term_ge,
     atom_var_addr, atom_fail, atom_false, atom_halt, atom_flush_output,
-    atom_get_time_ms, atom_read_line_to_atom, atom_end_of_file;
+    atom_get_time_ms, atom_read_line_to_atom, atom_end_of_file,
+    atom_was_consulted, atom_is_dynamic_pred;
 // eval_arith bitwise operator names.
 static int32_t atom_bitand, atom_bitor, atom_bitxor, atom_shl, atom_shr,
     atom_bitnot;
@@ -199,10 +200,12 @@ void solve_init(void) {
   atom_cut = atom_intern("$$cut");
   atom_catch = atom_intern("catch");
   atom_throw = atom_intern("throw");
-  atom_assertz = atom_intern("assertz");
-  atom_assert = atom_intern("assert");
-  atom_asserta = atom_intern("asserta");
-  atom_retract = atom_intern("retract");
+  // $$-prefixed: raw, unprotected primitives; boot/core.pl's public
+  // assertz/asserta/retract check staticity first, then delegate here.
+  atom_assertz = atom_intern("$$assertz");
+  atom_assert = atom_intern("$$assert");
+  atom_asserta = atom_intern("$$asserta");
+  atom_retract = atom_intern("$$retract");
   atom_call = atom_intern("call");
   atom_plus = atom_intern("+");
   atom_minus = atom_intern("-");
@@ -243,6 +246,8 @@ void solve_init(void) {
   atom_get_time_ms = atom_intern("get_time_ms");
   atom_read_line_to_atom = atom_intern("read_line_to_atom");
   atom_end_of_file = atom_intern("end_of_file");
+  atom_was_consulted = atom_intern("$$was_consulted");
+  atom_is_dynamic_pred = atom_intern("$$is_dynamic");
   atom_bitand = atom_intern("/\\");
   atom_bitor = atom_intern("\\/");
   atom_bitxor = atom_intern("xor");
@@ -384,13 +389,45 @@ static void db_ensure_cap(void) {
   db = realloc(db, (size_t)db_cap * sizeof(clause_t));
 }
 
-void db_add(tterm_t *head, tterm_t **body, int32_t nbody, int32_t nvars) {
+// "static" = clause came from literal source text (assemble_clause's own
+// db_add/db_add_front calls, mark_static=1) - about HOW it arrived, not WHEN,
+// so a directive's own assertz call never marks its target static.
+typedef struct {
+  int32_t pred_id;
+  int32_t pred_arity;
+} pred_decl_t;
+static pred_decl_t *consulted_decls = NULL;
+static int32_t consulted_count = 0, consulted_cap = 0;
+
+static int was_consulted(int32_t pred_id, int32_t pred_arity) {
+  for (int32_t i = 0; i < consulted_count; i++)
+    if (consulted_decls[i].pred_id == pred_id &&
+        consulted_decls[i].pred_arity == pred_arity)
+      return 1;
+  return 0;
+}
+
+static void mark_consulted(int32_t pred_id, int32_t pred_arity) {
+  if (was_consulted(pred_id, pred_arity))
+    return;
+  if (consulted_count >= consulted_cap) {
+    consulted_cap = consulted_cap ? consulted_cap * 2 : 8;
+    consulted_decls =
+        realloc(consulted_decls, (size_t)consulted_cap * sizeof(pred_decl_t));
+  }
+  consulted_decls[consulted_count++] = (pred_decl_t){pred_id, pred_arity};
+}
+
+void db_add(tterm_t *head, tterm_t **body, int32_t nbody, int32_t nvars,
+            int mark_static) {
   db_ensure_cap();
   idx_key_t key = key_of_template(head);
   int32_t idx = db_count++;
   db[idx] = (clause_t){
       .head = head, .body = body, .nbody = nbody, .nvars = nvars, .key = key};
   pred_bucket_add_index(key.pred_id, key.pred_arity, idx);
+  if (mark_static)
+    mark_consulted(key.pred_id, key.pred_arity);
 }
 
 static void db_fixup_choice_points_insert_at(int32_t at) {
@@ -415,6 +452,7 @@ static void db_add_front(tterm_t *head, tterm_t **body, int32_t nbody,
   db_fixup_choice_points_insert_at(0);
   pred_index_fixup_insert_at(0);
   pred_bucket_add_index_front(key.pred_id, key.pred_arity, 0);
+  // asserta: never marks static - see db_add's comment.
 }
 
 static void db_remove_at(int32_t idx) {
@@ -1125,6 +1163,18 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = 1;
     return 1;
   }
+  if (arity == 2 && (id == atom_was_consulted || id == atom_is_dynamic_pred)) {
+    size_t name_d = heap_deref(f + 1);
+    size_t arity_d = heap_deref(f + 2);
+    if (heap[name_d].tag != TAG_ATOM || heap[arity_d].tag != TAG_INT) {
+      *ok = 0;
+      return 1;
+    }
+    int32_t pid = heap[name_d].as.atom_id, par = (int32_t)heap[arity_d].as.ival;
+    *ok = id == atom_was_consulted ? was_consulted(pid, par)
+                                   : is_dynamic(pid, par);
+    return 1;
+  }
   if (arity == 0 && id == atom_capture_start) {
     if (capture_sp >= CAPTURE_STACK_MAX) {
       *ok = 0;
@@ -1601,7 +1651,8 @@ A:
           db_add_front(templates[0], nbody > 0 ? templates + 1 : NULL, nbody,
                        nvars);
         else
-          db_add(templates[0], nbody > 0 ? templates + 1 : NULL, nbody, nvars);
+          db_add(templates[0], nbody > 0 ? templates + 1 : NULL, nbody, nvars,
+                 0);
         cn = rest;
         goto A;
       }

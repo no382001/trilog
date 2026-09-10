@@ -372,6 +372,24 @@ sort(L, Sorted) :- msort(L, M), '$dedup'(M, Sorted).
 
 % --- database ---
 
+%!  assertz/assert/asserta(+Clause), retract(+Clause).
+%   Refuses static (consulted) predicates with ISO permission_error unless declared dynamic/1; '$$'-prefixed primitives are the raw, unprotected versions.
+assertz(Clause) :- '$check_static'(Clause), '$$assertz'(Clause).
+assert(Clause) :- '$check_static'(Clause), '$$assert'(Clause).
+asserta(Clause) :- '$check_static'(Clause), '$$asserta'(Clause).
+retract(Clause) :- '$check_static'(Clause), '$$retract'(Clause).
+
+'$check_static'(Clause) :-
+    '$clause_head'(Clause, Head),
+    functor(Head, Name, Arity),
+    ( '$$was_consulted'(Name, Arity), \+ '$$is_dynamic'(Name, Arity)
+    -> throw(error(permission_error(modify, static_procedure, Name/Arity), _))
+    ;  true
+    ).
+
+'$clause_head'((Head :- _), Head) :- !.
+'$clause_head'(Head, Head).
+
 %!  findall(+Template, :Goal, -List) is det.
 %   FIXME: Goal throwing leaks this call's mark/items as orphaned facts.
 findall(Template, Goal, List) :-
