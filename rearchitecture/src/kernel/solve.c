@@ -793,16 +793,29 @@ static size_t codes_from_cstr(const char *s) {
   return acc;
 }
 
-static int cstr_from_codes(size_t list, char *buf, size_t bufcap) {
+// incomplete is set when the list or an element is unbound (vs. wrong
+// shape/type) - lets callers throw instantiation_error, not just fail.
+static int cstr_from_codes(size_t list, char *buf, size_t bufcap,
+                           int *incomplete) {
   size_t d = heap_deref(list);
   size_t n = 0;
   while (heap[d].tag != TAG_ATOM || heap[d].as.atom_id != atom_nil) {
+    if (heap[d].tag == TAG_REF) {
+      if (incomplete)
+        *incomplete = 1;
+      return 0;
+    }
     if (heap[d].tag != TAG_STR)
       return 0;
     size_t f = heap[d].as.ptr;
     if (heap[f].as.func.atom_id != atom_dot || heap[f].as.func.arity != 2)
       return 0;
     size_t h = heap_deref(f + 1);
+    if (heap[h].tag == TAG_REF) {
+      if (incomplete)
+        *incomplete = 1;
+      return 0;
+    }
     if (heap[h].tag != TAG_INT)
       return 0;
     if (n + 1 >= bufcap)
@@ -1347,6 +1360,11 @@ static int dispatch_builtin(size_t goal, int *ok) {
     }
     size_t name_d = heap_deref(f + 2);
     size_t arity_d = heap_deref(f + 3);
+    if (heap[name_d].tag == TAG_REF || heap[arity_d].tag == TAG_REF) {
+      pending_error_ball = make_instantiation_error();
+      *ok = 0;
+      return 1;
+    }
     if (heap[arity_d].tag != TAG_INT) {
       *ok = 0;
       return 1;
@@ -1370,6 +1388,11 @@ static int dispatch_builtin(size_t goal, int *ok) {
   if (arity == 3 && id == atom_arg) {
     size_t n_d = heap_deref(f + 1);
     size_t term = heap_deref(f + 2);
+    if (heap[n_d].tag == TAG_REF || heap[term].tag == TAG_REF) {
+      pending_error_ball = make_instantiation_error();
+      *ok = 0;
+      return 1;
+    }
     if (heap[n_d].tag != TAG_INT || heap[term].tag != TAG_STR) {
       *ok = 0;
       return 1;
@@ -1404,6 +1427,11 @@ static int dispatch_builtin(size_t goal, int *ok) {
       return 1;
     }
     size_t d = heap_deref(f + 2);
+    if (heap[d].tag == TAG_REF) {
+      pending_error_ball = make_instantiation_error();
+      *ok = 0;
+      return 1;
+    }
     if (heap[d].tag != TAG_STR) {
       *ok = 0;
       return 1;
@@ -1414,6 +1442,11 @@ static int dispatch_builtin(size_t goal, int *ok) {
       return 1;
     }
     size_t head = heap_deref(df + 1);
+    if (heap[head].tag == TAG_REF) {
+      pending_error_ball = make_instantiation_error();
+      *ok = 0;
+      return 1;
+    }
     size_t cur = heap_deref(df + 2);
     size_t elems[255];
     int32_t ne = 0;
@@ -1449,7 +1482,10 @@ static int dispatch_builtin(size_t goal, int *ok) {
       return 1;
     }
     char buf[4096];
-    if (!cstr_from_codes(f + 2, buf, sizeof buf)) {
+    int incomplete = 0;
+    if (!cstr_from_codes(f + 2, buf, sizeof buf, &incomplete)) {
+      if (incomplete)
+        pending_error_ball = make_instantiation_error();
       *ok = 0;
       return 1;
     }
@@ -1471,7 +1507,10 @@ static int dispatch_builtin(size_t goal, int *ok) {
       return 1;
     }
     char buf[64];
-    if (!cstr_from_codes(f + 2, buf, sizeof buf)) {
+    int incomplete = 0;
+    if (!cstr_from_codes(f + 2, buf, sizeof buf, &incomplete)) {
+      if (incomplete)
+        pending_error_ball = make_instantiation_error();
       *ok = 0;
       return 1;
     }
@@ -1742,10 +1781,15 @@ B:
       // pred_id == -1: `first` was never callable (key_of_goal's "no key"
       // sentinel) - feeding that into make_existence_error would
       // heap_new_atom(-1) and later corrupt the heap.
-      size_t ball = caller_key.pred_id == -1
-                        ? make_type_error("callable", heap_deref(first))
-                        : make_existence_error("procedure", caller_key.pred_id,
-                                               caller_key.pred_arity);
+      size_t first_d = heap_deref(first);
+      size_t ball;
+      if (caller_key.pred_id != -1)
+        ball = make_existence_error("procedure", caller_key.pred_id,
+                                    caller_key.pred_arity);
+      else if (heap[first_d].tag == TAG_REF)
+        ball = make_instantiation_error();
+      else
+        ball = make_type_error("callable", first_d);
       if (do_throw(ball, &cn, &active_catch))
         goto A;
       return;

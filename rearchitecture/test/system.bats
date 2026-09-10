@@ -628,8 +628,9 @@ TRILOG="./trilog"
 
 @test "bagof with an unbound Goal argument doesn't loop forever (regression)" {
   # '$bagof_strip' used to unify an unbound Goal0 with V^G0 itself,
-  # binding fresh vars and recursing on those forever.
-  run "$TRILOG" -e "catch(bagof(_X,_Y^_Z,_L), error(type_error(callable, _), _), true), write(ok), nl."
+  # recursing on the fresh var forever, instead of throwing
+  # instantiation_error.
+  run "$TRILOG" -e "catch(bagof(_X,_Y^_Z,_L), error(instantiation_error, _), true), write(ok), nl."
   [ "$status" -eq 0 ]
   [[ "$output" == *"ok"* ]]
 }
