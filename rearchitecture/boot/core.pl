@@ -22,7 +22,7 @@ solve(A, _Mark) :-
 
 %!  op(+Priority, +Type, +Name) is det.
 %   Declares Name as an operator for the parser.
-op(Priority, Type, Name) :- assertz('$$op'(Priority, Type, Name)).
+op(Priority, Type, Name) :- '$$assertz'('$$op'(Priority, Type, Name)).
 
 % --- control ---
 
@@ -394,19 +394,19 @@ retract(Clause) :- '$check_static'(Clause), '$$retract'(Clause).
 %   FIXME: Goal throwing leaks this call's mark/items as orphaned facts.
 findall(Template, Goal, List) :-
     '$next_id'(Id),
-    assertz('$findall_mark'(Id)),
-    (call(Goal), assertz('$findall_item'(Id, Template)), fail ; true),
+    '$$assertz'('$findall_mark'(Id)),
+    (call(Goal), '$$assertz'('$findall_item'(Id, Template)), fail ; true),
     '$findall_collect'(Id, List).
 
-'$next_id'(Id) :- retract('$id_counter'(N0)), !, Id is N0 + 1, assertz('$id_counter'(Id)).
-'$next_id'(0) :- assertz('$id_counter'(0)).
+'$next_id'(Id) :- '$$retract'('$id_counter'(N0)), !, Id is N0 + 1, '$$assertz'('$id_counter'(Id)).
+'$next_id'(0) :- '$$assertz'('$id_counter'(0)).
 
 '$findall_collect'(Id, List) :-
-    retract('$findall_item'(Id, X)), !,
+    '$$retract'('$findall_item'(Id, X)), !,
     List = [X|Rest],
     '$findall_collect'(Id, Rest).
 '$findall_collect'(Id, []) :-
-    retract('$findall_mark'(Id)).
+    '$$retract'('$findall_mark'(Id)).
 
 %!  clause(?Head, ?Body) is nondet.
 clause(Head, Body) :-
