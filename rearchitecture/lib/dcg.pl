@@ -15,7 +15,7 @@ dcg_body(GRBody, S0, S, Body) :-
     dcg_constr(GRBody),
     !,
     dcg_cbody(GRBody, S0, S, Body).
-dcg_body(NonTerminal, S0, S, phrase(NonTerminal, S0, S)).
+dcg_body(NonTerminal, S0, S, '$dcg_call'(NonTerminal, S0, S)).
 
 dcg_cbody([], S0, S, S0 = S) :- !.
 dcg_cbody([T|Ts], S0, S, Goal) :-
@@ -45,13 +45,30 @@ dcg_terminals(Terminals, S0, S, S0 = List) :-
 phrase(GRBody, S0) :- phrase(GRBody, S0, []).
 
 phrase(GRBody, S0, S) :-
-    ( var(GRBody) ->
-        throw(error(instantiation_error, phrase/3))
-    ; dcg_constr(GRBody) ->
-        dcg_body(GRBody, S0, S, Goal), call(Goal)
-    ; '$$choice_mark'(Mark),
-      '$$clause_candidates'('-->'(GRBody, RawBody), Cands),
-      member('-->'(GRBody, RawBody) - true, Cands),
-      dcg_body(RawBody, S0, S, Goal),
-      solve(Goal, Mark)
+    ( var(GRBody) -> throw(error(instantiation_error, phrase/3)) ; true ),
+    dcg_body(GRBody, S0, S, Goal),
+    call(Goal).
+
+% A nonterminal's --> rules are stored as plain '-->' facts; the first call
+% compiles them into ordinary Name/Arity+2 clauses, run natively from then on.
+'$dcg_call'(NT, S0, S) :-
+    functor(NT, Name, Arity),
+    '$dcg_ensure'(Name, Arity),
+    call(NT, S0, S).
+
+'$dcg_ensure'(Name, Arity) :- '$$clause_candidates'('$dcg_compiled'(Name, Arity), [_|_]), !.
+'$dcg_ensure'(Name, Arity) :-
+    functor(Skel, Name, Arity),
+    '$$clause_candidates'('-->'(Skel, _), Cands),
+    ( Cands == []
+    -> true % hand-written Name/Arity+2, or undefined: call/3 decides
+    ;  forall(member('-->'(H, B) - true, Cands), '$dcg_compile'(H, B)),
+       assertz('$dcg_compiled'(Name, Arity))
     ).
+
+'$dcg_compile'(H, B) :-
+    H =.. [Name|Args],
+    append(Args, [S0, S], Args2),
+    H2 =.. [Name|Args2],
+    dcg_body(B, S0, S, Body),
+    assertz((H2 :- Body)).

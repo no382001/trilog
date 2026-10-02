@@ -1,0 +1,2 @@
+- :- dynamic('$dcg_compiled'/2). raises existence_error(procedure, '/'/2)
+- every nonterminal dcg call goes through '$dcg_call', 15x slower than plain calls, compiling body calls straight to NT(S0, S) would fix most of this.

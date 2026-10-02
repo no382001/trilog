@@ -1100,6 +1100,18 @@ EOF
   rm -f /tmp/trilog_dcg3.pl
 }
 
+@test "DCG: a recursive nonterminal handles a long input in bounded memory (regression)" {
+  # regression: each recursive call nested another solve/2 meta-interpreter, so 10 items already exhausted memory.
+  cat > /tmp/trilog_dcg4.pl <<'EOF'
+count(N0, N) --> [_], !, { N1 is N0 + 1 }, count(N1, N).
+count(N, N) --> [].
+EOF
+  run bash -c "ulimit -v 1048576; timeout 30 $TRILOG /tmp/trilog_dcg4.pl -e \"length(L, 2000), phrase(count(0, N), L).\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"N=2000"* ]]
+  rm -f /tmp/trilog_dcg4.pl
+}
+
 # --- cut representation (regression) ---
 
 @test "a clause asserted with a literal cut still cuts correctly when called from a different depth (regression)" {
