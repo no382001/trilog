@@ -567,14 +567,48 @@ static void assemble_clause(tterm_t *t, int32_t nvars) {
   db_add(t, NULL, 0, nvars, 1); // a fact - neither a rule nor a directive
 }
 
+static const char *consulting = NULL; // path of the file being consulted
+
+// A relative path consulted from inside a file resolves against that file's
+// directory first, then the current directory.
+static FILE *open_consult_path(const char *path, char *resolved, size_t cap) {
+  const char *slash = consulting ? strrchr(consulting, '/') : NULL;
+  if (path[0] != '/' && slash) {
+    snprintf(resolved, cap, "%.*s/%s", (int)(slash - consulting), consulting,
+             path);
+    FILE *f = fopen(resolved, "rb");
+    if (f)
+      return f;
+  }
+  snprintf(resolved, cap, "%s", path);
+  return fopen(resolved, "rb");
+}
+
+static bool consult_stream(FILE *f, const char *path);
+
+// Re-entrant: a consult/1 directive inside the file saves and restores the
+// outer file's parse state.
 bool consult_file(const char *path) {
-  FILE *f = fopen(path, "rb");
+  char resolved[4096];
+  FILE *f = open_consult_path(path, resolved, sizeof resolved);
   if (!f) {
     char msg[300];
     snprintf(msg, sizeof msg, "cannot open %s\n", path);
     io_write_err(msg);
     return false;
   }
+  const char *saved_P = P, *saved_consulting = consulting;
+  jmp_buf saved_jmp;
+  memcpy(saved_jmp, err_jmp, sizeof(jmp_buf));
+  consulting = resolved;
+  bool ok = consult_stream(f, resolved);
+  consulting = saved_consulting;
+  P = saved_P;
+  memcpy(err_jmp, saved_jmp, sizeof(jmp_buf));
+  return ok;
+}
+
+static bool consult_stream(FILE *f, const char *path) {
   fseek(f, 0, SEEK_END);
   long sz = ftell(f);
   fseek(f, 0, SEEK_SET);

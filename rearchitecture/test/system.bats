@@ -1208,6 +1208,26 @@ PLEOF
   rm -f /tmp/mi_directive_test.pl
 }
 
+@test "a consult/1 directive loads the rest of the outer file too (regression)" {
+  # regression: the nested consult clobbered the outer file's parse position, silently dropping everything after the directive.
+  mkdir -p /tmp/mi_nest_test/sub
+  printf "a(1).\n:- consult('sub/b.pl').\na(2).\n" > /tmp/mi_nest_test/a.pl
+  printf "b(1).\n" > /tmp/mi_nest_test/sub/b.pl
+  run "$TRILOG" /tmp/mi_nest_test/a.pl -e "findall(X, a(X), A), findall(Y, b(Y), B)."
+  [[ "$output" == *"A=[1, 2]"* ]]
+  [[ "$output" == *"B=[1]"* ]]
+  rm -rf /tmp/mi_nest_test
+}
+
+@test "a consult/1 directive resolves a relative path against the consulting file's directory" {
+  mkdir -p /tmp/mi_rel_test/sub
+  printf ":- consult('sub/b.pl').\n" > /tmp/mi_rel_test/a.pl
+  printf "b(1).\n" > /tmp/mi_rel_test/sub/b.pl
+  run "$TRILOG" /tmp/mi_rel_test/a.pl -e "b(X)."
+  [[ "$output" == *"X=1"* ]]
+  rm -rf /tmp/mi_rel_test
+}
+
 @test "op/3 defines a custom infix operator, most recently asserted priority wins" {
   cat > /tmp/mi_op_test.pl <<'PLEOF'
 :- op(700, xfx, ===>).
@@ -1238,7 +1258,7 @@ PLEOF
   rm -f /tmp/mi_op_test.pl /tmp/mi_op_test2.pl
 }
 
-@test "boot/core.pl's own consult produces no uncaught exceptions (regression)" {
+@test "loading boot/core.pl and lib/ at startup produces no uncaught exceptions (regression)" {
   run "$TRILOG" -f -e "true."
   [ "$status" -eq 0 ]
   [[ "$output" != *"existence_error"* ]]
