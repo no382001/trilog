@@ -156,11 +156,11 @@ static int32_t atom_plus, atom_minus, atom_star, atom_intdiv, atom_mod,
 static int32_t atom_op_pred, atom_optype_xfx, atom_optype_xfy, atom_optype_yfx,
     atom_optype_fx, atom_optype_fy;
 // dispatch_builtin names.
-static int32_t atom_is, atom_unify_op, atom_lt, atom_gt, atom_put_code,
-    atom_get_code, atom_write_raw, atom_open, atom_close, atom_consult,
-    atom_dynamic, atom_capture_start, atom_capture_stop, atom_var, atom_kw_atom,
-    atom_integer, atom_kw_float, atom_compound, atom_functor, atom_arg,
-    atom_univ, atom_atom_codes, atom_number_codes, atom_mode_read,
+static int32_t atom_is, atom_unify_op, atom_unify_oc, atom_lt, atom_gt,
+    atom_put_code, atom_get_code, atom_write_raw, atom_open, atom_close,
+    atom_consult, atom_dynamic, atom_capture_start, atom_capture_stop, atom_var,
+    atom_kw_atom, atom_integer, atom_kw_float, atom_compound, atom_functor,
+    atom_arg, atom_univ, atom_atom_codes, atom_number_codes, atom_mode_read,
     atom_mode_write, atom_mode_append, atom_copy_term, atom_term_to_atom,
     atom_atom_to_term, atom_clause_candidates, atom_choice_mark, atom_cut_to,
     atom_arith_le, atom_arith_ge, atom_arith_eq, atom_arith_ne, atom_term_eq,
@@ -198,10 +198,18 @@ static size_t make_existence_error(const char *obj_type, int32_t pred_id,
   return make_existence_error_term(obj_type,
                                    heap_new_struct(atom_slash, 2, pi_args));
 }
+
+static size_t make_cyclic_term_error(void) {
+  size_t args[1] = {heap_new_atom(atom_intern("cyclic_term"))};
+  return make_error(
+      heap_new_struct(atom_intern("representation_error"), 1, args));
+}
+
 static size_t make_evaluation_error(int32_t what_atom) {
   size_t args[1] = {heap_new_atom(what_atom)};
   return make_error(heap_new_struct(atom_evaluation_error, 1, args));
 }
+
 void solve_init(void) {
   atom_true = atom_intern("true");
   atom_comma = atom_intern(",");
@@ -249,6 +257,7 @@ void solve_init(void) {
   atom_optype_fy = atom_intern("fy");
   atom_is = atom_intern("is");
   atom_unify_op = atom_intern("=");
+  atom_unify_oc = atom_intern("unify_with_occurs_check");
   atom_lt = atom_intern("<");
   atom_gt = atom_intern(">");
   atom_put_code = atom_intern("put_code");
@@ -1066,6 +1075,10 @@ static int dispatch_builtin(size_t goal, int *ok) {
     *ok = unify(f + 1, f + 2);
     return 1;
   }
+  if (arity == 2 && id == atom_unify_oc) {
+    *ok = unify_with_occurs_check(f + 1, f + 2);
+    return 1;
+  }
   if (arity == 2 &&
       (id == atom_lt || id == atom_gt || id == atom_arith_le ||
        id == atom_arith_ge || id == atom_arith_eq || id == atom_arith_ne)) {
@@ -1308,6 +1321,11 @@ static int dispatch_builtin(size_t goal, int *ok) {
   if (arity == 2 && id == atom_copy_term) {
     int32_t nvars;
     tterm_t *tmpl = heap_to_template(f + 1, &nvars);
+    if (!tmpl) {
+      pending_error_ball = make_cyclic_term_error();
+      *ok = 0;
+      return 1;
+    }
     size_t rn[nvars > 0 ? nvars : 1];
     rename_init(rn, nvars);
     *ok = unify(f + 2, heap_copy(tmpl, rn, 0));
@@ -1623,6 +1641,8 @@ static void rename_init(size_t *rename, int32_t n) {
 static int do_throw(size_t ball, size_t *cn_out, size_t *active_catch_ptr) {
   int32_t nballvars;
   tterm_t *ball_template = heap_to_template(ball, &nballvars);
+  if (!ball_template)
+    ball_template = heap_to_template(make_cyclic_term_error(), &nballvars);
   size_t idx = *active_catch_ptr;
   for (;;) {
     if (idx == (size_t)-1) {
@@ -1784,7 +1804,11 @@ A:
         tterm_t **templates =
             arena_alloc((size_t)(1 + nbody) * sizeof(tterm_t *));
         int32_t nvars;
-        heap_terms_to_templates(all_terms, 1 + nbody, templates, &nvars);
+        if (!heap_terms_to_templates(all_terms, 1 + nbody, templates, &nvars)) {
+          if (do_throw(make_cyclic_term_error(), &cn, &active_catch))
+            goto A;
+          return;
+        }
 
         if (fd_id == atom_asserta)
           db_add_front(templates[0], nbody > 0 ? templates + 1 : NULL, nbody,

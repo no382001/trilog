@@ -5,8 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// A failed realloc used to go unchecked, corrupting on the NULL it
-// produced instead of reporting the OOM.
 static void *heap_realloc_or_die(void *p, size_t n) {
   void *r = realloc(p, n);
   if (!r && n != 0) {

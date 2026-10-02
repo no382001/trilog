@@ -38,5 +38,5 @@ void print_term_via(size_t r, int quoted, emit_fn emit);
 
 tterm_t *heap_to_template(size_t r, int32_t *nvars_out);
 
-void heap_terms_to_templates(size_t *terms, int32_t n, tterm_t **out,
-                             int32_t *nvars_out);
+int heap_terms_to_templates(size_t *terms, int32_t n, tterm_t **out,
+                            int32_t *nvars_out);

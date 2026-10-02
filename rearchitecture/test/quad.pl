@@ -174,10 +174,22 @@ pe_join([L|Ls], Joined) :-
 
 :- dynamic(quad_solution_count/1).
 
-collect_solutions(Query, NameVars, Max, Strs) :-
+collect_solutions(Query, NameVars, Max, Strs, Snaps) :-
     retractall(quad_solution_count(_)),
     assertz(quad_solution_count(0)),
-    with_output_to(atom(_), findall(Str, capped_solution(Query, NameVars, Max, Str), Strs)).
+    with_output_to(atom(_), findall(Str-Snap, capped_snapshot(Query, NameVars, Max, Str, Snap), Sols)),
+    pairs_keys_values_(Sols, Strs, Snaps).
+
+% Cyclic bindings can't be copied - text comparison only.
+capped_snapshot(Query, NameVars, Max, Str, Snap) :-
+    capped_solution(Query, NameVars, Max, Str),
+    ( catch(copy_term(NameVars, _), error(representation_error(cyclic_term), _), fail)
+    -> Snap = NameVars
+    ;  Snap = none
+    ).
+
+pairs_keys_values_([], [], []).
+pairs_keys_values_([K-V|KVs], [K|Ks], [V|Vs]) :- pairs_keys_values_(KVs, Ks, Vs).
 
 capped_solution(Query, NameVars, Max, Str) :-
     call(Query),
@@ -227,18 +239,18 @@ run_one_test(QueryRaw, AnswerRaw, Pass) :-
     get_time_ms(T0),
     ( atom_to_term(Query, QueryTerm, NameVars)
     -> ( catch(
-             ( collect_solutions(QueryTerm, NameVars, 64, Got), Error = none ),
+             ( collect_solutions(QueryTerm, NameVars, 64, Got, Snaps), Error = none ),
              Ball,
-             ( Got = [], quad_error_type(Ball, Error) )
+             ( Got = [], Snaps = [], quad_error_type(Ball, Error) )
          )
        -> true
-       ;  Got = [], Error = none
+       ;  Got = [], Snaps = [], Error = none
        )
-    ;  Got = [], Error = quad_unparseable
+    ;  Got = [], Snaps = [], Error = quad_unparseable
     ),
     get_time_ms(T1),
     ElapsedMs is T1 - T0,
-    quad_judge(Expected, Got, Error, Mode, Pass, Reason),
+    quad_judge(Expected, Got, Snaps, Error, Mode, Pass, Reason),
     retract(quad_stat(TN0, P0, F0, TMs0)),
     TestNum is TN0 + 1,
     ( Pass == true -> P1 is P0 + 1, F1 = F0 ; P1 = P0, F1 is F0 + 1 ),
@@ -270,15 +282,15 @@ quad_ckpt_after(Display, Pass, Reason, ElapsedMs) :-
 quad_error_type(error(Type, _), Type) :- !.
 quad_error_type(Ball, Ball).
 
-quad_judge(Expected, Got, Error, Mode, Pass, Reason) :-
+quad_judge(Expected, Got, Snaps, Error, Mode, Pass, Reason) :-
     ( Mode == ad_infinitum
-    -> quad_judge_ad_infinitum(Expected, Got, Error, Pass, Reason)
-    ;  quad_judge_exact(Expected, Got, Error, Pass, Reason)
+    -> quad_judge_ad_infinitum(Expected, Got, Snaps, Error, Pass, Reason)
+    ;  quad_judge_exact(Expected, Got, Snaps, Error, Pass, Reason)
     ).
 
 quad_ad_infinitum_witness(8).
 
-quad_judge_ad_infinitum(Expected, Got, Error, Pass, Reason) :-
+quad_judge_ad_infinitum(Expected, Got, Snaps, Error, Pass, Reason) :-
     ( Error \== none
     -> Pass = false, format_atom('error: ~w', [Error], Reason)
     ;  length(Expected, PrefixLen),
@@ -286,7 +298,9 @@ quad_judge_ad_infinitum(Expected, Got, Error, Pass, Reason) :-
        MinLen is PrefixLen + Witness,
        length(GotPrefix, PrefixLen),
        append(GotPrefix, _, Got),
-       GotPrefix == Expected,
+       length(SnapPrefix, PrefixLen),
+       append(SnapPrefix, _, Snaps),
+       quad_answers_match(Expected, GotPrefix, SnapPrefix),
        length(Got, GotLen),
        GotLen >= MinLen
     -> Pass = true, Reason = ''
@@ -296,7 +310,7 @@ quad_judge_ad_infinitum(Expected, Got, Error, Pass, Reason) :-
        Pass = false
     ).
 
-quad_judge_exact(Expected, Got, Error, Pass, Reason) :-
+quad_judge_exact(Expected, Got, Snaps, Error, Pass, Reason) :-
     ( Expected = [false]
     -> ( Got == [], Error == none -> Pass = true, Reason = ''
        ;  Pass = false, format_atom('expected: false~ngot: ~w', [quad_got(Got, Error)], Reason)
@@ -309,10 +323,67 @@ quad_judge_exact(Expected, Got, Error, Pass, Reason) :-
        )
     ;  Error \== none
     -> Pass = false, format_atom('error: ~w', [Error], Reason)
-    ;  Got == Expected
+    ;  quad_answers_match(Expected, Got, Snaps)
     -> Pass = true, Reason = ''
     ;  Pass = false, format_atom('expected: ~w~ngot: ~w', [Expected, Got], Reason)
     ).
+
+% --- answer comparison, as terms ---
+
+quad_answers_match([], [], []).
+quad_answers_match([E|Es], [G|Gs], [S|Ss]) :-
+    ( E == G -> true ; quad_answer_match(E, S) ),
+    quad_answers_match(Es, Gs, Ss).
+
+quad_answer_match(ExpAtom, Snap) :-
+    Snap \== none,
+    catch(atom_to_term(ExpAtom, ET, ENames), _, fail),
+    qa_exp_pairs(ET, ENames, EPairs0),
+    \+ \+ ( qa_mark_unbound(Snap),
+            qa_link_names(ENames, Snap),
+            qa_got_pairs(Snap, GPairs0),
+            msort(EPairs0, EPairs),
+            msort(GPairs0, GPairs),
+            qa_variant(EPairs, GPairs) ).
+
+% "X = a, Y = b" -> ['X'=a, 'Y'=b]; "true" -> [].
+qa_exp_pairs(true, _, []) :- !.
+qa_exp_pairs((A, B), Names, Pairs) :- !,
+    qa_exp_pairs(A, Names, PA), qa_exp_pairs(B, Names, PB), append(PA, PB, Pairs).
+qa_exp_pairs(L = R, Names, [N = R]) :- var(L), qa_var_name(Names, L, N).
+
+qa_var_name([N = V|_], L, N) :- V == L, !.
+qa_var_name([_|Ns], L, N) :- qa_var_name(Ns, L, N).
+
+% Unbound query vars become '$qv'(Name), matching only same-named expected vars.
+qa_mark_unbound([]).
+qa_mark_unbound([N = V|Ps]) :- ( var(V) -> V = '$qv'(N) ; true ), qa_mark_unbound(Ps).
+
+qa_link_names([], _).
+qa_link_names([N = V|Ns], Snap) :-
+    ( member(N = GV, Snap) -> V = GV ; true ),
+    qa_link_names(Ns, Snap).
+
+% Mirrors format_bindings/2.
+qa_got_pairs([], []).
+qa_got_pairs([N = V|Ps], Out) :-
+    ( sub_atom(N, 0, 1, _, '_') -> Out = Out1
+    ; V == '$qv'(N) -> Out = Out1
+    ; Out = [N = V|Out1]
+    ),
+    qa_got_pairs(Ps, Out1).
+
+qa_variant(A, B) :-
+    \+ \+ ( copy_term(A, A1), copy_term(B, B1),
+            qa_number_vars(A1, 0, _), qa_number_vars(B1, 0, _),
+            A1 == B1 ).
+
+qa_number_vars(T, N0, N) :- var(T), !, T = '$qa_var'(N0), N is N0 + 1.
+qa_number_vars(T, N0, N0) :- atomic(T), !.
+qa_number_vars(T, N0, N) :- T =.. [_|Args], qa_number_vars_list(Args, N0, N).
+
+qa_number_vars_list([], N, N).
+qa_number_vars_list([A|As], N0, N) :- qa_number_vars(A, N0, N1), qa_number_vars_list(As, N1, N).
 
 is_error_expectation(Atom, Type) :- atom_concat('error(', Rest, Atom), atom_concat(Type, ')', Rest).
 
