@@ -414,11 +414,28 @@ static int keys_conflict(idx_key_t a, idx_key_t b) {
   }
 }
 
+// db index of the first clause at or after from_idx that matches key, or -1.
+// Walks only key's predicate bucket, whose indices stay sorted ascending.
+static int32_t next_candidate(int32_t from_idx, idx_key_t key) {
+  pred_bucket_t *b = pred_bucket_find(key.pred_id, key.pred_arity);
+  if (!b)
+    return -1;
+  int32_t lo = 0, hi = b->count;
+  while (lo < hi) {
+    int32_t mid = lo + (hi - lo) / 2;
+    if (b->indices[mid] < from_idx)
+      lo = mid + 1;
+    else
+      hi = mid;
+  }
+  for (; lo < b->count; lo++)
+    if (!keys_conflict(key, db[b->indices[lo]].key))
+      return b->indices[lo];
+  return -1;
+}
+
 static int no_more_candidates(int32_t from_idx, idx_key_t caller_key) {
-  for (int32_t k = from_idx; k < db_count; k++)
-    if (!keys_conflict(caller_key, db[k].key))
-      return 0;
-  return 1;
+  return next_candidate(from_idx, caller_key) < 0;
 }
 
 static void db_ensure_cap(void) {
@@ -1883,8 +1900,12 @@ A:
   caller_key = key_of_goal(first);
   predicate_known = 0;
 
-B:
-  if (clause_idx >= db_count) {
+B: {
+  pred_bucket_t *bk =
+      pred_bucket_find(caller_key.pred_id, caller_key.pred_arity);
+  predicate_known = bk && bk->count > 0;
+  int32_t next = next_candidate(clause_idx, caller_key);
+  if (next < 0) {
     if (!predicate_known &&
         is_dynamic(caller_key.pred_id, caller_key.pred_arity))
       goto C; // declared dynamic - no clauses is a normal fail, not
@@ -1908,14 +1929,11 @@ B:
     }
     goto C;
   }
+  clause_idx = next;
+}
   {
     clause_t *c = &db[clause_idx];
     clause_idx++;
-    if (c->key.pred_id == caller_key.pred_id &&
-        c->key.pred_arity == caller_key.pred_arity)
-      predicate_known = 1;
-    if (keys_conflict(caller_key, c->key))
-      goto B;
     trail_release(tmark);
     heap_release(hmark);
 
