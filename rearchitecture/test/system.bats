@@ -1231,6 +1231,18 @@ PLEOF
   rm -rf /tmp/mi_nest_test
 }
 
+@test "GC inside a nested consult's directives leaves the outer query intact (regression)" {
+  # regression: a nested query reset the choicepoint stack and garbage-collected without the outer query's roots, so the outer one resumed on freed terms and called stray subterms.
+  mkdir -p /tmp/mi_gcnest_test
+  printf ":- consult('inner.pl').\nafter(1).\n" > /tmp/mi_gcnest_test/outer.pl
+  printf ":- op(700, xfx, '==>').\n:- X = f(a).\ninner_fact(1).\n" > /tmp/mi_gcnest_test/inner.pl
+  TRILOG_GC_THRESHOLD=2000 run "$TRILOG" -f /tmp/mi_gcnest_test/outer.pl -e "after(X), inner_fact(Y)."
+  [[ "$output" != *"uncaught exception"* ]]
+  [[ "$output" == *"X=1"* ]]
+  [[ "$output" == *"Y=1"* ]]
+  rm -rf /tmp/mi_gcnest_test
+}
+
 @test "a consult/1 directive resolves a relative path against the consulting file's directory" {
   mkdir -p /tmp/mi_rel_test/sub
   printf ":- consult('sub/b.pl').\n" > /tmp/mi_rel_test/a.pl

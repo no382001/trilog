@@ -1682,12 +1682,28 @@ static int do_throw(size_t ball, size_t *cn_out, size_t *active_catch_ptr) {
   }
 }
 
+static size_t query_sp_base = 0;
+static int query_depth = 0;
+
+static void run_query_body(tterm_t **goals, int32_t ngoals, int32_t nvars,
+                           const char **varnames, int mode);
+
 void run_query(tterm_t **goals, int32_t ngoals, int32_t nvars,
                const char **varnames, int mode) {
+  size_t saved_base = query_sp_base;
+  query_sp_base = sp;
+  query_depth++;
+  run_query_body(goals, ngoals, nvars, varnames, mode);
+  query_depth--;
+  sp = query_sp_base;
+  query_sp_base = saved_base;
+}
+
+static void run_query_body(tterm_t **goals, int32_t ngoals, int32_t nvars,
+                           const char **varnames, int mode) {
   size_t rename[nvars > 0 ? nvars : 1];
   rename_init(rename, nvars);
 
-  sp = 0;
   size_t hmark = heap_mark(), tmark = trail_mark(), cut_barrier = 0;
   int any_found = 0;
 
@@ -1703,7 +1719,12 @@ void run_query(tterm_t **goals, int32_t ngoals, int32_t nvars,
   int predicate_known = 0;
 
 A:
-  gc_maybe_run(&cn, stack, sp, rename, nvars, &active_catch);
+  // FIXME: GC only knows this query's roots, so collecting inside a nested
+  // query would move or free the outer queries' live terms
+  // Nested queries skip GC instead; the real fix is GC marking
+  // and relocating every running query's roots.
+  if (query_depth == 1)
+    gc_maybe_run(&cn, stack, sp, rename, nvars, &active_catch);
   {
     // check cn == true before decompose, or a mid-clause true goal
     // wrongly ends the query.
@@ -1725,7 +1746,7 @@ A:
         if (!any_var)
           io_write_str("true");
 
-        if (sp == 0) {
+        if (sp == query_sp_base) {
           io_write_str(".\n");
           return;
         }
@@ -1961,7 +1982,7 @@ B: {
   }
 
 C:
-  if (sp == 0) {
+  if (sp == query_sp_base) {
     if (mode == RUN_INTERACTIVE)
       io_write_str(any_found ? ".\n" : "   false.\n");
     return;

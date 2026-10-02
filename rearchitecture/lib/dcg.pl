@@ -1,4 +1,5 @@
 :- op(1200, xfx, '-->').
+:- dynamic('$dcg_compiled'/2).
 
 dcg_constr([]).
 dcg_constr([_|_]).
@@ -56,7 +57,7 @@ phrase(GRBody, S0, S) :-
     '$dcg_ensure'(Name, Arity),
     call(NT, S0, S).
 
-'$dcg_ensure'(Name, Arity) :- '$$clause_candidates'('$dcg_compiled'(Name, Arity), [_|_]), !.
+'$dcg_ensure'(Name, Arity) :- '$dcg_compiled'(Name, Arity), !.
 '$dcg_ensure'(Name, Arity) :-
     functor(Skel, Name, Arity),
     '$$clause_candidates'('-->'(Skel, _), Cands),
