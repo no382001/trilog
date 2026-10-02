@@ -28,7 +28,7 @@ QUAD_MEM_LIMIT_KB := 1048576
 quad: trilog
 	@for f in test/*_quad.pl; do \
 		[ -f "$$f" ] || continue; \
-		( ulimit -v $(QUAD_MEM_LIMIT_KB); timeout $(QUAD_TIMEOUT) ./trilog -e "consult('test/quad.pl'), quad_cli('$$f')" ) || true; \
+		( ulimit -v $(QUAD_MEM_LIMIT_KB); timeout $(QUAD_TIMEOUT) ./trilog -e "consult('lib/quad.pl'), quad_cli('$$f')" ) || true; \
 	done
 
 QUAD_MAX_RESUME_ATTEMPTS := 20
@@ -44,7 +44,7 @@ quad-junit: trilog
 		attempt=0; \
 		while :; do \
 			attempt=$$((attempt + 1)); \
-			( ulimit -v $(QUAD_MEM_LIMIT_KB); timeout $(QUAD_TIMEOUT) ./trilog -e "consult('test/quad.pl'), quad_cli_junit('$$f', '_build/test-results', $$skip)" ) || true; \
+			( ulimit -v $(QUAD_MEM_LIMIT_KB); timeout $(QUAD_TIMEOUT) ./trilog -e "consult('lib/quad.pl'), quad_cli_junit('$$f', '_build/test-results', $$skip)" ) || true; \
 			[ -f "_build/test-results/$$suite.xml" ] && break; \
 			if [ ! -s "_build/test-results/$$suite.xml.partial" ] && [ ! -s "_build/test-results/$$suite.progress" ]; then \
 				echo "# $$f: trilog crashed with no checkpoint to recover from"; \
@@ -52,10 +52,10 @@ quad-junit: trilog
 			fi; \
 			if [ $$attempt -ge $(QUAD_MAX_RESUME_ATTEMPTS) ]; then \
 				echo "# $$f: gave up after $(QUAD_MAX_RESUME_ATTEMPTS) crashes, finalizing what ran"; \
-				( ulimit -v $(QUAD_MEM_LIMIT_KB); timeout $(QUAD_TIMEOUT) ./trilog -e "consult('test/quad.pl'), quad_mark_crash('$$suite', '_build/test-results'), quad_finalize_junit('$$f', '$$suite', '_build/test-results')" ) || true; \
+				( ulimit -v $(QUAD_MEM_LIMIT_KB); timeout $(QUAD_TIMEOUT) ./trilog -e "consult('lib/quad.pl'), quad_mark_crash('$$suite', '_build/test-results'), quad_finalize_junit('$$f', '$$suite', '_build/test-results')" ) || true; \
 				break; \
 			fi; \
-			skip=$$( ( ulimit -v $(QUAD_MEM_LIMIT_KB); timeout $(QUAD_TIMEOUT) ./trilog -e "consult('test/quad.pl'), quad_mark_crash('$$suite', '_build/test-results'), quad_resolved_count('$$suite', '_build/test-results', N), write(N), halt." ) 2>/dev/null); \
+			skip=$$( ( ulimit -v $(QUAD_MEM_LIMIT_KB); timeout $(QUAD_TIMEOUT) ./trilog -e "consult('lib/quad.pl'), quad_mark_crash('$$suite', '_build/test-results'), quad_resolved_count('$$suite', '_build/test-results', N), write(N), halt." ) 2>/dev/null); \
 			echo "# $$f: trilog crashed mid-run (attempt $$attempt), resuming after test $$skip"; \
 		done; \
 	done

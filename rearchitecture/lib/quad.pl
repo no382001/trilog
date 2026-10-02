@@ -1,9 +1,3 @@
-% Runs the "*_quad.pl" test files against this engine.
-% consult_dcg/dcg_translate are NOT needed: this engine's own consult/1
-% already handles op/3 and DCG rules natively.
-% JUnit XML output and crash-resume checkpointing: see quad_cli_junit/3
-% and the Makefile's quad-junit target for the retry loop.
-
 % --- line-buffering utilities ---
 
 ws_code(32).
@@ -11,12 +5,16 @@ ws_code(0'\t).
 ws_code(0'\n).
 ws_code(0'\r).
 
-trim_leading(Atom, Trimmed) :- atom_codes(Atom, Cs), tl_codes(Cs, Cs2), atom_codes(Trimmed, Cs2).
-tl_codes([C|Cs], Out) :- (C =:= 32 ; C =:= 0'\t), !, tl_codes(Cs, Out).
+trim_leading(Atom, Trimmed) :-
+    atom_codes(Atom, Cs),
+    tl_codes(Cs, Cs2),
+    atom_codes(Trimmed, Cs2).
+tl_codes([C|Cs], Out) :-
+    (C =:= 32 ; C =:= 0'\t), !,
+    tl_codes(Cs, Out).
 tl_codes(Cs, Cs).
 
-% strip_line_comment(+Line, -Stripped): drop a trailing "% ..." comment,
-% respecting double- and single-quoted regions (mirrors src/kernel/parse.c).
+% strip_line_comment(+Line, -Stripped): drop a trailing "% ..." comment
 strip_line_comment(Line, Stripped) :-
     atom_codes(Line, Cs),
     slc(Cs, out, Out),
@@ -64,7 +62,7 @@ hcc([0'.|Cs], out, 0, Prev) :-
     ).
 hcc([C|Cs], State, D, _) :- hcc(Cs, State, D, C).
 
-% dcg_accumulate/3: plain multi-line buffer join, nothing DCG-specific.
+% dcg_accumulate/3: plain multi-line buffer join
 dcg_accumulate(Buf0, Line, Buf) :-
     trim_leading(Line, Trimmed),
     ( Buf0 == '', Trimmed == '' -> Buf = Buf0
@@ -142,9 +140,6 @@ parse_expected(AnswerRaw, Expected, Mode) :-
     ;  Mode = exact, Expected = Expected1
     ).
 
-% regression: the difference-list version this replaced left an open tail
-% that a file-ending wrapped answer could never bind, silently dropping
-% every later test with no error at all.
 pe_group([], []).
 pe_group([L|Ls], Groups) :- pe_group_(Ls, [L], Groups).
 
@@ -611,7 +606,7 @@ cp_loop(S, stat(AccT, AccF, AccMs), Stat) :-
     ).
 
 % copies Path's lines verbatim to the already-open OutStrm, one line at a
-% time - same reasoning as count_partial/4, no atom_concat accumulation.
+% time
 stream_copy_lines(Path, OutStrm) :-
     catch((open(Path, read, S), scl_loop(S, OutStrm), close(S)), _, true).
 
