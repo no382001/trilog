@@ -876,6 +876,69 @@ TRILOG="./trilog"
   [[ "$output" == *'L=["abc", "abc", "abc"]'* ]]
 }
 
+# --- term copying: variable sharing, cyclic terms, occurs check ---
+
+@test "copy_term/2 keeps more than 64 variables distinct (regression)" {
+  # regression: a fixed 64-slot table aliased every variable past the 63rd.
+  run "$TRILOG" -e "
+    length(L, 100), T =.. [f|L], copy_term(T, C), C =.. [_|Vs],
+    nth0(70, Vs, A), last(Vs, Z),
+    ( A == Z -> write(aliased) ; write(distinct) ), nl.
+  "
+  [[ "$output" == *"distinct"* ]]
+}
+
+@test "findall/3 keeps more than 64 variables distinct (regression)" {
+  run "$TRILOG" -e "
+    length(L, 5000), findall(L, true, [M]), sort(M, S), length(S, K),
+    write(distinct(K)), nl.
+  "
+  [[ "$output" == *"distinct(5000)"* ]]
+}
+
+@test "copy_term/2 preserves variable sharing" {
+  run "$TRILOG" -e "copy_term(f(X,Y,X,g(Y)), f(A,B,C,g(D))), A == C, B == D, A \\== B."
+  [[ "$output" == *"yes:"* ]]
+}
+
+@test "copy_term/2 throws on a cyclic term instead of crashing (regression)" {
+  run "$TRILOG" -e "X = f(X), catch(copy_term(X, _), error(E, _), (write(caught(E)), nl))."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"caught(representation_error(cyclic_term))"* ]]
+}
+
+@test "findall/3 throws on a cyclic solution instead of crashing (regression)" {
+  run "$TRILOG" -e "X = [X|_], catch(findall(X, true, _), error(E, _), (write(caught(E)), nl))."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"caught(representation_error(cyclic_term))"* ]]
+}
+
+@test "assertz/1 throws on a cyclic term instead of crashing (regression)" {
+  run "$TRILOG" -e "X = f(X), catch(assertz(p(X)), error(E, _), (write(caught(E)), nl))."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"caught(representation_error(cyclic_term))"* ]]
+}
+
+@test "unify_with_occurs_check/2 fails where the variable occurs in the term" {
+  run "$TRILOG" -e "
+    ( unify_with_occurs_check(X, f(X)) -> R1 = unified ; R1 = failed ),
+    ( unify_with_occurs_check(f(A,B), f(B,g(A))) -> R2 = unified ; R2 = failed ),
+    write(r(R1, R2)), nl.
+  "
+  [[ "$output" == *"r(failed, failed)"* ]]
+}
+
+@test "unify_with_occurs_check/2 unifies like =/2 otherwise" {
+  run "$TRILOG" -e "unify_with_occurs_check(f(X,a,[H|T]), f(b,Y,[1,2])), write(X-Y-H-T), nl."
+  [[ "$output" == *"-(-(-(b, a), 1), [2])"* ]]
+}
+
+@test "unify_with_occurs_check/2 terminates on an already-cyclic term" {
+  run timeout 5 "$TRILOG" -e "X = f(X), unify_with_occurs_check(Y, g(X)), write(ok), nl."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ok"* ]]
+}
+
 # --- assertz/1, asserta/1, retract/1 ---
 
 @test "assertz/1 adds a fact, queryable immediately" {

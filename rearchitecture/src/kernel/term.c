@@ -313,22 +313,21 @@ void print_term_via(size_t r, int quoted, emit_fn emit) {
   print_term_ex(r, quoted, emit);
 }
 
-#define MAX_BALL_VARS 64
-
 static int template_cyclic = 0;
 
-static tterm_t *heap_to_template_rec(size_t r, size_t *seen, int32_t *nseen) {
+static tterm_t *heap_to_template_rec(size_t r, int32_t *nseen) {
   r = heap_deref(r);
   switch (heap[r].tag) {
   case TAG_REF: {
-    for (int32_t i = 0; i < *nseen; i++)
-      if (seen[i] == r)
-        return tt_var(i);
-    int32_t slot = *nseen < MAX_BALL_VARS ? *nseen : MAX_BALL_VARS - 1;
-    if (*nseen < MAX_BALL_VARS)
-      seen[(*nseen)++] = r;
-    return tt_var(slot);
+    size_t m = heap_alloc(1);
+    heap[m].tag = TAG_FUNCTOR;
+    heap[m].as.func.atom_id = -1;
+    heap[m].as.func.arity = *nseen;
+    heap_bind(r, m);
+    return tt_var((*nseen)++);
   }
+  case TAG_FUNCTOR:
+    return tt_var(heap[r].as.func.arity);
   case TAG_ATOM:
     return tt_atom(atom_name(heap[r].as.atom_id));
   case TAG_INT:
@@ -345,35 +344,31 @@ static tterm_t *heap_to_template_rec(size_t r, size_t *seen, int32_t *nseen) {
     tterm_t *args[arity > 0 ? arity : 1];
     heap[f].as.func.arity = -1 - arity;
     for (int32_t i = 0; i < arity; i++)
-      args[i] = heap_to_template_rec(f + 1 + i, seen, nseen);
+      args[i] = heap_to_template_rec(f + 1 + i, nseen);
     heap[f].as.func.arity = arity;
     return tt_struct(atom_name(heap[f].as.func.atom_id), arity, args);
   }
-  case TAG_FUNCTOR:
-    return NULL; // unreachable
   }
   return NULL;
-}
-
-// NULL if r is cyclic.
-tterm_t *heap_to_template(size_t r, int32_t *nvars_out) {
-  size_t seen[MAX_BALL_VARS];
-  int32_t nseen = 0;
-  template_cyclic = 0;
-  tterm_t *t = heap_to_template_rec(r, seen, &nseen);
-  *nvars_out =
-      nseen > 0 ? nseen : 1; // heap_copy's rename table is never zero-sized
-  return template_cyclic ? NULL : t;
 }
 
 // 0 if any of terms is cyclic.
 int heap_terms_to_templates(size_t *terms, int32_t n, tterm_t **out,
                             int32_t *nvars_out) {
-  size_t seen[MAX_BALL_VARS];
+  size_t hmark = heap_mark(), tmark = trail_mark();
   int32_t nseen = 0;
   template_cyclic = 0;
   for (int32_t i = 0; i < n; i++)
-    out[i] = heap_to_template_rec(terms[i], seen, &nseen);
-  *nvars_out = nseen > 0 ? nseen : 1;
+    out[i] = heap_to_template_rec(terms[i], &nseen);
+  trail_release(tmark);
+  heap_release(hmark);
+  *nvars_out =
+      nseen > 0 ? nseen : 1; // heap_copy's rename table is never zero-sized
   return !template_cyclic;
+}
+
+// NULL if r is cyclic.
+tterm_t *heap_to_template(size_t r, int32_t *nvars_out) {
+  tterm_t *t;
+  return heap_terms_to_templates(&r, 1, &t, nvars_out) ? t : NULL;
 }
