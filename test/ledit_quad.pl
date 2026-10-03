@@ -3,12 +3,9 @@
 % Tests pure-logic and state-management predicates.
 % I/O-dependent predicates (add, get, save, main loop) are not tested here.
 %
-% NOTE: State mutations (l_set, assert, retract) must be in directives
-% because the quad runner's solve_all tries multiple solutions and
-% assert/retract side-effects are not rolled back on backtrack.
-% Queries that call l_set (retract+assert) after a user-defined predicate
-% like l_reverse will generate spurious extra solutions from the mutated state.
-% So we do state mutations in directives and only query the resulting state.
+% NOTE: state mutations (l_set, assert, retract) run in directives, not
+% queries - solve_all backtracks into multiple solutions, and those
+% side effects aren't rolled back on backtrack.
 
 :- consult('lib/ledit.pl').
 

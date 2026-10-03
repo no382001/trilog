@@ -1,8 +1,76 @@
-:- consult('dcg_load.pl').
+% --- line-buffering utilities ---
 
-%****
-%* line splitting
-%****
+ws_code(32).
+ws_code(0'\t).
+ws_code(0'\n).
+ws_code(0'\r).
+
+trim_leading(Atom, Trimmed) :-
+    atom_codes(Atom, Cs),
+    tl_codes(Cs, Cs2),
+    atom_codes(Trimmed, Cs2).
+tl_codes([C|Cs], Out) :-
+    (C =:= 32 ; C =:= 0'\t), !,
+    tl_codes(Cs, Out).
+tl_codes(Cs, Cs).
+
+% strip_line_comment(+Line, -Stripped): drop a trailing "% ..." comment
+strip_line_comment(Line, Stripped) :-
+    atom_codes(Line, Cs),
+    slc(Cs, out, Out),
+    atom_codes(Stripped, Out).
+
+slc([], _, []) :- !.
+slc([0'0, 0'\', 0'\\, Esc|Cs], out, [0'0, 0'\', 0'\\, Esc|Out]) :- !, slc(Cs, out, Out).
+slc([0'0, 0'\', Ch|Cs], out, [0'0, 0'\', Ch|Out]) :- !, slc(Cs, out, Out).
+slc([0'\\, E|Cs], dq, [0'\\, E|Out]) :- !, slc(Cs, dq, Out).
+slc([0'\\, E|Cs], sq, [0'\\, E|Out]) :- !, slc(Cs, sq, Out).
+slc([0'\', 0'\'|Cs], sq, [0'\', 0'\'|Out]) :- !, slc(Cs, sq, Out).
+slc([0'"|Cs], dq, [0'"|Out]) :- !, slc(Cs, out, Out).
+slc([0'"|Cs], out, [0'"|Out]) :- !, slc(Cs, dq, Out).
+slc([0'\'|Cs], sq, [0'\'|Out]) :- !, slc(Cs, out, Out).
+slc([0'\'|Cs], out, [0'\'|Out]) :- !, slc(Cs, sq, Out).
+slc([0'%|_], out, []) :- !.
+slc([C|Cs], State, [C|Out]) :- slc(Cs, State, Out).
+
+% has_complete_clause(+Buf): true if Buf contains a terminating '.' at
+% bracket depth 0, outside any quoted region, not part of "=..".
+has_complete_clause(Buf) :- atom_codes(Buf, Cs), hcc(Cs, out, 0, 32).
+
+hcc([], _, _, _) :- fail.
+hcc([0'0, 0'\', 0'\\, _Esc|Cs], out, D, _) :- !, hcc(Cs, out, D, 0'0).
+hcc([0'0, 0'\', _Ch|Cs], out, D, _) :- !, hcc(Cs, out, D, 0'0).
+hcc([0'\\, _|Cs], dq, D, _) :- !, hcc(Cs, dq, D, 0'\\).
+hcc([0'\\, _|Cs], sq, D, _) :- !, hcc(Cs, sq, D, 0'\\).
+hcc([0'\', 0'\'|Cs], sq, D, _) :- !, hcc(Cs, sq, D, 0'\').
+hcc([0'"|Cs], dq, D, _) :- !, hcc(Cs, out, D, 0'").
+hcc([0'"|Cs], out, D, _) :- !, hcc(Cs, dq, D, 0'").
+hcc([0'\'|Cs], sq, D, _) :- !, hcc(Cs, out, D, 0'\').
+hcc([0'\'|Cs], out, D, _) :- !, hcc(Cs, sq, D, 0'\').
+hcc([C|Cs], out, D, _) :- ( C =:= 0'( ; C =:= 0'[ ), !, D1 is D + 1, hcc(Cs, out, D1, C).
+hcc([C|Cs], out, D, _) :- ( C =:= 0') ; C =:= 0'] ), !, D1 is D - 1, hcc(Cs, out, D1, C).
+hcc([0'.|Cs], out, 0, Prev) :-
+    !,
+    ( Prev =:= 0'.
+    -> hcc(Cs, out, 0, 0'.)
+    ;  ( Cs == []
+       -> true
+       ;  Cs = [N|_], ws_code(N)
+       -> true
+       ;  hcc(Cs, out, 0, 0'.)
+       )
+    ).
+hcc([C|Cs], State, D, _) :- hcc(Cs, State, D, C).
+
+% dcg_accumulate/3: plain multi-line buffer join
+dcg_accumulate(Buf0, Line, Buf) :-
+    trim_leading(Line, Trimmed),
+    ( Buf0 == '', Trimmed == '' -> Buf = Buf0
+    ; Buf0 == '' -> Buf = Trimmed
+    ; atom_concat(Buf0, ' ', Buf1), atom_concat(Buf1, Trimmed, Buf)
+    ).
+
+% --- line splitting ---
 
 split_nl(Atom, Lines) :-
     atom_codes(Atom, Cs),
@@ -10,14 +78,9 @@ split_nl(Atom, Lines) :-
     codes_lists_to_atoms(LinesCodes, Lines).
 
 codes_lists_to_atoms([], []).
-codes_lists_to_atoms([Cs|Css], [A|As]) :-
-    atom_codes(A, Cs),
-    codes_lists_to_atoms(Css, As).
+codes_lists_to_atoms([Cs|Css], [A|As]) :- atom_codes(A, Cs), codes_lists_to_atoms(Css, As).
 
-split_nl_codes(Cs, [Line|Rest]) :-
-    append(Line, [0'\n|Tail], Cs),
-    !,
-    split_nl_codes(Tail, Rest).
+split_nl_codes(Cs, [Line|Rest]) :- append(Line, [0'\n|Tail], Cs), !, split_nl_codes(Tail, Rest).
 split_nl_codes(Cs, [Cs]).
 
 trim_trailing(Atom, Trimmed) :-
@@ -30,29 +93,21 @@ trim_trailing(Atom, Trimmed) :-
 tt_codes([C|Cs], Out) :- ws_code(C), !, tt_codes(Cs, Out).
 tt_codes(Cs, Cs).
 
-%****
-%* answer parsing: "x = a\n;  x = b" -> ['x = a', 'x = b']
-%****
+% --- answer parsing: "x = a\n;  x = b" -> ['x = a', 'x = b'] ---
 
-% strip_terminating_dot(+Buf, -Stripped): drop the trailing '.' that ends
-% the answer block, same rule as has_complete_clause's terminator.
 strip_terminating_dot(Buf, Stripped) :-
     atom_codes(Buf, Cs),
     std_codes(Cs, out, 0, 32, Cs2),
     atom_codes(Stripped, Cs2).
 
 std_codes([], _, _, _, []).
-% 0'c character-code literal: the lone quote is not a quoted-atom opener.
 std_codes([0'0, 0'\', 0'\\, Esc|Cs], out, D, _, [0'0, 0'\', 0'\\, Esc|Out]) :-
     !, std_codes(Cs, out, D, Esc, Out).
 std_codes([0'0, 0'\', Ch|Cs], out, D, _, [0'0, 0'\', Ch|Out]) :-
     !, std_codes(Cs, out, D, Ch, Out).
-std_codes([0'\\, E|Cs], dq, D, _, [0'\\, E|Out]) :-
-    !, std_codes(Cs, dq, D, 0'\\, Out).
-std_codes([0'\\, E|Cs], sq, D, _, [0'\\, E|Out]) :-
-    !, std_codes(Cs, sq, D, 0'\\, Out).
-std_codes([0'\', 0'\'|Cs], sq, D, _, [0'\', 0'\'|Out]) :-
-    !, std_codes(Cs, sq, D, 0'\', Out).
+std_codes([0'\\, E|Cs], dq, D, _, [0'\\, E|Out]) :- !, std_codes(Cs, dq, D, 0'\\, Out).
+std_codes([0'\\, E|Cs], sq, D, _, [0'\\, E|Out]) :- !, std_codes(Cs, sq, D, 0'\\, Out).
+std_codes([0'\', 0'\'|Cs], sq, D, _, [0'\', 0'\'|Out]) :- !, std_codes(Cs, sq, D, 0'\', Out).
 std_codes([0'"|Cs], dq, D, _, [0'"|Out]) :- !, std_codes(Cs, out, D, 0'", Out).
 std_codes([0'"|Cs], out, D, _, [0'"|Out]) :- !, std_codes(Cs, dq, D, 0'", Out).
 std_codes([0'\'|Cs], sq, D, _, [0'\'|Out]) :- !, std_codes(Cs, out, D, 0'\', Out).
@@ -85,29 +140,24 @@ parse_expected(AnswerRaw, Expected, Mode) :-
     ;  Mode = exact, Expected = Expected1
     ).
 
-% group consecutive lines into one alternative per group, starting a new
-% group whenever a line's first non-blank char is ';'.
 pe_group([], []).
-pe_group([L|Ls], [[L]|Gs]) :- pe_group_(Ls, Gs).
+pe_group([L|Ls], Groups) :- pe_group_(Ls, [L], Groups).
 
-pe_group_([], []).
-pe_group_([L|Ls], Gs) :-
+pe_group_([], CurRev, [Cur]) :- reverse(CurRev, Cur).
+pe_group_([L|Ls], CurRev, Groups) :-
     trim_leading(L, T),
     ( T == ''
-    -> Gs = Gs1, pe_group_(Ls, Gs1)
+    -> pe_group_(Ls, CurRev, Groups)
     ;  sub_atom(T, 0, 1, _, ';')
-    -> sub_atom(T, 1, _, 0, Rest0),
+    -> reverse(CurRev, Cur),
+       sub_atom(T, 1, _, 0, Rest0),
        trim_leading(Rest0, Rest),
-       Gs = [[Rest]|Gs1],
-       pe_group_(Ls, Gs1)
-    ;  Gs = [[L|More]|Gs1],
-       pe_group_(Ls, [More|Gs1])
+       pe_group_(Ls, [Rest], Groups0),
+       Groups = [Cur|Groups0]
+    ;  pe_group_(Ls, [L|CurRev], Groups)
     ).
 
-pe_join_trim(Group, Joined) :-
-    pe_join(Group, J0),
-    trim_leading(J0, J1),
-    trim_trailing(J1, Joined).
+pe_join_trim(Group, Joined) :- pe_join(Group, J0), trim_leading(J0, J1), trim_trailing(J1, Joined).
 
 pe_join([L], L) :- !.
 pe_join([L|Ls], Joined) :-
@@ -115,16 +165,26 @@ pe_join([L|Ls], Joined) :-
     atom_concat(L, ' ', L1),
     atom_concat(L1, Rest, Joined).
 
-%****
-%* solution collection, capped like MAX_QUAD_ANSWERS in quad.c
-%****
+% --- solution collection, capped at MAX_QUAD_ANSWERS ---
 
 :- dynamic(quad_solution_count/1).
 
-collect_solutions(Query, NameVars, Max, Strs) :-
+collect_solutions(Query, NameVars, Max, Strs, Snaps) :-
     retractall(quad_solution_count(_)),
     assertz(quad_solution_count(0)),
-    with_output_to(atom(_), findall(Str, capped_solution(Query, NameVars, Max, Str), Strs)).
+    with_output_to(atom(_), findall(Str-Snap, capped_snapshot(Query, NameVars, Max, Str, Snap), Sols)),
+    pairs_keys_values_(Sols, Strs, Snaps).
+
+% Cyclic bindings can't be copied - text comparison only.
+capped_snapshot(Query, NameVars, Max, Str, Snap) :-
+    capped_solution(Query, NameVars, Max, Str),
+    ( catch(copy_term(NameVars, _), error(representation_error(cyclic_term), _), fail)
+    -> Snap = NameVars
+    ;  Snap = none
+    ).
+
+pairs_keys_values_([], [], []).
+pairs_keys_values_([K-V|KVs], [K|Ks], [V|Vs]) :- pairs_keys_values_(KVs, Ks, Vs).
 
 capped_solution(Query, NameVars, Max, Str) :-
     call(Query),
@@ -134,9 +194,23 @@ capped_solution(Query, NameVars, Max, Str) :-
     assertz(quad_solution_count(N1)),
     ( N1 >= Max -> ! ; true ).
 
-%****
-%* running one test
-%****
+% "Name = Val, ..." over NameVars pairs still bound after Query ran, skipping '_'-named ones - "true" if none remain.
+format_bindings(NameVars, Str) :-
+    '$format_bindings_pairs'(NameVars, Pairs),
+    ( Pairs == [] -> Str = true ; with_output_to(atom(Str), '$write_bindings'(Pairs)) ).
+
+'$format_bindings_pairs'([], []).
+'$format_bindings_pairs'([Name=Val|Rest], Pairs) :-
+    ( sub_atom(Name, 0, 1, _, '_') -> Pairs = Pairs1
+    ; var(Val) -> Pairs = Pairs1
+    ; Pairs = [Name=Val|Pairs1]
+    ),
+    '$format_bindings_pairs'(Rest, Pairs1).
+
+'$write_bindings'([N=V]) :- !, write(N), write(' = '), writeq(V).
+'$write_bindings'([N=V|Rest]) :- write(N), write(' = '), writeq(V), write(', '), '$write_bindings'(Rest).
+
+% --- running one test ---
 
 quad_display(Query, Display) :-
     ( atom_length(Query, Len), Len > 60
@@ -151,8 +225,6 @@ strip_query_prefix(Raw, Query) :-
     ),
     trim_leading(Rest, Query).
 
-% stat/record bookkeeping happens here, right where Pass is freshly bound,
-% not back in the caller after the once/1 boundary (saw stale bindings there).
 run_one_test(QueryRaw, AnswerRaw, Pass) :-
     strip_query_prefix(QueryRaw, Query0),
     strip_terminating_dot(Query0, Query),
@@ -162,18 +234,18 @@ run_one_test(QueryRaw, AnswerRaw, Pass) :-
     get_time_ms(T0),
     ( atom_to_term(Query, QueryTerm, NameVars)
     -> ( catch(
-             ( collect_solutions(QueryTerm, NameVars, 64, Got), Error = none ),
+             ( collect_solutions(QueryTerm, NameVars, 64, Got, Snaps), Error = none ),
              Ball,
-             ( Got = [], quad_error_type(Ball, Error) )
+             ( Got = [], Snaps = [], quad_error_type(Ball, Error) )
          )
        -> true
-       ;  Got = [], Error = none
+       ;  Got = [], Snaps = [], Error = none
        )
-    ;  Got = [], Error = quad_unparseable
+    ;  Got = [], Snaps = [], Error = quad_unparseable
     ),
     get_time_ms(T1),
     ElapsedMs is T1 - T0,
-    quad_judge(Expected, Got, Error, Mode, Pass, Reason),
+    quad_judge(Expected, Got, Snaps, Error, Mode, Pass, Reason),
     retract(quad_stat(TN0, P0, F0, TMs0)),
     TestNum is TN0 + 1,
     ( Pass == true -> P1 is P0 + 1, F1 = F0 ; P1 = P0, F1 is F0 + 1 ),
@@ -184,46 +256,36 @@ run_one_test(QueryRaw, AnswerRaw, Pass) :-
     quad_report(TestNum, Display, Pass, Reason, ElapsedMs),
     !.
 
-% JUnit-mode crash checkpointing: when quad_ckpt_ctx/3 is set, each test
-% durably records itself before/after running so a crash mid-file is
-% recoverable instead of silently dropping the whole suite's report.
+% JUnit-mode crash checkpointing: when set, each test durably records itself before/after, so a crash mid-file is recoverable (quad_cli_junit/3).
 :- dynamic(quad_ckpt_ctx/3).
 
 quad_ckpt_before(Display) :-
     ( quad_ckpt_ctx(ProgressPath, _, _)
-    -> catch(
-           ( open(ProgressPath, write, S),
-             write(S, Display), nl(S),
-             close(S)
-           ), _, true)
+    -> catch((open(ProgressPath, write, S), write(S, Display), nl(S), close(S)), _, true)
     ;  true
     ).
 
 quad_ckpt_after(Display, Pass, Reason, ElapsedMs) :-
     ( quad_ckpt_ctx(_, PartialPath, Suite)
-    -> catch(
-           ( open(PartialPath, append, S),
-             write_testcase(S, Suite, Display, Pass, Reason, ElapsedMs),
-             close(S)
-           ), _, true)
+    -> catch((open(PartialPath, append, S),
+              write_testcase(S, Suite, Display, Pass, Reason, ElapsedMs),
+              close(S)), _, true)
     ;  true
     ).
 
-% error(Type, _) balls reduce to Type; any other thrown term (e.g. a bare
-% atom from a non-matching catcher) is used as-is instead of crashing the run.
+% error(Type, _) balls reduce to Type; any other thrown term is used as-is.
 quad_error_type(error(Type, _), Type) :- !.
 quad_error_type(Ball, Ball).
 
-quad_judge(Expected, Got, Error, Mode, Pass, Reason) :-
+quad_judge(Expected, Got, Snaps, Error, Mode, Pass, Reason) :-
     ( Mode == ad_infinitum
-    -> quad_judge_ad_infinitum(Expected, Got, Error, Pass, Reason)
-    ;  quad_judge_exact(Expected, Got, Error, Pass, Reason)
+    -> quad_judge_ad_infinitum(Expected, Got, Snaps, Error, Pass, Reason)
+    ;  quad_judge_exact(Expected, Got, Snaps, Error, Pass, Reason)
     ).
 
-% witness sampling for an "ad infinitum" test
 quad_ad_infinitum_witness(8).
 
-quad_judge_ad_infinitum(Expected, Got, Error, Pass, Reason) :-
+quad_judge_ad_infinitum(Expected, Got, Snaps, Error, Pass, Reason) :-
     ( Error \== none
     -> Pass = false, format_atom('error: ~w', [Error], Reason)
     ;  length(Expected, PrefixLen),
@@ -231,75 +293,145 @@ quad_judge_ad_infinitum(Expected, Got, Error, Pass, Reason) :-
        MinLen is PrefixLen + Witness,
        length(GotPrefix, PrefixLen),
        append(GotPrefix, _, Got),
-       GotPrefix == Expected,
+       length(SnapPrefix, PrefixLen),
+       append(SnapPrefix, _, Snaps),
+       quad_answers_match(Expected, GotPrefix, SnapPrefix),
        length(Got, GotLen),
        GotLen >= MinLen
     -> Pass = true, Reason = ''
     ;  quad_ad_infinitum_witness(Witness2),
        format_atom('expected: ~w, then ..., ad_infinitum (at least ~w more)~ngot: ~w',
-                   [Expected, Witness2, quad_got(Got,Error)], Reason),
+                   [Expected, Witness2, quad_got(Got, Error)], Reason),
        Pass = false
     ).
 
-quad_judge_exact(Expected, Got, Error, Pass, Reason) :-
+quad_judge_exact(Expected, Got, Snaps, Error, Pass, Reason) :-
     ( Expected = [false]
     -> ( Got == [], Error == none -> Pass = true, Reason = ''
-       ;  Pass = false, format_atom('expected: false~ngot: ~w', [quad_got(Got,Error)], Reason)
+       ;  Pass = false, format_atom('expected: false~ngot: ~w', [quad_got(Got, Error)], Reason)
        )
     ;  Expected = [ExpErr], is_error_expectation(ExpErr, ExpType)
     -> ( Error \== none, matches_error(Error, ExpType)
        -> Pass = true, Reason = ''
        ;  Pass = false,
-          format_atom('expected: ~w~ngot: ~w', [ExpErr, quad_got(Got,Error)], Reason)
+          format_atom('expected: ~w~ngot: ~w', [ExpErr, quad_got(Got, Error)], Reason)
        )
     ;  Error \== none
     -> Pass = false, format_atom('error: ~w', [Error], Reason)
-    ;  Got == Expected
+    ;  quad_answers_match(Expected, Got, Snaps)
     -> Pass = true, Reason = ''
     ;  Pass = false, format_atom('expected: ~w~ngot: ~w', [Expected, Got], Reason)
     ).
 
-is_error_expectation(Atom, Type) :-
-    atom_concat('error(', Rest, Atom),
-    atom_concat(Type, ')', Rest).
+% --- answer comparison, as terms ---
 
+quad_answers_match([], [], []).
+quad_answers_match([E|Es], [G|Gs], [S|Ss]) :-
+    ( E == G -> true ; quad_answer_match(E, S) ),
+    quad_answers_match(Es, Gs, Ss).
+
+quad_answer_match(ExpAtom, Snap) :-
+    Snap \== none,
+    catch(atom_to_term(ExpAtom, ET, ENames), _, fail),
+    qa_exp_pairs(ET, ENames, EPairs0),
+    \+ \+ ( qa_mark_unbound(Snap),
+            qa_link_names(ENames, Snap),
+            qa_got_pairs(Snap, GPairs0),
+            msort(EPairs0, EPairs),
+            msort(GPairs0, GPairs),
+            qa_variant(EPairs, GPairs) ).
+
+% "X = a, Y = b" -> ['X'=a, 'Y'=b]; "true" -> [].
+qa_exp_pairs(true, _, []) :- !.
+qa_exp_pairs((A, B), Names, Pairs) :- !,
+    qa_exp_pairs(A, Names, PA), qa_exp_pairs(B, Names, PB), append(PA, PB, Pairs).
+qa_exp_pairs(L = R, Names, [N = R]) :- var(L), qa_var_name(Names, L, N).
+
+qa_var_name([N = V|_], L, N) :- V == L, !.
+qa_var_name([_|Ns], L, N) :- qa_var_name(Ns, L, N).
+
+% Unbound query vars become '$qv'(Name), matching only same-named expected vars.
+qa_mark_unbound([]).
+qa_mark_unbound([N = V|Ps]) :- ( var(V) -> V = '$qv'(N) ; true ), qa_mark_unbound(Ps).
+
+qa_link_names([], _).
+qa_link_names([N = V|Ns], Snap) :-
+    ( member(N = GV, Snap) -> V = GV ; true ),
+    qa_link_names(Ns, Snap).
+
+% Mirrors format_bindings/2.
+qa_got_pairs([], []).
+qa_got_pairs([N = V|Ps], Out) :-
+    ( sub_atom(N, 0, 1, _, '_') -> Out = Out1
+    ; V == '$qv'(N) -> Out = Out1
+    ; Out = [N = V|Out1]
+    ),
+    qa_got_pairs(Ps, Out1).
+
+qa_variant(A, B) :-
+    \+ \+ ( copy_term(A, A1), copy_term(B, B1),
+            qa_number_vars(A1, 0, _), qa_number_vars(B1, 0, _),
+            A1 == B1 ).
+
+qa_number_vars(T, N0, N) :- var(T), !, T = '$qa_var'(N0), N is N0 + 1.
+qa_number_vars(T, N0, N0) :- atomic(T), !.
+qa_number_vars(T, N0, N) :- T =.. [_|Args], qa_number_vars_list(Args, N0, N).
+
+qa_number_vars_list([], N, N).
+qa_number_vars_list([A|As], N0, N) :- qa_number_vars(A, N0, N1), qa_number_vars_list(As, N1, N).
+
+is_error_expectation(Atom, Type) :- atom_concat('error(', Rest, Atom), atom_concat(Type, ')', Rest).
+
+% Falls back to comparing as terms: "foo/0" vs /(foo, 0), "a,b" vs "a, b".
 matches_error(Error, ExpType) :-
     term_to_atom(Error, ErrAtom),
     ( ErrAtom == ExpType -> true
     ; atom_concat(ExpType, _, ErrAtom) -> true
-    ; fail
+    ; strip_at_marks(ExpType, Clean),
+      catch(atom_to_term(Clean, ExpTerm, _), _, fail),
+      \+ \+ Error = ExpTerm
     ).
+
+% Some expected errors carry an @ prefix from the
+% suite they were transcribed from, so drop them.
+strip_at_marks(Atom, Clean) :-
+    atom_codes(Atom, Cs),
+    sam(Cs, out, Out),
+    atom_codes(Clean, Out).
+
+sam([], _, []).
+sam([0'@|Cs], out, Out) :- !, sam(Cs, out, Out).
+sam([0'\', 0'\'|Cs], sq, [0'\', 0'\'|Out]) :- !, sam(Cs, sq, Out).
+sam([0'\'|Cs], out, [0'\'|Out]) :- !, sam(Cs, sq, Out).
+sam([0'\'|Cs], sq, [0'\'|Out]) :- !, sam(Cs, out, Out).
+sam([C|Cs], St, [C|Out]) :- sam(Cs, St, Out).
 
 format_atom(Fmt, Args, Atom) :- with_output_to(atom(Atom), format_write(Fmt, Args)).
 
-format_write(Fmt, Args) :-
-    atom_chars(Fmt, Cs),
-    fw_codes(Cs, Args).
+format_write(Fmt, Args) :- atom_chars(Fmt, Cs), fw_codes(Cs, Args).
 
 fw_codes([], []).
 fw_codes(['~', w|Cs], [A|As]) :- !, write(A), fw_codes(Cs, As).
 fw_codes(['~', n|Cs], As) :- !, nl, fw_codes(Cs, As).
-fw_codes([C|Cs], As) :- put_chars([C]), fw_codes(Cs, As).
+fw_codes([C|Cs], As) :- write(C), fw_codes(Cs, As).
 
 quad_report(TestNum, Display, true, _, ElapsedMs) :-
     !,
     ms_to_secs_atom(ElapsedMs, TimeAtom),
     write('ok '), write(TestNum), write(' - ?- '), write(Display),
-    write(' # time='), write(TimeAtom), write('s'), nl.
+    write(' # time='), write(TimeAtom), write('s'), nl, flush_output.
 quad_report(TestNum, Display, false, Reason, ElapsedMs) :-
     ms_to_secs_atom(ElapsedMs, TimeAtom),
     write('not ok '), write(TestNum), write(' - ?- '), write(Display),
     write(' # time='), write(TimeAtom), write('s'), nl,
-    write_reason_lines(Reason).
+    write_reason_lines(Reason),
+    flush_output.
 
 write_reason_lines(Reason) :-
     split_nl(Reason, Lines),
     forall(member(L, Lines), (write('#   '), write(L), nl)).
 
-%****
-%* elapsed-time formatting: get_time_ms/1 (registered as an FFI builtin in
-%* main.c) gives integer milliseconds; format as "S.mmm" for TAP/JUnit.
-%****
+% --- elapsed-time formatting: "S.mmm" ---
 
 pad3(N, Atom) :-
     atom_number(NAtom, N),
@@ -316,9 +448,7 @@ ms_to_secs_atom(Ms, Atom) :-
     atom_concat(SecsAtom, '.', A1),
     atom_concat(A1, FracAtom, Atom).
 
-%****
-%* quad file parsing and running
-%****
+% --- quad file parsing and running ---
 
 :- dynamic(quad_stat/4).
 :- dynamic(quad_record/5).
@@ -361,7 +491,7 @@ qf_answer_step(S, QueryBuf, AnswerBuf0, Line, Trimmed, Skip, SeenCount) :-
        ( has_complete_clause(AnswerBuf1)
        -> SeenCount1 is SeenCount + 1,
           ( SeenCount1 =< Skip
-          -> true % already resolved by an earlier attempt; don't re-run it
+          -> true
           ;  once(run_one_test(QueryBuf, AnswerBuf1, _Pass))
           ),
           qf_loop(S, '', '', query, Skip, SeenCount1)
@@ -377,10 +507,6 @@ qf_clause_step(S, ClauseBuf0, Line, Trimmed, Skip, SeenCount) :-
        ;  sub_atom(ClauseBuf1, 0, 2, _, ':-')
        -> sub_atom(ClauseBuf1, 2, _, 0, DirText0),
           strip_terminating_dot(DirText0, DirText),
-          % catch/3 only intercepts thrown balls, not plain failure (e.g.
-          % atom_to_term failing outright on an unrecognized operator like
-          % '@') -- wrapped in ( -> ; ) too so a malformed directive is
-          % skipped instead of silently failing the whole file's qf_loop.
           ( catch((atom_to_term(DirText, Goal, _),
                    with_output_to(atom(_), catch(call(Goal), _, true))), _, fail)
           -> true
@@ -397,44 +523,34 @@ qf_clause_step(S, ClauseBuf0, Line, Trimmed, Skip, SeenCount) :-
     ;  qf_loop(S, ClauseBuf1, '', query, Skip, SeenCount)
     ).
 
-%****
-%* junit xml output
-%****
+% --- CLI entry point: exit code 0 if all pass, 1 if any failed ---
 
-% text after the final '/' (or all of Path): the first left-to-right split
-% whose suffix has no further '/' is necessarily the last one.
+quad_cli(File) :-
+    once(run_quad_file(File)),
+    quad_stat(_, _, Failed, _),
+    ( Failed > 0 -> halt(1) ; halt(0) ).
+
+% --- JUnit XML output, with crash-resume support ---
+
 last_path_segment(Path, Seg) :-
     atom_codes(Path, Cs),
-    ( append(_, [0'/|SegCs], Cs), \+ member(0'/, SegCs)
-    -> true
-    ;  SegCs = Cs
-    ),
+    ( append(_, [0'/|SegCs], Cs), \+ member(0'/, SegCs) -> true ; SegCs = Cs ),
     atom_codes(Seg, SegCs).
 
-% strip_ext(+Atom, -Base): text before the final '.', same last-match logic.
 strip_ext(Atom, Base) :-
     atom_codes(Atom, Cs),
-    ( append(BaseCs, [0'.|Rest], Cs), \+ member(0'., Rest)
-    -> true
-    ;  BaseCs = Cs
-    ),
+    ( append(BaseCs, [0'.|Rest], Cs), \+ member(0'., Rest) -> true ; BaseCs = Cs ),
     atom_codes(Base, BaseCs).
 
-quad_suite_name(File, Suite) :-
-    last_path_segment(File, Seg),
-    strip_ext(Seg, Suite).
+quad_suite_name(File, Suite) :- last_path_segment(File, Seg), strip_ext(Seg, Suite).
 
-xml_escape(Atom, Escaped) :-
-    atom_codes(Atom, Cs),
-    xesc_codes(Cs, Out),
-    atom_codes(Escaped, Out).
+xml_escape(Atom, Escaped) :- atom_codes(Atom, Cs), xesc_codes(Cs, Out), atom_codes(Escaped, Out).
 
 xesc_codes([], []).
 xesc_codes([0'&|Cs], [0'&, 0'a, 0'm, 0'p, 0';|Out]) :- !, xesc_codes(Cs, Out).
 xesc_codes([0'<|Cs], [0'&, 0'l, 0't, 0';|Out]) :- !, xesc_codes(Cs, Out).
 xesc_codes([0'>|Cs], [0'&, 0'g, 0't, 0';|Out]) :- !, xesc_codes(Cs, Out).
-xesc_codes([0'"|Cs], [0'&, 0'q, 0'u, 0'o, 0't, 0';|Out]) :-
-    !, xesc_codes(Cs, Out).
+xesc_codes([0'"|Cs], [0'&, 0'q, 0'u, 0'o, 0't, 0';|Out]) :- !, xesc_codes(Cs, Out).
 xesc_codes([0'\n|Cs], [0'&, 0'#, 0'1, 0'0, 0';|Out]) :- !, xesc_codes(Cs, Out).
 xesc_codes([0'\r|Cs], [0'&, 0'#, 0'1, 0'3, 0';|Out]) :- !, xesc_codes(Cs, Out).
 xesc_codes([C|Cs], [C|Out]) :- xesc_codes(Cs, Out).
@@ -443,15 +559,13 @@ write_testcase(Strm, Suite, Name, true, _, ElapsedMs) :-
     !,
     xml_escape(Name, EscName),
     ms_to_secs_atom(ElapsedMs, TimeAtom),
-    format_atom('  <testcase name="~w" classname="~w" time="~w"/>',
-                [EscName, Suite, TimeAtom], Line),
+    format_atom('  <testcase name="~w" classname="~w" time="~w"/>', [EscName, Suite, TimeAtom], Line),
     write(Strm, Line), nl(Strm).
 write_testcase(Strm, Suite, Name, false, Reason, ElapsedMs) :-
     xml_escape(Name, EscName),
     xml_escape(Reason, EscReason),
     ms_to_secs_atom(ElapsedMs, TimeAtom),
-    format_atom('  <testcase name="~w" classname="~w" time="~w">',
-                [EscName, Suite, TimeAtom], Open),
+    format_atom('  <testcase name="~w" classname="~w" time="~w">', [EscName, Suite, TimeAtom], Open),
     write(Strm, Open), nl(Strm),
     format_atom('    <failure message="~w"/>', [EscReason], FailLine),
     write(Strm, FailLine), nl(Strm),
@@ -478,22 +592,16 @@ run_quad_file_junit(File, Dir, Skip) :-
     retractall(quad_ckpt_ctx(_, _, _)),
     quad_finalize_junit(File, Suite, Dir).
 
-read_whole_file(Path, Whole) :-
-    open(Path, read, S),
-    rwf_loop(S, '', Whole),
-    close(S).
+read_whole_file(Path, Whole) :- open(Path, read, S), rwf_loop(S, '', Whole), close(S).
 
 rwf_loop(S, Acc, Whole) :-
     read_line_to_atom(S, Line),
     ( Line == end_of_file
     -> Whole = Acc
-    ;  atom_concat(Line, '\n', L1),
-       atom_concat(Acc, L1, Acc1),
-       rwf_loop(S, Acc1, Whole)
+    ;  atom_concat(Line, '\n', L1), atom_concat(Acc, L1, Acc1), rwf_loop(S, Acc1, Whole)
     ).
 
-% one line at a time, no atom_concat accumulation -- see TODO's known
-% bugs section (builtin_atom_concat) for why that matters here.
+% one line at a time, no atom_concat accumulation over the whole file.
 count_partial(Path, TestcaseCount, FailureCount, TotalMs) :-
     catch(
         ( open(Path, read, S),
@@ -515,20 +623,15 @@ cp_loop(S, stat(AccT, AccF, AccMs), Stat) :-
     ).
 
 % copies Path's lines verbatim to the already-open OutStrm, one line at a
-% time -- same reasoning as count_partial/4, no atom_concat accumulation.
+% time
 stream_copy_lines(Path, OutStrm) :-
-    catch(
-        ( open(Path, read, S),
-          scl_loop(S, OutStrm),
-          close(S)
-        ), _, true).
+    catch((open(Path, read, S), scl_loop(S, OutStrm), close(S)), _, true).
 
 scl_loop(S, OutStrm) :-
     read_line_to_atom(S, Line),
     ( Line == end_of_file
     -> true
-    ;  write(OutStrm, Line), nl(OutStrm),
-       scl_loop(S, OutStrm)
+    ;  write(OutStrm, Line), nl(OutStrm), scl_loop(S, OutStrm)
     ).
 
 line_has_prefix(Line, Prefix) :-
@@ -606,15 +709,6 @@ quad_finalize_junit(File, Suite, Dir) :-
     close(Strm),
     catch((open(ProgressPath, write, S1), close(S1)), _, true),
     catch((open(PartialPath, write, S2), close(S2)), _, true).
-
-%****
-%* CLI entry points: set the process exit code (0 all pass, 1 any failure)
-%****
-
-quad_cli(File) :-
-    once(run_quad_file(File)),
-    quad_stat(_, _, Failed, _),
-    ( Failed > 0 -> halt(1) ; halt(0) ).
 
 quad_cli_junit(File, Dir) :- quad_cli_junit(File, Dir, 0).
 

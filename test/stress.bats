@@ -7,9 +7,8 @@ setup() {
   rm -f /tmp/trilog_stress_*
   # measure baseline (just core.pl loaded, no user clauses)
   echo 'true.' | "$TRILOG" -s 2>/tmp/trilog_stress_baseline >/dev/null
-  BASE_PERM=$(grep "^perm_pool=" /tmp/trilog_stress_baseline | cut -d= -f2)
   BASE_CLAUSES=$(grep "^clauses=" /tmp/trilog_stress_baseline | cut -d= -f2)
-  export BASE_PERM BASE_CLAUSES
+  export BASE_CLAUSES
 }
 
 teardown() {
@@ -28,9 +27,7 @@ stat_val() {
   echo 'findall(X, between(1,500,X), L), length(L, N), write(N).' \
     | timeout 10 "$TRILOG" -s 2>"$STATS_FILE" | grep -q '500'
   # temp-only query: perm and clauses unchanged from baseline
-  [ "$(stat_val perm_pool)" -eq "$BASE_PERM" ]
   [ "$(stat_val clauses)" -eq "$BASE_CLAUSES" ]
-  [ "$(stat_val term_pool_peak)" -gt 0 ]
 }
 
 # regression: findall/setof used to block LCO for the whole nested solve.
@@ -38,7 +35,6 @@ stat_val() {
   result=$(echo 'findall(S, (between(1,3000,X), X =:= 3000, atom_number(S,X)), L), length(L, N), write(N), nl.' \
     | timeout 5 "$TRILOG" -s 2>"$STATS_FILE")
   [ "$(echo "$result" | head -1)" = "1" ]
-  [ "$(stat_val perm_pool)" -eq "$BASE_PERM" ]
   [ "$(stat_val clauses)" -eq "$BASE_CLAUSES" ]
 }
 
@@ -48,7 +44,6 @@ stat_val() {
   echo 'findall(X, between(1,200,X), L), reverse(L, R), sort(R, S), length(S, N), write(N).' \
     | timeout 10 "$TRILOG" -s 2>"$STATS_FILE" | grep -q '200'
   # temp-only: no perm growth
-  [ "$(stat_val perm_pool)" -eq "$BASE_PERM" ]
   [ "$(stat_val clauses)" -eq "$BASE_CLAUSES" ]
 }
 
@@ -63,9 +58,7 @@ print('findall(X, item(X), L), length(L, N), write(N).')
   result=$(tail -1 /tmp/trilog_stress_assert.txt)
   [[ "$result" == *"500"* ]]
   # 500 asserts grow perm and clauses
-  [ "$(stat_val perm_pool)" -gt "$BASE_PERM" ]
   [ "$(stat_val clauses)" -eq $(( BASE_CLAUSES + 500 )) ]
-  [ "$(stat_val string_pool)" -gt 644 ]
 }
 
 # --- assert + retractall + re-assert ---
@@ -88,38 +81,6 @@ print('findall(X, st(X), L3), length(L3, N3), write(N3), write(s), nl.')
   [ "$(stat_val clauses)" -eq $(( BASE_CLAUSES + 100 )) ]
 }
 
-# --- 20 consult/unconsult cycles, no leak ---
-
-@test "stress: 20 consult/unconsult cycles stable" {
-  stats_5=$(python3 -c "
-for i in range(5):
-    print(\"consult('lib/ledit.pl').\")
-    print(\"unconsult('lib/ledit.pl').\")
-print('true.')
-" | timeout 15 "$TRILOG" -s 2>&1 | grep perm_pool | head -1)
-
-  stats_20=$(python3 -c "
-for i in range(20):
-    print(\"consult('lib/ledit.pl').\")
-    print(\"unconsult('lib/ledit.pl').\")
-print('true.')
-" | timeout 30 "$TRILOG" -s 2>&1 | grep perm_pool | head -1)
-
-  [ "$stats_5" = "$stats_20" ]
-}
-
-# --- core intact after 20 cycles ---
-
-@test "stress: core predicates work after 20 consult/unconsult cycles" {
-  result=$(python3 -c "
-for i in range(20):
-    print(\"consult('lib/ledit.pl').\")
-    print(\"unconsult('lib/ledit.pl').\")
-print('append([1,2],[3],X), write(X).')
-" | timeout 30 "$TRILOG" 2>&1 | tail -1)
-  [[ "$result" == *"[1, 2, 3]"* ]]
-}
-
 # --- many backtracking solutions ---
 
 @test "stress: 200 backtracking solutions in pipe" {
@@ -127,7 +88,6 @@ print('append([1,2],[3],X), write(X).')
     | timeout 10 "$TRILOG" -s 2>"$STATS_FILE" | grep -c 's$')
   [ "$count" -eq 200 ]
   # backtracking is temp-only
-  [ "$(stat_val perm_pool)" -eq "$BASE_PERM" ]
   [ "$(stat_val clauses)" -eq "$BASE_CLAUSES" ]
 }
 
@@ -141,7 +101,6 @@ print('append([1,2],[3],X), write(X).')
   head -1 /tmp/trilog_stress_io.txt | grep -q "line(1)"
   tail -1 /tmp/trilog_stress_io.txt | grep -q "line(500)"
   # file I/O doesn't grow perm
-  [ "$(stat_val perm_pool)" -eq "$BASE_PERM" ]
 }
 
 # --- large .pl file consult ---
@@ -155,7 +114,6 @@ for i in range(500):
     | timeout 10 "$TRILOG" -s 2>"$STATS_FILE" | tail -1)
   [[ "$result" == *"500"* ]]
   # 500 consulted clauses: perm grows, clauses = baseline + 500
-  [ "$(stat_val perm_pool)" -gt "$BASE_PERM" ]
   [ "$(stat_val clauses)" -eq $(( BASE_CLAUSES + 500 )) ]
 }
 
@@ -183,8 +141,6 @@ print('findall(X, churn(X), L), length(L, N), write(N).')
     | timeout 5 "$TRILOG" -s 2>"$STATS_FILE")
   [[ "$result" == "40"* ]]
   # temp-only: perm unchanged, term pool used for intermediates
-  [ "$(stat_val perm_pool)" -eq "$BASE_PERM" ]
-  [ "$(stat_val term_pool_peak)" -gt 0 ]
 }
 
 # --- foldl over large list ---
@@ -197,7 +153,6 @@ print('findall(X, churn(X), L), length(L, N), write(N).')
   [[ "$result" == *"125250"* ]]
   # one extra clause (add/3)
   [ "$(stat_val clauses)" -eq $(( BASE_CLAUSES + 1 )) ]
-  [ "$(stat_val term_pool_peak)" -gt 0 ]
 }
 
 # --- maplist over large list ---

@@ -260,8 +260,9 @@ findall(Template, Goal, List) :-
     (call(Goal), '$$assertz'('$findall_item'(Id, Template)), fail ; true),
     '$findall_collect'(Id, List).
 
-'$next_id'(Id) :- '$$retract'('$id_counter'(N0)), !, Id is N0 + 1, '$$assertz'('$id_counter'(Id)).
-'$next_id'(0) :- '$$assertz'('$id_counter'(0)).
+'$id_counter'(-1).
+
+'$next_id'(Id) :- '$$retract'('$id_counter'(N0)), Id is N0 + 1, '$$assertz'('$id_counter'(Id)).
 
 '$findall_collect'(Id, List) :-
     '$$retract'('$findall_item'(Id, X)), !,

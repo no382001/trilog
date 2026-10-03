@@ -129,8 +129,8 @@ static void print_exit_stats(void) {
     return;
   trilog_usage_t u;
   trilog_usage(T, &u);
-  fprintf(stderr, "heap_peak_cells=%zu\nheap_peak_bytes=%zu\n",
-          u.heap_peak_cells, u.heap_peak_bytes);
+  fprintf(stderr, "heap_peak_cells=%zu\nheap_peak_bytes=%zu\nclauses=%zu\n",
+          u.heap_peak_cells, u.heap_peak_bytes, u.clauses);
 }
 
 // TODO: This probably should be NDEBUG or something

@@ -1,86 +1,116 @@
-CC := gcc
-CFLAGS := \
-    -std=c11 \
-    -Wall \
-    -Wextra \
-    -Wpedantic \
-	-Werror \
-    -g
-CFLAGS += -fsanitize=address -fno-omit-frame-pointer
-LDFLAGS += -fsanitize=address -lm
+CC = gcc
+AR = gcc-ar
+CFLAGS = -Wall -Wextra -std=c11 -O2
+CPPFLAGS = -Iinclude -Isrc/kernel -Isrc/io -Isrc/platform -MMD -MP
 
-TARGET := trilog
-BUILD_DIR := _build
-EXAMPLES_DIR := examples
+PLATFORM ?= posix
+KERNEL_SRCS = src/kernel/heap.c src/kernel/unify.c src/kernel/term.c src/kernel/solve.c \
+              src/kernel/parse.c src/kernel/arena.c src/kernel/gc.c src/kernel/mem.c
+IO_SRCS = src/io/io.c src/io/streams.c
+LIB_SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c src/platform/$(PLATFORM).c
+CLI_SRCS = cli/main.c cli/terminal_$(PLATFORM).c
+SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c cli/main.c
+HDRS = include/trilog.h cli/terminal.h $(wildcard src/kernel/*.h) $(wildcard src/io/*.h) $(wildcard src/platform/*.h)
 
-SRCS := $(wildcard src/*.c)
-HDRS := $(wildcard src/*.h)
-OBJS := $(SRCS:src/%.c=$(BUILD_DIR)/%.o)
+DEV = _build/dev-$(PLATFORM)
+REL = _build/release-$(PLATFORM)
+DEV_LIB_OBJS = $(patsubst %.c,$(DEV)/%.o,$(LIB_SRCS) src/kernel/embedded_none.c)
+REL_LIB_OBJS = $(patsubst %.c,$(REL)/%.o,$(LIB_SRCS) _build/embedded.c)
+DEV_CLI_OBJS = $(patsubst %.c,$(DEV)/%.o,$(CLI_SRCS))
+REL_CLI_OBJS = $(patsubst %.c,$(REL)/%.o,$(CLI_SRCS))
 
-LIB_OBJS := $(filter-out $(BUILD_DIR)/main.o,$(OBJS))
+$(DEV)/cli/%.o $(REL)/cli/%.o: CPPFLAGS = -Iinclude -Icli -MMD -MP
 
-EXAMPLE_SRCS := $(wildcard $(EXAMPLES_DIR)/*.c)
-EXAMPLE_BINS := $(EXAMPLE_SRCS:$(EXAMPLES_DIR)/%.c=$(BUILD_DIR)/%)
+$(DEV)/%.o: %.c | format
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-all: format $(TARGET) $(EXAMPLE_BINS)
+$(REL)/%.o: %.c | format
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) -DTRILOG_EMBEDDED $(CFLAGS) -flto=auto -c $< -o $@
 
-$(TARGET): $(OBJS)
-	$(CC) $(LDFLAGS) $(OBJS) -o $@
+$(DEV)/libtrilog.a: $(DEV_LIB_OBJS)
+	@rm -f $@
+	$(AR) rcs $@ $^
 
-$(BUILD_DIR)/%.o: src/%.c $(HDRS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+$(REL)/libtrilog.a: $(REL_LIB_OBJS)
+	@rm -f $@
+	$(AR) rcs $@ $^
 
-$(BUILD_DIR)/%: $(EXAMPLES_DIR)/%.c $(LIB_OBJS) $(HDRS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $< $(LIB_OBJS) $(LDFLAGS) -o $@
+$(DEV)/trilog: $(DEV_CLI_OBJS) $(DEV)/libtrilog.a
+	$(CC) $(CFLAGS) -o $@ $^ -lm
 
-$(BUILD_DIR):
-	mkdir -p $@
+$(REL)/trilog: $(REL_CLI_OBJS) $(REL)/libtrilog.a
+	$(CC) $(CFLAGS) -flto=auto -o $@ $^ -lm
 
-.PHONY: clean
-clean:
-	rm -rf $(BUILD_DIR) $(TARGET) wokwi/build
+-include $(DEV_LIB_OBJS:.o=.d) $(REL_LIB_OBJS:.o=.d) $(DEV_CLI_OBJS:.o=.d) $(REL_CLI_OBJS:.o=.d) \
+         $(DEV)/test/api_test.d $(DEV)/test/api_threads_test.d $(DEV)/test/api_oom_test.d $(DEV)/examples/embed.d
 
-.PHONY: examples
-examples: $(EXAMPLE_BINS)
+.PHONY: trilog release lib
+trilog: $(DEV)/trilog
+	@cp $< $@
 
-.PHONY: format
-format:
-	clang-format -i $(SRCS) $(HDRS)
+lib: $(DEV)/libtrilog.a
 
-.PHONY: format-check
-format-check:
-	clang-format --dry-run --Werror $(SRCS) $(HDRS)
+# The release build bakes boot/core.pl and lib/*.pl into the binary, so it
+# runs from anywhere without the library files next to it.
+EMBED_FILES = boot/core.pl $(sort $(wildcard lib/*.pl))
 
-.PHONY: run
-run: $(TARGET)
-	./$(TARGET)
+_build/embedded.c: $(EMBED_FILES) tools/embed_libs.sh
+	@mkdir -p _build
+	sh tools/embed_libs.sh $(EMBED_FILES) > $@
 
-.PHONY: debug
-debug: $(TARGET)
-	./$(TARGET) -d
+release: $(REL)/trilog
+	@cp $< _build/trilog
+
+_build/api_test: $(DEV)/test/api_test.o $(DEV)/libtrilog.a
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+examples/embed: $(DEV)/examples/embed.o $(DEV)/libtrilog.a
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+_build/api_oom_test: $(DEV)/test/api_oom_test.o $(DEV)/libtrilog.a
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+_build/api_threads_test: $(DEV)/test/api_threads_test.o $(DEV)/libtrilog.a
+	$(CC) $(CFLAGS) -pthread -o $@ $^ -lm
+
+.PHONY: test test-api clean format format-check
+test: trilog test-api
+	bats test/
+
+test-api: _build/api_test _build/api_threads_test _build/api_oom_test examples/embed
+	examples/embed
+	_build/api_test
+	_build/api_threads_test
+	_build/api_oom_test 2>/dev/null
 
 QUAD_TIMEOUT := 60
 
+# Hard cap in KB (1GB) via `ulimit -v`
+QUAD_MEM_LIMIT_KB := 1048576
+
 .PHONY: quad
-quad: $(TARGET)
-	@for f in test/*_quad.pl test/ulrich/*_quad.pl; do \
+quad: trilog
+	@for f in test/*_quad.pl; do \
 		[ -f "$$f" ] || continue; \
-		timeout $(QUAD_TIMEOUT) ./$(TARGET) -e "consult('lib/quad.pl'), quad_cli('$$f')" || true; \
+		( ulimit -v $(QUAD_MEM_LIMIT_KB); timeout $(QUAD_TIMEOUT) ./trilog -e "consult('lib/quad.pl'), quad_cli('$$f')" ) || true; \
 	done
 
 QUAD_MAX_RESUME_ATTEMPTS := 20
 
+# Crash-resume: relaunches with an incremented Skip after every crash, reusing the same checkpoint files.
 .PHONY: quad-junit
-quad-junit: $(TARGET)
+quad-junit: trilog
 	@mkdir -p _build/test-results
-	@for f in test/*_quad.pl test/ulrich/*_quad.pl; do \
+	@for f in test/*_quad.pl; do \
 		[ -f "$$f" ] || continue; \
 		suite=$$(basename "$$f" .pl); \
 		skip=0; \
 		attempt=0; \
 		while :; do \
 			attempt=$$((attempt + 1)); \
-			timeout $(QUAD_TIMEOUT) ./$(TARGET) -e "consult('lib/quad.pl'), quad_cli_junit('$$f', '_build/test-results', $$skip)" || true; \
+			( ulimit -v $(QUAD_MEM_LIMIT_KB); timeout $(QUAD_TIMEOUT) ./trilog -e "consult('lib/quad.pl'), quad_cli_junit('$$f', '_build/test-results', $$skip)" ) || true; \
 			[ -f "_build/test-results/$$suite.xml" ] && break; \
 			if [ ! -s "_build/test-results/$$suite.xml.partial" ] && [ ! -s "_build/test-results/$$suite.progress" ]; then \
 				echo "# $$f: trilog crashed with no checkpoint to recover from"; \
@@ -88,68 +118,20 @@ quad-junit: $(TARGET)
 			fi; \
 			if [ $$attempt -ge $(QUAD_MAX_RESUME_ATTEMPTS) ]; then \
 				echo "# $$f: gave up after $(QUAD_MAX_RESUME_ATTEMPTS) crashes, finalizing what ran"; \
-				./$(TARGET) -e "consult('lib/quad.pl'), quad_mark_crash('$$suite', '_build/test-results'), quad_finalize_junit('$$f', '$$suite', '_build/test-results')" || true; \
+				( ulimit -v $(QUAD_MEM_LIMIT_KB); timeout $(QUAD_TIMEOUT) ./trilog -e "consult('lib/quad.pl'), quad_mark_crash('$$suite', '_build/test-results'), quad_finalize_junit('$$f', '$$suite', '_build/test-results')" ) || true; \
 				break; \
 			fi; \
-			skip=$$(./$(TARGET) -e "consult('lib/quad.pl'), quad_mark_crash('$$suite', '_build/test-results'), quad_resolved_count('$$suite', '_build/test-results', N), write(N), halt." 2>/dev/null); \
+			skip=$$( ( ulimit -v $(QUAD_MEM_LIMIT_KB); timeout $(QUAD_TIMEOUT) ./trilog -e "consult('lib/quad.pl'), quad_mark_crash('$$suite', '_build/test-results'), quad_resolved_count('$$suite', '_build/test-results', N), write(N), halt." ) 2>/dev/null); \
 			echo "# $$f: trilog crashed mid-run (attempt $$attempt), resuming after test $$skip"; \
 		done; \
 	done
 	@echo "JUnit reports written to _build/test-results/"
 
-.PHONY: iso
-iso: $(TARGET)
-	./$(TARGET) -e "consult('lib/quad.pl'), quad_cli('test/iso_quad.pl')" || true
+clean:
+	rm -rf trilog _build/trilog _build/embedded.c _build/api_test _build/api_threads_test _build/api_oom_test examples/embed _build/dev-* _build/release-*
 
-.PHONY: syscheck
-syscheck: $(TARGET)
-	bats test/*.bats
+format:
+	clang-format -i $(SRCS) test/api_test.c test/api_threads_test.c test/api_oom_test.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
 
-.PHONY: syscheck-junit
-syscheck-junit: $(TARGET)
-	@mkdir -p _build/test-results
-	bats --report-formatter junit --output _build/test-results test/*.bats
-
-.PHONY: test
-test: quad syscheck
-
-# arm cortex-m0+ constraints (rp2040, 264kb sram)
-SMALL_FLAGS := \
-    -DMAX_NAME=48 \
-    -DMAX_LIST_LIT=128 \
-    -DMAX_CLAUSES=256 \
-    -DMAX_BINDINGS=1024 \
-    -DMAX_VARS=2048 \
-    -DMAX_GOALS=64 \
-    -DMAX_STACK=128 \
-    -DMAX_ERROR_MSG=128 \
-    -DMAX_CUSTOM_BUILTINS=8 \
-    -DMAX_STRING_POOL=8192 \
-    -DMAX_FILE_PATH=128 \
-    -DMAX_MAKE_FILES=4 \
-    -DMAX_OPEN_STREAMS=4 \
-    -DMAX_CLAUSE_VARS=32 \
-    -DMAX_OPS=48 \
-    -DTERM_POOL_BYTES=49152
-
-SMALL_SRCS := src/arith.c src/builtins.c src/cli.c src/debug.c src/env.c \
-              src/errors.c src/ffi.c src/io.c src/main.c src/parse.c \
-              src/print.c src/solve.c src/streams.c src/term.c \
-              src/unify.c
-
-.PHONY: small
-small: format
-	$(CC) -std=c11 -Os -ffunction-sections -fdata-sections -Wl,--gc-sections \
-	    $(SMALL_FLAGS) $(SMALL_SRCS) -o $(BUILD_DIR)/trilog-small
-	@strip $(BUILD_DIR)/trilog-small
-	@size $(BUILD_DIR)/trilog-small
-
-
-.PHONY: pico
-pico:
-	mkdir -p wokwi/build
-	cd wokwi/build && cmake .. -Wno-dev > /dev/null
-	$(MAKE) -C wokwi/build -j$$(nproc)
-	@echo "sim:   wokwi/build/trilog/trilog.elf"
-	@echo "flash: wokwi/build/trilog.uf2"
-
+format-check:
+	clang-format --dry-run --Werror $(SRCS) test/api_test.c test/api_threads_test.c test/api_oom_test.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)

@@ -27,11 +27,8 @@
 ?- strip_line_comment('X is 0''a. % a comment', Y).
    Y = 'X is 0\'a. '.
 
-% regression: assertz-ing a rule whose body contains an integer literal,
-% then leaving it live in the database past the end of the query, used to
-% corrupt the perm pool on the next compaction (substitute/3 didn't copy
-% INT terms into the perm pool, so the literal stayed pointing into the
-% temp pool and became a dangling pointer once things were compacted)
+% regression: an assertz'd rule holding an integer literal past the end of
+% the query used to dangle once the temp pool it pointed into got compacted.
 
 ?- assertz((dyn_gt2(X) :- X > 2)), dyn_gt2(3).
    true.
@@ -39,10 +36,8 @@
 ?- dyn_gt2(5).
    true.
 
-% regression: first-argument indexing must deref the goal's argument to see
-% an already-bound value, otherwise a spurious choice point gets pushed for
-% a multi-clause subgoal and steals the cut, leaving the caller's own
-% alternative clause live instead of being pruned by it.
+% regression: indexing must deref the goal's argument, or a spurious choice
+% point steals the cut instead of being pruned by it.
 
 cset(x).
 cset(y).

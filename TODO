@@ -1,48 +1,26 @@
-towards some form of iso compliance:
-    https://www.complang.tuwien.ac.at/ulrich/iso-prolog/prologue
+correctness:
+- dcg: \+//1 and pushback are missing; call//N skips compile-on-first-call (call(item, a) -> existence_error item/3)
+- atom_codes/atom_concat fail silently once an atom passes ~4k bytes
+- sub_atom/atom_length count bytes, not utf-8 chars (atom_length('Pécs', 5)) I mean how correct should we be?
+- directives run to exhaustion instead of once
 
-ease of use on the default linux target:
-    - readline/history in repl
+missing requirements:
+- missing library preds: read_from_chars/2, read_term_from_chars/3, write_term_to_chars/3, countall/2, nth0/4, nth1/4, foldl/5,6, consulted/1, unconsult/1, acyclic_term/1
+- port lib/ledit.pl (+61 quad, +9 bats)
+- port wokwi/ to trilog.h (is it still possible? it should be w/o the libs)
+- reconsulting a file appends its clauses instead of replacing them (list_consult)
+- error context is left unbound, tests expect the culprit pi like error(_, is/2)
+- is_list([a|_]) succeeds, should fail
+- length(L, -1) fails and length(L, a) raises type_error(evaluable, a/0); want domain_error(not_less_than_zero, -1) and type_error(integer, a)
+- number_chars_quad runs out of memory
+- fix main-specific test expectations: 32-bit max_integer, last/2 arg order, sub_atom/5 single answer, answer printing (unhandled exception, X = Y)
+- debug flag, and trace?
+- readline/history in repl
+- modules?
+- re-check all issues for regressions
 
-wokwi demo:
-    - reduce binary size
-    - some more complex example
-
-ledit:
-    - printing 20 lines will need 100k termpool, for what?
-
-modules:
-    - the includes are getting confusing, i should try to implement this aswell, or is this too much instrumentation for the small target?
-
-- since we are not working with that much memory, stability should be first
-
-- i really shouldnt be having that dynamic array at the end of the ctx struct, c89 does not have it - i could hack it with [1] but thats ub, with malloc it could work
-
-papers to look into:
-    - Aït-Kaci, "Warren's Abstract Machine: A Tutorial Reconstruction" (1991)
-    - Demoen, "Dynamic attributes, their hProlog implementation" (2002)
-    - Appleby et al., "Garbage Collection for Prolog Based on WAM" (1988)
-    - Tarau, "The BinProlog Experience: Architecture and Implementation Choices"
-    - Tarau & Dahl, "Logic Programming and Logic Grammars with First-Order Continuations"
-    - Lindholm, "Unification and the Efficient Execution of Prolog"
-    - Zhou, "Parameter Passing and Control Stack Management in Prolog Implementation Revisited" (1996)
-
-non-determinism support?
-
-known bugs (found via test/ulrich/ and test/iso_quad.pl):
-    - builtin_atom_concat (src/builtins.c): stack-use-after-return once the
-      concatenated atom gets large (MAX_NAME, 16k) ASAN crash
-      triggered by ulrich/select_quad.pl's self-referential select/3 case,
-      and independently by lib/quad.pl's own crash-recovery code before it
-      was rewritten to stream line-by-line instead of accumulating one
-      big atom (see count_partial/4, stream_copy_lines/2 in lib/quad.pl)
-    - term.c make_var: MAX_VARS table exhaustion is a hard assertion
-      failure (abort), hit by test/iso_quad.pl's
-      number_codes tests
-    - sub_atom/atom_concat split strings by byte offset, not UTF-8
-      character offset, can produce invalid truncated multi-byte
-      sequences (see test/iso_quad.pl's 'Pécs' test, breaks strict XML
-      parsers reading the JUnit report)
-    - no occurs-check, and no cycle detection either: self-referential
-      unification (member(X,X), select(E,Xs,Xs), nth0(N,[[]|Es],Es)) either
-      hangs forever or crashes the printer on the resulting cyclic term
+guidelines:
+- as much logic in prolog as possible
+- minimize the interpreter code in C
+- same kind of embeddability goals as on main, we are stuck with linux currently
+- malloc/realloc usage minimized, ideally the memory we can use is up to the user embedding the interpreter
