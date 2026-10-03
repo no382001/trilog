@@ -37,6 +37,7 @@ typedef struct pred_bucket {
   int32_t pred_id, pred_arity;
   int32_t *indices;
   int32_t count, cap;
+  int dynamic;
   struct pred_bucket *next;
 } pred_bucket_t;
 static pred_bucket_t *pred_hash[PRED_HASH_SIZE];
@@ -145,8 +146,8 @@ static int32_t atom_true, atom_comma, atom_dot, atom_nil;
 static int32_t atom_ruleop, atom_slash, atom_error, atom_instantiation_error,
     atom_type_error, atom_existence_error, atom_evaluation_error,
     atom_zero_divisor, atom_int_overflow, atom_stream, atom_uncatch, atom_cut,
-    atom_catch, atom_throw, atom_assertz, atom_assert, atom_asserta,
-    atom_retract, atom_call;
+    atom_bang, atom_dyn_call, atom_catch, atom_throw, atom_assertz, atom_assert,
+    atom_asserta, atom_retract, atom_call;
 // eval_arith operator names.
 static int32_t atom_plus, atom_minus, atom_star, atom_intdiv, atom_mod,
     atom_min, atom_max, atom_abs, atom_sign, atom_floor, atom_ceiling,
@@ -226,6 +227,8 @@ void solve_init(void) {
   atom_stream = atom_intern("$stream");
   atom_uncatch = atom_intern("$$uncatch");
   atom_cut = atom_intern("$$cut");
+  atom_bang = atom_intern("!");
+  atom_dyn_call = atom_intern("$dyn_call");
   atom_catch = atom_intern("catch");
   atom_throw = atom_intern("throw");
   // $$-prefixed: raw, unprotected primitives; boot/core.pl's public
@@ -573,6 +576,7 @@ static void dynamic_declare(int32_t pred_id, int32_t pred_arity) {
   }
   dynamic_decls[dynamic_count++] = (dyn_decl_t){pred_id, pred_arity};
   unmark_consulted(pred_id, pred_arity);
+  pred_bucket_find_or_create(pred_id, pred_arity)->dynamic = 1;
 }
 
 static void dynamic_undeclare(int32_t pred_id, int32_t pred_arity) {
@@ -580,6 +584,7 @@ static void dynamic_undeclare(int32_t pred_id, int32_t pred_arity) {
     if (dynamic_decls[i].pred_id == pred_id &&
         dynamic_decls[i].pred_arity == pred_arity) {
       dynamic_decls[i] = dynamic_decls[--dynamic_count];
+      pred_bucket_find(pred_id, pred_arity)->dynamic = 0;
       return;
     }
 }
@@ -1084,6 +1089,10 @@ static int dispatch_builtin(size_t goal, int *ok) {
 
   if (arity == 0 && (id == atom_fail || id == atom_false)) {
     *ok = 0;
+    return 1;
+  }
+  if (arity == 0 && id == atom_bang) {
+    *ok = 1;
     return 1;
   }
 
@@ -1958,6 +1967,16 @@ A:
       goto C;
     }
   }
+  {
+    idx_key_t dk = key_of_goal(first);
+    pred_bucket_t *dbk = pred_bucket_find(dk.pred_id, dk.pred_arity);
+    if (dbk && dbk->dynamic) {
+      size_t args[1] = {first};
+      size_t dyn_goal = heap_new_struct(atom_dyn_call, 1, args);
+      cn = build_conj_tail(&dyn_goal, 1, rest);
+      goto A;
+    }
+  }
   clause_idx = 0;
   tmark = trail_mark();
   hmark = heap_mark();
@@ -2095,21 +2114,4 @@ int op_lookup_infix(int32_t name_atom_id, int *pri, int *assoc_code) {
 }
 int op_lookup_prefix(int32_t name_atom_id, int *pri, int *assoc_code) {
   return op_lookup(name_atom_id, 0, pri, assoc_code);
-}
-
-static tterm_t *wrap_conj(tterm_t **goals, int32_t n) {
-  if (n == 0)
-    return tt_atom("true");
-  tterm_t *acc = goals[n - 1];
-  for (int32_t i = n - 2; i >= 0; i--) {
-    tterm_t *args[2] = {goals[i], acc};
-    acc = tt_struct(",", 2, args);
-  }
-  return acc;
-}
-void run_query_meta(tterm_t **goals, int32_t ngoals, int32_t nvars,
-                    const char **names, int mode) {
-  tterm_t *solve_args[1] = {wrap_conj(goals, ngoals)};
-  tterm_t *wrapped[1] = {tt_struct("solve", 1, solve_args)};
-  run_query(wrapped, 1, nvars, names, mode);
 }

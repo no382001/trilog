@@ -2,30 +2,26 @@
 % '$$name' = raw kernel primitive; 
 % '$name' = private helper.
 
-% --- meta-interpreter ---
+% --- dynamic predicate calls ---
 
-%!  solve(+Goal) is nondet.
-%   Cut: '$$choice_mark'/'$$cut_to' discard choice points, not the trail.
-solve(Goal) :- '$$choice_mark'(Mark), solve(Goal, Mark).
+% Calls to dynamic predicates iterate a snapshot of their clauses.
+'$dyn_call'(G) :-
+    '$$clause_candidates'(G, Cands),
+    '$$choice_mark'(Mark),
+    '$dyn_alts'(Cands, G, Mark).
 
-solve(true, _Mark) :- !.
-solve((A, B), Mark) :- !, solve(A, Mark), solve(B, Mark).
-solve(!, Mark) :- !, '$$cut_to'(Mark).
-solve(A, _Mark) :-
-    '$$clause_candidates'(A, Cands),
-    ( Cands == [] ->
-        call(A)
-    ; '$$choice_mark'(NewMark),
-      '$solve_alts'(Cands, A, NewMark)
-    ).
+'$dyn_alts'([H - Body|Cs], G, Mark) :- '$dyn_alt'(Cs, H, Body, G, Mark).
 
-% Like member/2 over candidates, but the last one leaves no choicepoint.
-'$solve_alts'([A1 - Body|Cs], A, Mark) :- '$solve_alt'(Cs, A1, Body, A, Mark).
+'$dyn_alt'([], H, Body, G, Mark) :- G = H, '$dyn_body'(Body, Mark, B), call(B).
+'$dyn_alt'([_|_], H, Body, G, Mark) :- G = H, '$dyn_body'(Body, Mark, B), call(B).
+'$dyn_alt'([C|Cs], _, _, G, Mark) :- '$dyn_alts'([C|Cs], G, Mark).
 
-% Indexing on [] vs [_|_] keeps a single candidate choicepoint-free.
-'$solve_alt'([], A1, Body, A, Mark) :- A = A1, solve(Body, Mark).
-'$solve_alt'([_|_], A1, Body, A, Mark) :- A = A1, solve(Body, Mark).
-'$solve_alt'([C|Cs], _, _, A, Mark) :- '$solve_alts'([C|Cs], A, Mark).
+'$dyn_body'(V, _, call(V)) :- var(V), !.
+'$dyn_body'(!, Mark, '$$cut_to'(Mark)) :- !.
+'$dyn_body'((A, B), Mark, (A1, B1)) :- !, '$dyn_body'(A, Mark, A1), '$dyn_body'(B, Mark, B1).
+'$dyn_body'((A ; B), Mark, (A1 ; B1)) :- !, '$dyn_body'(A, Mark, A1), '$dyn_body'(B, Mark, B1).
+'$dyn_body'((C -> T), Mark, (C -> T1)) :- !, '$dyn_body'(T, Mark, T1).
+'$dyn_body'(G, _, G).
 
 % --- control ---
 
@@ -69,7 +65,7 @@ repeat :- repeat.
 
 % --- lists, apply ---
 
-% Directives run through solve/1 above; the op/3 directives below need member/2.
+% These load before the op/3 directives below, which need member/2.
 :- consult('../lib/lists.pl').
 :- consult('../lib/apply.pl').
 

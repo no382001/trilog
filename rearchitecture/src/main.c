@@ -55,7 +55,7 @@ static void repl(void) {
     const char **names;
     if (!parse_query(line, &goals, &ngoals, &nvars, &names))
       continue;
-    run_query_meta(goals, ngoals, nvars, names, RUN_INTERACTIVE);
+    run_query(goals, ngoals, nvars, names, RUN_INTERACTIVE);
   }
 }
 
@@ -175,7 +175,7 @@ int main(int argc, char **argv) {
     const char **names;
     if (!parse_query(query, &goals, &ngoals, &nvars, &names))
       return 1;
-    run_query_meta(goals, ngoals, nvars, names, RUN_BATCH);
+    run_query(goals, ngoals, nvars, names, RUN_BATCH);
   } else {
     repl();
   }

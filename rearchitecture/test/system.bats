@@ -986,6 +986,57 @@ TRILOG="./trilog"
   [[ "$output" != *"yes:"* ]]
 }
 
+# --- logical update view: a call iterates the clauses that existed when it started ---
+
+@test "logical update view: retractall/abolish during iteration still yield the original clauses" {
+  run "$TRILOG" -e "
+    assertz(r(1)), assertz(r(2)), findall(X, (r(X), retractall(r(_))), A),
+    assertz(i(ant)), assertz(i(bee)), findall(Y, (i(Y), abolish(i/1)), B),
+    write(A-B), nl.
+  "
+  [[ "$output" == *"-([1, 2], [ant, bee])"* ]]
+}
+
+@test "logical update view: clauses added or retracted during iteration are not seen" {
+  run "$TRILOG" -e "
+    assertz(s(1)), findall(X, (s(X), X < 3, Y is X + 1, assertz(s(Y))), A),
+    assertz(q(1)), assertz(q(2)), assertz(q(3)), findall(Z, (q(Z), retract(q(2))), B),
+    write(A-B), nl.
+  "
+  [[ "$output" == *"-([1], [1])"* ]]
+}
+
+@test "a cut in a dynamic clause prunes its remaining clauses, through ; and -> too" {
+  run "$TRILOG" -e "
+    assertz((d(X) :- X > 0, !)), assertz(d(_)),
+    findall(one, d(1), A), findall(two, d(0), B),
+    assertz((e(X, R) :- ( X > 0 -> R = pos, ! ; R = neg ))), assertz(e(_, other)),
+    findall(R1, e(1, R1), C), findall(R2, e(0, R2), D),
+    write(r(A, B, C, D)), nl.
+  "
+  [[ "$output" == *'r([one], [two], [pos], [neg, other])'* ]]
+}
+
+@test "a cut inside call/1 or a variable goal in a dynamic clause stays local" {
+  run "$TRILOG" -e "
+    assertz((f(X) :- call(!), X = 1)), assertz(f(2)),
+    assertz((h(X) :- G = !, G, X = 1)), assertz(h(2)),
+    findall(X, f(X), A), findall(Y, h(Y), B),
+    write(A-B), nl.
+  "
+  [[ "$output" == *"-([1, 2], [1, 2])"* ]]
+}
+
+@test "lib/meta.pl: solve/1 runs goals with cut when consulted" {
+  run "$TRILOG" -e "
+    consult('lib/meta.pl'),
+    findall(X, solve((member(X, [1, 2, 3]), X > 1)), A),
+    findall(Y, solve((member(Y, [1, 2, 3]), Y > 1, !)), B),
+    write(A-B), nl.
+  "
+  [[ "$output" == *"-([2, 3], [2])"* ]]
+}
+
 @test "assert/retract/abolish raise the ISO errors for bad arguments" {
   run "$TRILOG" -e "
     E = error(X, _),

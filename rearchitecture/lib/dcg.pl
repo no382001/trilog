@@ -78,7 +78,7 @@ phrase(GRBody, S0, S) :-
     H2 =.. [Name|Args2],
     dcg_body(B, S0, S, Body0),
     '$dcg_fold_head'(Body0, S0, Body),
-    assertz((H2 :- Body)).
+    '$$assertz'((H2 :- Body)).
 
 % A body starting with S0 = T unifies the head's input list first thing
 % anyway, so do it in the head: count([_|S1], ...) instead of S0 = [_|S1].
