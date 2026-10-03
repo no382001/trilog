@@ -1,17 +1,56 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -O2 -Iinclude -Isrc/kernel -Isrc/io -Isrc/platform
+AR = gcc-ar
+CFLAGS = -Wall -Wextra -std=c11 -O2
+CPPFLAGS = -Iinclude -Isrc/kernel -Isrc/io -Isrc/platform -MMD -MP
 
 PLATFORM ?= posix
-PLATFORM_SRC = src/platform/$(PLATFORM).c
 KERNEL_SRCS = src/kernel/heap.c src/kernel/unify.c src/kernel/term.c src/kernel/solve.c \
               src/kernel/parse.c src/kernel/arena.c src/kernel/gc.c
 IO_SRCS = src/io/io.c src/io/streams.c
-LIB_SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c
-SRCS = $(LIB_SRCS) src/main.c
-HDRS = include/trilog.h $(wildcard src/kernel/*.h) $(wildcard src/io/*.h) $(wildcard src/platform/*.h)
+LIB_SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c src/platform/$(PLATFORM).c
+CLI_SRCS = cli/main.c cli/terminal_$(PLATFORM).c
+SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c cli/main.c
+HDRS = include/trilog.h cli/terminal.h $(wildcard src/kernel/*.h) $(wildcard src/io/*.h) $(wildcard src/platform/*.h)
 
-trilog: format $(SRCS) $(PLATFORM_SRC) src/kernel/embedded_none.c $(HDRS)
-	$(CC) $(CFLAGS) -o trilog $(SRCS) $(PLATFORM_SRC) src/kernel/embedded_none.c -lm
+DEV = _build/dev-$(PLATFORM)
+REL = _build/release-$(PLATFORM)
+DEV_LIB_OBJS = $(patsubst %.c,$(DEV)/%.o,$(LIB_SRCS) src/kernel/embedded_none.c)
+REL_LIB_OBJS = $(patsubst %.c,$(REL)/%.o,$(LIB_SRCS) _build/embedded.c)
+DEV_CLI_OBJS = $(patsubst %.c,$(DEV)/%.o,$(CLI_SRCS))
+REL_CLI_OBJS = $(patsubst %.c,$(REL)/%.o,$(CLI_SRCS))
+
+$(DEV)/cli/%.o $(REL)/cli/%.o: CPPFLAGS = -Iinclude -Icli -MMD -MP
+
+$(DEV)/%.o: %.c | format
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+$(REL)/%.o: %.c | format
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) -DTRILOG_EMBEDDED $(CFLAGS) -flto=auto -c $< -o $@
+
+$(DEV)/libtrilog.a: $(DEV_LIB_OBJS)
+	@rm -f $@
+	$(AR) rcs $@ $^
+
+$(REL)/libtrilog.a: $(REL_LIB_OBJS)
+	@rm -f $@
+	$(AR) rcs $@ $^
+
+$(DEV)/trilog: $(DEV_CLI_OBJS) $(DEV)/libtrilog.a
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+$(REL)/trilog: $(REL_CLI_OBJS) $(REL)/libtrilog.a
+	$(CC) $(CFLAGS) -flto=auto -o $@ $^ -lm
+
+-include $(DEV_LIB_OBJS:.o=.d) $(REL_LIB_OBJS:.o=.d) $(DEV_CLI_OBJS:.o=.d) $(REL_CLI_OBJS:.o=.d) \
+         $(DEV)/test/api_test.d $(DEV)/test/api_threads_test.d
+
+.PHONY: trilog release lib
+trilog: $(DEV)/trilog
+	@cp $< $@
+
+lib: $(DEV)/libtrilog.a
 
 # The release build bakes boot/core.pl and lib/*.pl into the binary, so it
 # runs from anywhere without the library files next to it.
@@ -21,17 +60,14 @@ _build/embedded.c: $(EMBED_FILES) tools/embed_libs.sh
 	@mkdir -p _build
 	sh tools/embed_libs.sh $(EMBED_FILES) > $@
 
-.PHONY: release
-release: format $(SRCS) $(PLATFORM_SRC) _build/embedded.c $(HDRS)
-	$(CC) $(CFLAGS) -flto=auto -DTRILOG_EMBEDDED -o _build/trilog $(SRCS) $(PLATFORM_SRC) _build/embedded.c -lm
+release: $(REL)/trilog
+	@cp $< _build/trilog
 
-_build/api_test: test/api_test.c $(LIB_SRCS) $(PLATFORM_SRC) src/kernel/embedded_none.c $(HDRS)
-	@mkdir -p _build
-	$(CC) $(CFLAGS) -o $@ test/api_test.c $(LIB_SRCS) $(PLATFORM_SRC) src/kernel/embedded_none.c -lm
+_build/api_test: $(DEV)/test/api_test.o $(DEV)/libtrilog.a
+	$(CC) $(CFLAGS) -o $@ $^ -lm
 
-_build/api_threads_test: test/api_threads_test.c $(LIB_SRCS) src/platform/posix.c src/kernel/embedded_none.c $(HDRS)
-	@mkdir -p _build
-	$(CC) $(CFLAGS) -pthread -o $@ test/api_threads_test.c $(LIB_SRCS) src/platform/posix.c src/kernel/embedded_none.c -lm
+_build/api_threads_test: $(DEV)/test/api_threads_test.o $(DEV)/libtrilog.a
+	$(CC) $(CFLAGS) -pthread -o $@ $^ -lm
 
 .PHONY: test test-api test-upstream clean format format-check
 test: trilog test-api
@@ -90,10 +126,10 @@ quad-junit: trilog
 	@echo "JUnit reports written to _build/test-results/"
 
 clean:
-	rm -f trilog _build/trilog _build/embedded.c _build/api_test _build/api_threads_test
+	rm -rf trilog _build/trilog _build/embedded.c _build/api_test _build/api_threads_test _build/dev-* _build/release-*
 
 format:
-	clang-format -i $(SRCS) test/api_test.c test/api_threads_test.c src/kernel/embedded_none.c src/platform/*.c $(HDRS)
+	clang-format -i $(SRCS) test/api_test.c test/api_threads_test.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
 
 format-check:
-	clang-format --dry-run --Werror $(SRCS) test/api_test.c test/api_threads_test.c src/kernel/embedded_none.c src/platform/*.c $(HDRS)
+	clang-format --dry-run --Werror $(SRCS) test/api_test.c test/api_threads_test.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)

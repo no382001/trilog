@@ -1,4 +1,4 @@
-#include "platform.h"
+#include "terminal.h"
 #include "trilog.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -49,7 +49,7 @@ static bool toplevel_solution(trilog_t *t, void *ud, bool has_more) {
     fputs("true", stdout);
   if (has_more) {
     fflush(stdout);
-    int key = st->interactive ? platform_read_key() : ';';
+    int key = st->interactive ? terminal_read_key() : ';';
     if (key == ';' || key == ' ')
       return true;
   }
@@ -88,9 +88,9 @@ static bool batch_solution(trilog_t *t, void *ud, bool has_more) {
   return true;
 }
 
-// One line = one query - no support yet for a query spanning multiple lines.
+// One line, one query TODO: no support yet for a query spanning multiple lines.
 static void repl(void) {
-  bool interactive = platform_stdin_is_tty();
+  bool interactive = terminal_stdin_is_tty();
   char line[8192];
   for (;;) {
     if (interactive) {
@@ -120,8 +120,6 @@ static const char *usage = "Usage: trilog [options] [file...]\n"
                            "  -s        print resource-usage stats on exit\n"
                            "  -h        show this help\n";
 
-// registered via atexit(), not called directly - halt/1 exits via a raw
-// exit(), so this is the only hook that reliably fires either way.
 static void print_exit_stats(void) {
   if (!T)
     return;
@@ -131,19 +129,19 @@ static void print_exit_stats(void) {
           u.heap_peak_cells, u.heap_peak_bytes);
 }
 
+// TODO: This probably should be NDEBUG or something
 #ifdef TRILOG_EMBEDDED
-// The release build bakes boot/ and lib/ into the binary (make release).
+// The release build bakes boot/ and lib/ into the binary
 static void resolve_core_path(const char *argv0, char *out, size_t out_size) {
   (void)argv0;
   snprintf(out, out_size, "embedded:boot/core.pl");
 }
 #else
-// The dev build reads boot/core.pl from next to the binary, so library edits
-// need no rebuild.
+// The dev build reads boot/core.pl from next to the binary
 static void resolve_core_path(const char *argv0, char *out, size_t out_size) {
   char dir[4096 - sizeof "/boot/core.pl"];
   char exe[4096];
-  const char *self = platform_executable_path(exe, sizeof exe) ? exe : argv0;
+  const char *self = terminal_executable_path(exe, sizeof exe) ? exe : argv0;
   size_t n = strlen(self);
   if (n >= sizeof dir)
     n = 0;
