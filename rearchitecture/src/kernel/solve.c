@@ -167,8 +167,8 @@ static int32_t atom_is, atom_unify_op, atom_unify_oc, atom_lt, atom_gt,
     atom_term_ne, atom_term_lt, atom_term_gt, atom_term_le, atom_term_ge,
     atom_var_addr, atom_fail, atom_false, atom_halt, atom_flush_output,
     atom_get_time_ms, atom_read_line_to_atom, atom_end_of_file,
-    atom_is_static_pred, atom_prolog_flag_value, atom_flag_bounded,
-    atom_flag_max_integer, atom_flag_min_integer,
+    atom_is_static_pred, atom_undynamic, atom_prolog_flag_value,
+    atom_flag_bounded, atom_flag_max_integer, atom_flag_min_integer,
     atom_flag_integer_rounding_function, atom_flag_max_arity,
     atom_flag_double_quotes, atom_toward_zero, atom_chars_kw;
 // eval_arith bitwise operator names.
@@ -277,6 +277,7 @@ void solve_init(void) {
   atom_read_line_to_atom = atom_intern("read_line_to_atom");
   atom_end_of_file = atom_intern("end_of_file");
   atom_is_static_pred = atom_intern("$$is_static");
+  atom_undynamic = atom_intern("$$undynamic");
   atom_prolog_flag_value = atom_intern("$$prolog_flag_value");
   atom_flag_bounded = atom_intern("bounded");
   atom_flag_max_integer = atom_intern("max_integer");
@@ -542,6 +543,8 @@ static dyn_decl_t *dynamic_decls = NULL;
 static int32_t dynamic_count = 0, dynamic_cap = 0;
 
 static void dynamic_declare(int32_t pred_id, int32_t pred_arity) {
+  if (is_dynamic(pred_id, pred_arity))
+    return;
   if (dynamic_count >= dynamic_cap) {
     dynamic_cap = dynamic_cap ? dynamic_cap * 2 : 8;
     dynamic_decls = solve_realloc_or_die(dynamic_decls, (size_t)dynamic_cap *
@@ -549,6 +552,15 @@ static void dynamic_declare(int32_t pred_id, int32_t pred_arity) {
   }
   dynamic_decls[dynamic_count++] = (dyn_decl_t){pred_id, pred_arity};
   unmark_consulted(pred_id, pred_arity);
+}
+
+static void dynamic_undeclare(int32_t pred_id, int32_t pred_arity) {
+  for (int32_t i = 0; i < dynamic_count; i++)
+    if (dynamic_decls[i].pred_id == pred_id &&
+        dynamic_decls[i].pred_arity == pred_arity) {
+      dynamic_decls[i] = dynamic_decls[--dynamic_count];
+      return;
+    }
 }
 
 static int is_dynamic(int32_t pred_id, int32_t pred_arity) {
@@ -1263,6 +1275,17 @@ static int dispatch_builtin(size_t goal, int *ok) {
       return 1;
     }
     dynamic_declare(heap[name_d].as.atom_id, (int32_t)heap[arity_d].as.ival);
+    *ok = 1;
+    return 1;
+  }
+  if (arity == 2 && id == atom_undynamic) {
+    size_t name_d = heap_deref(f + 1);
+    size_t arity_d = heap_deref(f + 2);
+    if (heap[name_d].tag != TAG_ATOM || heap[arity_d].tag != TAG_INT) {
+      *ok = 0;
+      return 1;
+    }
+    dynamic_undeclare(heap[name_d].as.atom_id, (int32_t)heap[arity_d].as.ival);
     *ok = 1;
     return 1;
   }

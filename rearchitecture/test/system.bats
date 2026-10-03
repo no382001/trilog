@@ -986,6 +986,19 @@ TRILOG="./trilog"
   [[ "$output" != *"yes:"* ]]
 }
 
+@test "an asserted predicate still exists, and fails, once its last clause is retracted (regression)" {
+  # regression: a predicate counted as existing only while it had clauses, so calling an emptied one raised existence_error.
+  run "$TRILOG" -e "
+    assertz(st(1)), retract(st(1)),
+    assertz(su(1)), retractall(su(_)),
+    retractall(sv(_)),
+    findall(X, st(X), A), findall(Y, su(Y), B), findall(Z, sv(Z), C),
+    write(r(A, B, C)), nl.
+  "
+  [[ "$output" != *"existence_error"* ]]
+  [[ "$output" == *"r([], [], [])"* ]]
+}
+
 # --- GC: mark-and-slide with pointer reversal ---
 # Both regressions below only show up under a forced low threshold.
 

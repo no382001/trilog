@@ -1,1 +1,4 @@
-- every nonterminal dcg call goes through '$dcg_call', 15x slower than plain calls, compiling body calls straight to NT(S0, S) would fix most of this.
+- dcg: \+//1, call//N and pushback are missing
+- make assert/retract cheaper by not shifting the whole clause array on every removal.
+- investigate the oom errors at 100k facts and 1M-element lists, and the high RSS on recursion and atoms.
+- port ledit?

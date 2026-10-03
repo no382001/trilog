@@ -224,11 +224,12 @@ sort(L, Sorted) :- msort(L, M), '$dedup'(M, Sorted).
 % --- database ---
 
 %!  assertz/assert/asserta(+Clause), retract(+Clause).
-%   Refuses static (consulted) predicates with ISO permission_error unless declared dynamic/1;
-%  '$$'-prefixed primitives are the raw, unprotected versions.
-assertz(Clause) :- '$check_static'(Clause), '$$assertz'(Clause).
-assert(Clause) :- '$check_static'(Clause), '$$assert'(Clause).
-asserta(Clause) :- '$check_static'(Clause), '$$asserta'(Clause).
+%   Refuses static (consulted) predicates with permission_error unless declared dynamic/1;
+%   asserting makes the predicate dynamic, so it still exists (and fails) once
+%   its last clause is retracted.
+assertz(Clause) :- '$check_static'(Clause), '$make_dynamic'(Clause), '$$assertz'(Clause).
+assert(Clause) :- '$check_static'(Clause), '$make_dynamic'(Clause), '$$assert'(Clause).
+asserta(Clause) :- '$check_static'(Clause), '$make_dynamic'(Clause), '$$asserta'(Clause).
 retract(Clause) :- '$check_static'(Clause), '$$retract'(Clause).
 
 '$check_static'(Clause) :-
@@ -238,6 +239,11 @@ retract(Clause) :- '$check_static'(Clause), '$$retract'(Clause).
     -> throw(error(permission_error(modify, static_procedure, Name/Arity), _))
     ;  true
     ).
+
+'$make_dynamic'(Clause) :-
+    '$clause_head'(Clause, Head),
+    functor(Head, Name, Arity),
+    dynamic(Name/Arity).
 
 '$clause_head'((Head :- _), Head) :- !.
 '$clause_head'(Head, Head).
@@ -424,11 +430,21 @@ number_chars(N, Chars) :-
     number_codes(N, Codes).
 
 %!  retractall(+Head) is det.
+%   an unknown predicate is created as dynamic.
 retractall(Head) :-
-    ( copy_term(Head, Fresh), retract(Fresh) -> retractall(Head) ; true ).
+    '$check_static'(Head),
+    '$make_dynamic'(Head),
+    '$retractall'(Head).
+
+'$retractall'(Head) :-
+    ( copy_term(Head, Fresh), '$$retract'(Fresh) -> '$retractall'(Head) ; true ).
 
 %!  abolish(+Name/Arity) is det.
-abolish(Name/Arity) :- functor(Head, Name, Arity), retractall(Head).
+%   the predicate stops existing
+abolish(Name/Arity) :-
+    functor(Head, Name, Arity),
+    retractall(Head),
+    '$$undynamic'(Name, Arity).
 
 % --- operators ---
 
