@@ -21,5 +21,5 @@ missing requirements:
 guidelines:
 - as much logic in prolog as possible
 - minimize the interpreter code in C
-- same kind of embeddability goals as on main
+- same kind of embeddability goals as on main, we are stuck with linux currently
 - malloc/realloc usage minimized, ideally the memory we can use is up to the user embedding the interpreter

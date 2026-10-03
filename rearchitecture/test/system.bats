@@ -977,6 +977,21 @@ TRILOG="./trilog"
 
 # --- term copying: variable sharing, cyclic terms, occurs check ---
 
+@test "unifying and comparing two cyclic terms terminates (regression)" {
+  # regression: X = f(X), Y = f(Y), X = Y recursed forever and segfaulted, as did == and compare/3.
+  run timeout 20 "$TRILOG" -e "
+    X = f(X), Y = f(Y), X = Y, X == Y, compare(O1, X, Y),
+    A = f(A), B = f(f(B)), A = B, A == B,
+    L = [a|L], M = [a, a|M], L = M, L == M,
+    P = f(P, 1), Q = f(Q, 2), ( P = Q -> R1 = unified ; R1 = failed ),
+    ( P == Q -> R2 = same ; R2 = different ), compare(O2, P, Q),
+    C = g(C), D = g(D), unify_with_occurs_check(C, D),
+    write(r(O1, R1, R2, O2)), nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"r(=, failed, different, <)"* ]]
+}
+
 @test "a 300000-element list survives unify, compare, copy, findall and assert (regression)" {
   # regression: each of these recursed in C once per list cell and overflowed the C stack.
   run "$TRILOG" -e "

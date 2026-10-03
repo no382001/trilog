@@ -987,7 +987,9 @@ static int cstr_from_codes(size_t list, char *buf, size_t bufcap,
 }
 
 // Recurses into every argument but the last and loops on that one.
-static int term_compare(size_t a, size_t b) {
+static pair_visits compare_visits;
+
+static int term_compare_rec(size_t a, size_t b) {
   for (;;) {
     a = heap_deref(a);
     b = heap_deref(b);
@@ -1037,8 +1039,10 @@ static int term_compare(size_t a, size_t b) {
         int nc = strcmp(atom_name(af_id), atom_name(bf_id));
         return nc < 0 ? -1 : 1;
       }
+      if (pair_visits_seen(&compare_visits, af, bf))
+        return 0; // already being compared, so equal as rational trees
       for (int32_t i = 1; i < aa; i++) {
-        int c = term_compare(af + (size_t)i, bf + (size_t)i);
+        int c = term_compare_rec(af + (size_t)i, bf + (size_t)i);
         if (c != 0)
           return c;
       }
@@ -1049,6 +1053,11 @@ static int term_compare(size_t a, size_t b) {
     }
     }
   }
+}
+
+static int term_compare(size_t a, size_t b) {
+  pair_visits_reset(&compare_visits);
+  return term_compare_rec(a, b);
 }
 
 static int resolve_stream_id(size_t arg, int *id_out) {
