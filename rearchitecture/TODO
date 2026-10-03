@@ -1,4 +1,3 @@
 - dcg: \+//1, call//N and pushback are missing
-- make assert/retract cheaper by not shifting the whole clause array on every removal.
 - investigate the oom errors at 100k facts and 1M-element lists, and the high RSS on recursion and atoms.
 - port ledit?

@@ -16,9 +16,16 @@ solve(A, _Mark) :-
     ( Cands == [] ->
         call(A)
     ; '$$choice_mark'(NewMark),
-      member(A - Body, Cands),
-      solve(Body, NewMark)
+      '$solve_alts'(Cands, A, NewMark)
     ).
+
+% Like member/2 over candidates, but the last one leaves no choicepoint.
+'$solve_alts'([A1 - Body|Cs], A, Mark) :- '$solve_alt'(Cs, A1, Body, A, Mark).
+
+% Indexing on [] vs [_|_] keeps a single candidate choicepoint-free.
+'$solve_alt'([], A1, Body, A, Mark) :- A = A1, solve(Body, Mark).
+'$solve_alt'([_|_], A1, Body, A, Mark) :- A = A1, solve(Body, Mark).
+'$solve_alt'([C|Cs], _, _, A, Mark) :- '$solve_alts'([C|Cs], A, Mark).
 
 % --- control ---
 

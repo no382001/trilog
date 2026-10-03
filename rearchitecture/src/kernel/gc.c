@@ -187,15 +187,19 @@ static size_t compact_trail(size_t old_trail_top) {
   return write_ptr;
 }
 
+#ifndef GC_MIN_CELLS
+#define GC_MIN_CELLS 16384
+#endif
+
 static size_t gc_threshold = 0; // 0 = uninitialized
 
 static size_t gc_get_threshold(void) {
   if (gc_threshold != 0)
     return gc_threshold;
   const char *env = getenv("TRILOG_GC_THRESHOLD");
-  gc_threshold = env ? (size_t)strtoul(env, NULL, 10) : 4096;
+  gc_threshold = env ? (size_t)strtoul(env, NULL, 10) : GC_MIN_CELLS;
   if (gc_threshold == 0)
-    gc_threshold = 4096; // reject a nonsense override
+    gc_threshold = GC_MIN_CELLS; // reject a nonsense override
   return gc_threshold;
 }
 
@@ -361,7 +365,7 @@ void gc_maybe_run(size_t *cn, frame_t *frames, size_t nframes, size_t *rename,
   // grow the threshold with live data, unless a test forces GC every
   // safepoint via TRILOG_GC_THRESHOLD.
   if (!getenv("TRILOG_GC_THRESHOLD"))
-    gc_threshold = new_top * 2 > 4096 ? new_top * 2 : 4096;
+    gc_threshold = new_top * 2 > GC_MIN_CELLS ? new_top * 2 : GC_MIN_CELLS;
 
   // tie capacity to gc_threshold so it can shrink after a big collection.
   heap_set_capacity(gc_threshold);
