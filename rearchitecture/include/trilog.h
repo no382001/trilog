@@ -19,7 +19,8 @@ typedef struct {
 typedef enum {
   TRILOG_FALSE = 0, // no solution
   TRILOG_TRUE = 1,  // at least one solution
-  TRILOG_ERROR = 2, // uncaught exception, syntax error, or misuse
+  TRILOG_ERROR = 2, // uncaught exception, syntax error, out of memory, misuse
+  TRILOG_HALT = 3,  // halt/1 ran; see trilog_halt_code
 } trilog_status_t;
 
 typedef enum {
@@ -34,6 +35,9 @@ typedef enum {
 typedef struct {
   // NULL boots from the copy of boot/core.pl baked in by `make release`.
   const char *boot_path;
+  void *(*realloc)(void *ud, void *p, size_t n);
+  void (*free)(void *ud, void *p);
+  void *alloc_ud;
 } trilog_config_t;
 
 typedef struct {
@@ -41,14 +45,16 @@ typedef struct {
   size_t heap_peak_bytes;
 } trilog_usage_t;
 
-// Accepts a NULL config. Returns NULL if booting fails.
+// Accepts a NULL config. Returns NULL if booting fails,
+// or if only one of the allocator hooks is set.
 trilog_t *trilog_new(const trilog_config_t *config);
 void trilog_free(trilog_t *t);
 
-// Clauses are added and directives run as the text is read.
-// Returns false on a syntax error or a missing file.
-bool trilog_load_file(trilog_t *t, const char *path);
-bool trilog_load_string(trilog_t *t, const char *text);
+trilog_status_t trilog_load_file(trilog_t *t, const char *path);
+trilog_status_t trilog_load_string(trilog_t *t, const char *text);
+
+// After TRILOG_HALT, the code halt/1 was given.
+int trilog_halt_code(trilog_t *t);
 
 // Called once per solution, with has_more false when no choicepoint is left.
 // Return true to ask for the next solution.

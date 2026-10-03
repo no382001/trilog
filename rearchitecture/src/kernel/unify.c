@@ -2,6 +2,7 @@
 #include "ctx.h"
 #include "heap.h"
 #include "io.h"
+#include "mem.h"
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -24,10 +25,11 @@ static size_t pair_slot(size_t fa, size_t fb, size_t cap) {
 
 static void pair_visits_grow(trilog_t *T, pair_visits *v) {
   size_t cap = v->cap ? v->cap * 2 : 1024;
-  size_t *na = malloc(cap * sizeof *na), *nb = malloc(cap * sizeof *nb);
-  if (!na || !nb) {
-    io_write_err(T, "out of memory\n");
-    exit(1);
+  size_t *na = mem_grow_n(T, NULL, cap, sizeof *na);
+  size_t *nb = mem_realloc(T, NULL, cap * sizeof *nb);
+  if (!nb) {
+    mem_free(T, na);
+    mem_fail(T);
   }
   for (size_t i = 0; i < cap; i++)
     na[i] = SIZE_MAX;
@@ -40,16 +42,16 @@ static void pair_visits_grow(trilog_t *T, pair_visits *v) {
     na[j] = v->a[i];
     nb[j] = v->b[i];
   }
-  free(v->a);
-  free(v->b);
+  mem_free(T, v->a);
+  mem_free(T, v->b);
   v->a = na;
   v->b = nb;
   v->cap = cap;
 }
 
-void pair_visits_free(pair_visits *v) {
-  free(v->a);
-  free(v->b);
+void pair_visits_free(trilog_t *T, pair_visits *v) {
+  mem_free(T, v->a);
+  mem_free(T, v->b);
 }
 
 int pair_visits_seen(trilog_t *T, pair_visits *v, size_t fa, size_t fb) {
@@ -70,12 +72,7 @@ int pair_visits_seen(trilog_t *T, pair_visits *v, size_t fa, size_t fb) {
 static void occurs_mark(trilog_t *T, size_t f) {
   if (T->occurs_len == T->occurs_cap) {
     size_t cap = T->occurs_cap ? T->occurs_cap * 2 : 64;
-    size_t *grown = realloc(T->occurs_marks, cap * sizeof *grown);
-    if (!grown) {
-      io_write_err(T, "out of memory\n");
-      exit(1);
-    }
-    T->occurs_marks = grown;
+    T->occurs_marks = mem_grow_n(T, T->occurs_marks, cap, sizeof(size_t));
     T->occurs_cap = cap;
   }
   T->heap[f].as.func.arity = -1 - T->heap[f].as.func.arity;

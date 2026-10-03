@@ -1,6 +1,7 @@
 #include "arena.h"
 #include "ctx.h"
 #include "io.h"
+#include "mem.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,12 +16,9 @@ typedef struct chunk {
 
 static chunk_t *new_chunk(trilog_t *T, size_t at_least) {
   size_t cap = at_least > CHUNK_SIZE ? at_least : CHUNK_SIZE;
-  chunk_t *c =
-      cap <= SIZE_MAX - sizeof(chunk_t) ? malloc(sizeof(chunk_t) + cap) : NULL;
-  if (!c) {
-    io_write_err(T, "out of memory\n");
-    exit(1);
-  }
+  if (cap > SIZE_MAX - sizeof(chunk_t))
+    mem_fail(T);
+  chunk_t *c = mem_grow_n(T, NULL, 1, sizeof(chunk_t) + cap);
   c->next = T->arena_current;
   c->used = 0;
   c->cap = cap;
@@ -46,7 +44,7 @@ char *arena_strdup(trilog_t *T, const char *s) {
 void arena_free(trilog_t *T) {
   while (T->arena_current) {
     chunk_t *next = T->arena_current->next;
-    free(T->arena_current);
+    mem_free(T, T->arena_current);
     T->arena_current = next;
   }
 }

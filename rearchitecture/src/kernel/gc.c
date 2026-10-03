@@ -2,6 +2,7 @@
 #include "ctx.h"
 #include "heap.h"
 #include "io.h"
+#include "mem.h"
 #include "platform.h"
 #include <setjmp.h>
 #include <stdint.h>
@@ -10,15 +11,15 @@
 #include <string.h>
 
 static void *gc_realloc_or_die(trilog_t *T, void *p, size_t n) {
-  void *r = realloc(p, n);
+  void *r = mem_realloc(T, p, n);
   if (!r && n != 0)
     longjmp(T->gc_oom, 1);
   return r;
 }
 
 // Shrinking runs after compaction, so a failure keeps the bigger buffer.
-static void *gc_shrink(void *p, size_t n) {
-  void *r = realloc(p, n);
+static void *gc_shrink(trilog_t *T, void *p, size_t n) {
+  void *r = mem_realloc(T, p, n);
   return r ? r : p;
 }
 
@@ -130,15 +131,15 @@ static void shrink_scratch_to(trilog_t *T, size_t n) {
   if (n < 1024)
     n = 1024;
   if (T->marked_cap > n) {
-    T->marked = gc_shrink(T->marked, n);
+    T->marked = gc_shrink(T, T->marked, n);
     T->marked_cap = n;
   }
   if (T->new_index_cap > n) {
-    T->new_index = gc_shrink(T->new_index, n * sizeof(size_t));
+    T->new_index = gc_shrink(T, T->new_index, n * sizeof(size_t));
     T->new_index_cap = n;
   }
   if (T->trail_new_index_cap > n) {
-    T->trail_new_index = gc_shrink(T->trail_new_index, n * sizeof(size_t));
+    T->trail_new_index = gc_shrink(T, T->trail_new_index, n * sizeof(size_t));
     T->trail_new_index_cap = n;
   }
 }
@@ -316,9 +317,9 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
   // trail_new_index must be computed from the trail's ORIGINAL contents,
   // before compact_trail() mutates it in place
   if (old_trail_top + 1 > T->trail_new_index_cap) {
-    T->trail_new_index_cap = old_trail_top + 1;
     T->trail_new_index = gc_realloc_or_die(
-        T, T->trail_new_index, T->trail_new_index_cap * sizeof(size_t));
+        T, T->trail_new_index, (old_trail_top + 1) * sizeof(size_t));
+    T->trail_new_index_cap = old_trail_top + 1;
   }
   {
     size_t *trail = trail_array(T);

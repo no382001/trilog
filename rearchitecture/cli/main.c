@@ -72,6 +72,8 @@ static void toplevel_query(const char *goal, bool interactive) {
     if (trilog_term_type(T, trilog_error_term(T)) != TRILOG_INVALID)
       print_uncaught();
     break;
+  case TRILOG_HALT:
+    exit(trilog_halt_code(T));
   }
 }
 
@@ -174,7 +176,8 @@ static void load_init_file(int verbose) {
     return;
   }
   fclose(f);
-  trilog_load_file(T, path);
+  if (trilog_load_file(T, path) == TRILOG_HALT)
+    exit(trilog_halt_code(T));
 }
 
 int main(int argc, char **argv) {
@@ -215,13 +218,19 @@ int main(int argc, char **argv) {
     } else if (!strcmp(argv[i], "-e") && i + 1 < argc) {
       i++;
     } else {
-      if (!trilog_load_file(T, argv[i]))
+      trilog_status_t s = trilog_load_file(T, argv[i]);
+      if (s == TRILOG_HALT)
+        exit(trilog_halt_code(T));
+      if (s != TRILOG_TRUE)
         return 1;
     }
   }
 
   if (query) {
-    if (trilog_query(T, query, batch_solution, NULL) == TRILOG_ERROR) {
+    trilog_status_t s = trilog_query(T, query, batch_solution, NULL);
+    if (s == TRILOG_HALT)
+      exit(trilog_halt_code(T));
+    if (s == TRILOG_ERROR) {
       if (trilog_term_type(T, trilog_error_term(T)) == TRILOG_INVALID)
         return 1;
       print_uncaught();

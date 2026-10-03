@@ -5,7 +5,7 @@ CPPFLAGS = -Iinclude -Isrc/kernel -Isrc/io -Isrc/platform -MMD -MP
 
 PLATFORM ?= posix
 KERNEL_SRCS = src/kernel/heap.c src/kernel/unify.c src/kernel/term.c src/kernel/solve.c \
-              src/kernel/parse.c src/kernel/arena.c src/kernel/gc.c
+              src/kernel/parse.c src/kernel/arena.c src/kernel/gc.c src/kernel/mem.c
 IO_SRCS = src/io/io.c src/io/streams.c
 LIB_SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c src/platform/$(PLATFORM).c
 CLI_SRCS = cli/main.c cli/terminal_$(PLATFORM).c
@@ -44,7 +44,7 @@ $(REL)/trilog: $(REL_CLI_OBJS) $(REL)/libtrilog.a
 	$(CC) $(CFLAGS) -flto=auto -o $@ $^ -lm
 
 -include $(DEV_LIB_OBJS:.o=.d) $(REL_LIB_OBJS:.o=.d) $(DEV_CLI_OBJS:.o=.d) $(REL_CLI_OBJS:.o=.d) \
-         $(DEV)/test/api_test.d $(DEV)/test/api_threads_test.d
+         $(DEV)/test/api_test.d $(DEV)/test/api_threads_test.d $(DEV)/test/api_oom_test.d
 
 .PHONY: trilog release lib
 trilog: $(DEV)/trilog
@@ -66,6 +66,9 @@ release: $(REL)/trilog
 _build/api_test: $(DEV)/test/api_test.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
+_build/api_oom_test: $(DEV)/test/api_oom_test.o $(DEV)/libtrilog.a
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
 _build/api_threads_test: $(DEV)/test/api_threads_test.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -pthread -o $@ $^ -lm
 
@@ -73,9 +76,10 @@ _build/api_threads_test: $(DEV)/test/api_threads_test.o $(DEV)/libtrilog.a
 test: trilog test-api
 	bats test/
 
-test-api: _build/api_test _build/api_threads_test
+test-api: _build/api_test _build/api_threads_test _build/api_oom_test
 	_build/api_test
 	_build/api_threads_test
+	_build/api_oom_test 2>/dev/null
 
 test-upstream: trilog
 	@tmp=$$(mktemp); \
@@ -126,10 +130,10 @@ quad-junit: trilog
 	@echo "JUnit reports written to _build/test-results/"
 
 clean:
-	rm -rf trilog _build/trilog _build/embedded.c _build/api_test _build/api_threads_test _build/dev-* _build/release-*
+	rm -rf trilog _build/trilog _build/embedded.c _build/api_test _build/api_threads_test _build/api_oom_test _build/dev-* _build/release-*
 
 format:
-	clang-format -i $(SRCS) test/api_test.c test/api_threads_test.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
+	clang-format -i $(SRCS) test/api_test.c test/api_threads_test.c test/api_oom_test.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
 
 format-check:
-	clang-format --dry-run --Werror $(SRCS) test/api_test.c test/api_threads_test.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
+	clang-format --dry-run --Werror $(SRCS) test/api_test.c test/api_threads_test.c test/api_oom_test.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)

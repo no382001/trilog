@@ -35,7 +35,7 @@ static bool collect(trilog_t *t, void *ud, bool has_more) {
 
 static void test_solutions(trilog_t *t) {
   CHECK(trilog_load_string(t, "p(1). p(two). p(\"x y\").\n"
-                              "q(X) :- p(X), X \\== two.\n"));
+                              "q(X) :- p(X), X \\== two.\n") == TRILOG_TRUE);
   collected c = {0};
   CHECK(trilog_query(t, "p(X)", collect, &c) == TRILOG_TRUE);
   CHECK(c.count == 3);
@@ -95,7 +95,7 @@ static bool inspect(trilog_t *t, void *ud, bool has_more) {
   CHECK(streq(tiny, "hel"));
 
   CHECK(trilog_query(t, "true", collect, &(collected){0}) == TRILOG_ERROR);
-  CHECK(!trilog_load_string(t, "r(1)."));
+  CHECK(trilog_load_string(t, "r(1).") == TRILOG_ERROR);
 
   ++*checked;
   return true;
@@ -129,8 +129,8 @@ static void test_errors(trilog_t *t) {
 
   CHECK(trilog_query(t, "foo(", collect, &c) == TRILOG_ERROR);
   CHECK(trilog_term_type(t, trilog_error_term(t)) == TRILOG_INVALID);
-  CHECK(!trilog_load_string(t, "broken( :- ."));
-  CHECK(!trilog_load_file(t, "/nonexistent/file.pl"));
+  CHECK(trilog_load_string(t, "broken( :- .") == TRILOG_ERROR);
+  CHECK(trilog_load_file(t, "/nonexistent/file.pl") == TRILOG_ERROR);
   CHECK(c.count == 0);
 
   collected after = {0};
@@ -140,7 +140,7 @@ static void test_errors(trilog_t *t) {
 
 static void test_directives(trilog_t *t) {
   CHECK(trilog_load_string(t, ":- dynamic(seen/1).\n"
-                              ":- assertz(seen(directive)).\n"));
+                              ":- assertz(seen(directive)).\n") == TRILOG_TRUE);
   collected c = {0};
   CHECK(trilog_query(t, "seen(X)", collect, &c) == TRILOG_TRUE);
   CHECK(c.count == 1 && streq(c.text[0], "directive"));
@@ -165,8 +165,8 @@ static void test_two_interpreters(void) {
   CHECK(a && b);
   if (!a || !b)
     return;
-  CHECK(trilog_load_string(a, "who(first). n(0)."));
-  CHECK(trilog_load_string(b, "who(second)."));
+  CHECK(trilog_load_string(a, "who(first). n(0).") == TRILOG_TRUE);
+  CHECK(trilog_load_string(b, "who(second).") == TRILOG_TRUE);
   for (int i = 0; i < 3; i++) {
     collected ca = {0}, cb = {0};
     CHECK(trilog_query(a, "who(X)", collect, &ca) == TRILOG_TRUE);

@@ -5,6 +5,7 @@
 #include "gc.h"
 #include "heap.h"
 #include "io.h"
+#include "mem.h"
 #include "parse.h"
 #include "platform.h"
 #include "streams.h"
@@ -20,17 +21,6 @@
 // real cap enforced by functor/3 and =../2 below;
 // current_prolog_flag(max_arity, V) reports this exact number.
 #define MAX_ARITY 255
-
-// A failed realloc used to go unchecked, corrupting on the NULL it
-// produced instead of reporting the OOM.
-static void *solve_realloc_or_die(trilog_t *T, void *p, size_t n) {
-  void *r = realloc(p, n);
-  if (!r && n != 0) {
-    io_write_err(T, "out of memory\n");
-    exit(1);
-  }
-  return r;
-}
 
 static uint32_t pred_hash_slot(int32_t pred_id, int32_t pred_arity) {
   uint32_t h = (uint32_t)pred_id * 2654435761u + (uint32_t)pred_arity * 40503u;
@@ -51,7 +41,8 @@ static pred_bucket_t *pred_bucket_find_or_create(trilog_t *T, int32_t pred_id,
   pred_bucket_t *b = pred_bucket_find(T, pred_id, pred_arity);
   if (b)
     return b;
-  b = calloc(1, sizeof(pred_bucket_t));
+  b = mem_grow_n(T, NULL, 1, sizeof(pred_bucket_t));
+  *b = (pred_bucket_t){0};
   b->pred_id = pred_id;
   b->pred_arity = pred_arity;
   uint32_t slot = pred_hash_slot(pred_id, pred_arity);
@@ -63,9 +54,9 @@ static pred_bucket_t *pred_bucket_find_or_create(trilog_t *T, int32_t pred_id,
 static void pred_bucket_grow_if_needed(trilog_t *T, pred_bucket_t *b) {
   if (b->count < b->cap)
     return;
-  b->cap = b->cap ? b->cap * 2 : 4;
-  b->indices =
-      solve_realloc_or_die(T, b->indices, (size_t)b->cap * sizeof(int32_t));
+  int32_t cap = b->cap ? b->cap * 2 : 4;
+  b->indices = mem_grow_n(T, b->indices, (size_t)cap, sizeof(int32_t));
+  b->cap = cap;
 }
 
 static void pred_bucket_add_index(trilog_t *T, int32_t pred_id,
@@ -118,9 +109,9 @@ void catch_stack_set_size(trilog_t *T, size_t n) { T->catch_sp = n; }
 
 static size_t catch_stack_push(trilog_t *T, catch_frame_t f) {
   if (T->catch_sp >= T->catch_cap) {
-    T->catch_cap = T->catch_cap ? T->catch_cap * 2 : 16;
-    T->catch_stack = solve_realloc_or_die(T, T->catch_stack,
-                                          T->catch_cap * sizeof(catch_frame_t));
+    size_t cap = T->catch_cap ? T->catch_cap * 2 : 16;
+    T->catch_stack = mem_grow_n(T, T->catch_stack, cap, sizeof(catch_frame_t));
+    T->catch_cap = cap;
   }
   T->catch_stack[T->catch_sp] = f;
   return T->catch_sp++;
@@ -293,8 +284,9 @@ static int no_more_candidates(trilog_t *T, int32_t from_idx,
 static void db_ensure_cap(trilog_t *T) {
   if (T->db_count < T->db_cap)
     return;
-  T->db_cap = T->db_cap ? T->db_cap * 2 : 8;
-  T->db = solve_realloc_or_die(T, T->db, (size_t)T->db_cap * sizeof(clause_t));
+  int32_t cap = T->db_cap ? T->db_cap * 2 : 8;
+  T->db = mem_grow_n(T, T->db, (size_t)cap, sizeof(clause_t));
+  T->db_cap = cap;
 }
 
 static int is_dynamic(trilog_t *T, int32_t pred_id,
@@ -315,9 +307,10 @@ static void mark_consulted(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
       was_consulted(T, pred_id, pred_arity))
     return;
   if (T->consulted_count >= T->consulted_cap) {
-    T->consulted_cap = T->consulted_cap ? T->consulted_cap * 2 : 8;
-    T->consulted_decls = solve_realloc_or_die(
-        T, T->consulted_decls, (size_t)T->consulted_cap * sizeof(pred_decl_t));
+    int32_t cap = T->consulted_cap ? T->consulted_cap * 2 : 8;
+    T->consulted_decls =
+        mem_grow_n(T, T->consulted_decls, (size_t)cap, sizeof(pred_decl_t));
+    T->consulted_cap = cap;
   }
   T->consulted_decls[T->consulted_count++] = (pred_decl_t){pred_id, pred_arity};
 }
@@ -333,14 +326,16 @@ static void unmark_consulted(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
 
 void db_add(trilog_t *T, tterm_t *head, tterm_t **body, int32_t nbody,
             int32_t nvars, int mark_static) {
-  db_ensure_cap(T);
   idx_key_t key = key_of_template(head);
+  pred_bucket_grow_if_needed(
+      T, pred_bucket_find_or_create(T, key.pred_id, key.pred_arity));
+  db_ensure_cap(T);
+  if (mark_static)
+    mark_consulted(T, key.pred_id, key.pred_arity);
   int32_t idx = T->db_count++;
   T->db[idx] = (clause_t){
       .head = head, .body = body, .nbody = nbody, .nvars = nvars, .key = key};
   pred_bucket_add_index(T, key.pred_id, key.pred_arity, idx);
-  if (mark_static)
-    mark_consulted(T, key.pred_id, key.pred_arity);
 }
 
 static void db_fixup_choice_points_insert_at(trilog_t *T, int32_t at) {
@@ -351,10 +346,12 @@ static void db_fixup_choice_points_insert_at(trilog_t *T, int32_t at) {
 
 static void db_add_front(trilog_t *T, tterm_t *head, tterm_t **body,
                          int32_t nbody, int32_t nvars) {
+  idx_key_t key = key_of_template(head);
+  pred_bucket_grow_if_needed(
+      T, pred_bucket_find_or_create(T, key.pred_id, key.pred_arity));
   db_ensure_cap(T);
   memmove(&T->db[1], &T->db[0], (size_t)T->db_count * sizeof(clause_t));
   T->db_count++;
-  idx_key_t key = key_of_template(head);
   T->db[0] = (clause_t){
       .head = head, .body = body, .nbody = nbody, .nvars = nvars, .key = key};
   db_fixup_choice_points_insert_at(T, 0);
@@ -367,8 +364,8 @@ static void db_add_front(trilog_t *T, tterm_t *head, tterm_t **body,
 // bucket entries, and choicepoints' resume positions (a lower bound, so it
 // maps to the number of live slots before it).
 static void db_compact(trilog_t *T) {
-  int32_t *newpos = solve_realloc_or_die(
-      T, NULL, (size_t)(T->db_count + 1) * sizeof(int32_t));
+  int32_t *newpos =
+      mem_grow_n(T, NULL, (size_t)T->db_count + 1, sizeof(int32_t));
   int32_t live = 0;
   for (int32_t i = 0; i < T->db_count; i++) {
     newpos[i] = live;
@@ -384,7 +381,7 @@ static void db_compact(trilog_t *T) {
     T->stack[i].clause_idx = newpos[T->stack[i].clause_idx];
   T->db_count = live;
   T->db_dead = 0;
-  free(newpos);
+  mem_free(T, newpos);
 }
 
 // unlinks the clause from its bucket and leaves db[idx] as a dead slot, so no
@@ -401,14 +398,16 @@ static void db_remove_at(trilog_t *T, int32_t idx) {
 static void dynamic_declare(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
   if (is_dynamic(T, pred_id, pred_arity))
     return;
+  pred_bucket_t *b = pred_bucket_find_or_create(T, pred_id, pred_arity);
   if (T->dynamic_count >= T->dynamic_cap) {
-    T->dynamic_cap = T->dynamic_cap ? T->dynamic_cap * 2 : 8;
-    T->dynamic_decls = solve_realloc_or_die(
-        T, T->dynamic_decls, (size_t)T->dynamic_cap * sizeof(dyn_decl_t));
+    int32_t cap = T->dynamic_cap ? T->dynamic_cap * 2 : 8;
+    T->dynamic_decls =
+        mem_grow_n(T, T->dynamic_decls, (size_t)cap, sizeof(dyn_decl_t));
+    T->dynamic_cap = cap;
   }
   T->dynamic_decls[T->dynamic_count++] = (dyn_decl_t){pred_id, pred_arity};
   unmark_consulted(T, pred_id, pred_arity);
-  pred_bucket_find_or_create(T, pred_id, pred_arity)->dynamic = 1;
+  b->dynamic = 1;
 }
 
 static void dynamic_undeclare(trilog_t *T, int32_t pred_id,
@@ -432,9 +431,9 @@ static int is_dynamic(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
 
 static void stack_push(trilog_t *T, frame_t f) {
   if (T->sp >= T->stack_cap) {
-    T->stack_cap = T->stack_cap ? T->stack_cap * 2 : 64;
-    T->stack =
-        solve_realloc_or_die(T, T->stack, T->stack_cap * sizeof(frame_t));
+    size_t cap = T->stack_cap ? T->stack_cap * 2 : 64;
+    T->stack = mem_grow_n(T, T->stack, cap, sizeof(frame_t));
+    T->stack_cap = cap;
   }
   T->stack[T->sp++] = f;
 }
@@ -978,7 +977,7 @@ static int dispatch_builtin(trilog_t *T, size_t goal, int *ok) {
       *ok = 0;
       return 1;
     }
-    exit((int)T->heap[d].as.ival);
+    engine_halt(T, (int)T->heap[d].as.ival);
   }
 
   // flush_output/0 always flushes stdout specifically (not whichever stream

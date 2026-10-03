@@ -3,27 +3,81 @@
 #include "ctx.h"
 #include "heap.h"
 #include "io.h"
+#include "mem.h"
 #include "parse.h"
 #include "solve.h"
 #include "term.h"
+#include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
 
 static const trilog_term_t invalid_term = {(size_t)-1};
 
+static void *libc_realloc(void *ud, void *p, size_t n) {
+  (void)ud;
+  return realloc(p, n);
+}
+
+static void libc_free(void *ud, void *p) {
+  (void)ud;
+  free(p);
+}
+
+static trilog_status_t unwound(trilog_t *t) {
+  t->heap_top = 0;
+  t->trail_top = 0;
+  t->occurs_len = 0;
+  t->template_marks_len = 0;
+  t->template_cyclic = 0;
+  t->sp = 0;
+  t->query_sp_base = 0;
+  t->query_depth = 0;
+  t->catch_sp = 0;
+  t->capture_sp = 0;
+  t->capture_pos = 0;
+  t->tta_pos = 0;
+  t->print_depth = 0;
+  t->solution_rename = NULL;
+  t->pending_error_ball = (size_t)-1;
+  t->uncaught_ball = (size_t)-1;
+  t->P = NULL;
+  t->consulting = NULL;
+  t->in_query = false;
+  t->in_callback = false;
+  t->error = invalid_term;
+  if (t->halted) {
+    t->halted = false;
+    return TRILOG_HALT;
+  }
+  return TRILOG_ERROR;
+}
+
 trilog_t *trilog_new(const trilog_config_t *config) {
-  trilog_t *t = calloc(1, sizeof *t);
+  trilog_config_t c = config ? *config : (trilog_config_t){0};
+  if (!c.realloc != !c.free)
+    return NULL;
+  if (!c.realloc) {
+    c.realloc = libc_realloc;
+    c.free = libc_free;
+  }
+  trilog_t *t = c.realloc(c.alloc_ud, NULL, sizeof *t);
   if (!t)
     return NULL;
+  memset(t, 0, sizeof *t);
+  t->alloc_realloc = c.realloc;
+  t->alloc_free = c.free;
+  t->alloc_ud = c.alloc_ud;
   t->error = invalid_term;
   t->pending_error_ball = (size_t)-1;
   t->uncaught_ball = (size_t)-1;
   t->epoch_ms = -1;
   io_hooks_init_default(t);
+  if (setjmp(t->fatal_jmp)) {
+    trilog_free(t);
+    return NULL;
+  }
   heap_init(t);
-  const char *boot =
-      config && config->boot_path ? config->boot_path : "embedded:boot/core.pl";
-  if (!consult_file(t, boot)) {
+  if (!consult_file(t, c.boot_path ? c.boot_path : "embedded:boot/core.pl")) {
     trilog_free(t);
     return NULL;
   }
@@ -38,49 +92,52 @@ void trilog_free(trilog_t *t) {
   for (int i = 0; i < PRED_HASH_SIZE; i++)
     while (t->pred_hash[i]) {
       pred_bucket_t *next = t->pred_hash[i]->next;
-      free(t->pred_hash[i]->indices);
-      free(t->pred_hash[i]);
+      mem_free(t, t->pred_hash[i]->indices);
+      mem_free(t, t->pred_hash[i]);
       t->pred_hash[i] = next;
     }
-  free(t->db);
-  free(t->consulted_decls);
-  free(t->dynamic_decls);
-  free(t->stack);
-  free(t->catch_stack);
-  pair_visits_free(&t->compare_visits);
-  pair_visits_free(&t->unify_visits);
-  pair_visits_free(&t->occurs_check_visits);
-  free(t->occurs_marks);
-  free(t->template_marks);
-  free(t->marked);
-  free(t->new_index);
-  free(t->trail_new_index);
-  free(t->catch_live);
-  free(t->new_catch_index);
-  free(t->heap);
-  free(t->trail);
-  free(t->atoms);
+  mem_free(t, t->db);
+  mem_free(t, t->consulted_decls);
+  mem_free(t, t->dynamic_decls);
+  mem_free(t, t->stack);
+  mem_free(t, t->catch_stack);
+  pair_visits_free(t, &t->compare_visits);
+  pair_visits_free(t, &t->unify_visits);
+  pair_visits_free(t, &t->occurs_check_visits);
+  mem_free(t, t->occurs_marks);
+  mem_free(t, t->template_marks);
+  mem_free(t, t->marked);
+  mem_free(t, t->new_index);
+  mem_free(t, t->trail_new_index);
+  mem_free(t, t->catch_live);
+  mem_free(t, t->new_catch_index);
+  mem_free(t, t->heap);
+  mem_free(t, t->trail);
+  mem_free(t, t->atoms);
   arena_free(t);
-  free(t);
+  t->alloc_free(t->alloc_ud, t);
 }
 
-bool trilog_load_file(trilog_t *t, const char *path) {
+static trilog_status_t load(trilog_t *t, const char *path, const char *text) {
   if (t->in_query)
-    return false;
+    return TRILOG_ERROR;
   t->in_query = true;
-  bool ok = consult_file(t, path);
+  if (setjmp(t->fatal_jmp))
+    return unwound(t);
+  bool ok = path ? consult_file(t, path) : consult_string(t, text);
   t->in_query = false;
-  return ok;
+  return ok ? TRILOG_TRUE : TRILOG_ERROR;
 }
 
-bool trilog_load_string(trilog_t *t, const char *text) {
-  if (t->in_query)
-    return false;
-  t->in_query = true;
-  bool ok = consult_string(t, text);
-  t->in_query = false;
-  return ok;
+trilog_status_t trilog_load_file(trilog_t *t, const char *path) {
+  return load(t, path, NULL);
 }
+
+trilog_status_t trilog_load_string(trilog_t *t, const char *text) {
+  return load(t, NULL, text);
+}
+
+int trilog_halt_code(trilog_t *t) { return t->halt_code; }
 
 typedef struct {
   trilog_t *t;
@@ -101,12 +158,16 @@ trilog_status_t trilog_query(trilog_t *t, const char *goal,
   t->error = invalid_term;
   if (t->in_query)
     return TRILOG_ERROR;
+  t->in_query = true;
+  if (setjmp(t->fatal_jmp))
+    return unwound(t);
   tterm_t **goals;
   int32_t ngoals, nvars;
   const char **names;
-  if (!parse_query(t, goal, &goals, &ngoals, &nvars, &names))
+  if (!parse_query(t, goal, &goals, &ngoals, &nvars, &names)) {
+    t->in_query = false;
     return TRILOG_ERROR;
-  t->in_query = true;
+  }
   t->nvars = nvars;
   t->varnames = names;
   solution_ctx c = {t, on_solution, ud};

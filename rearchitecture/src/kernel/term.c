@@ -4,6 +4,7 @@
 #include "ctx.h"
 #include "heap.h"
 #include "io.h"
+#include "mem.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -338,12 +339,7 @@ void print_term_via(trilog_t *T, size_t r, int quoted, emit_fn emit) {
 static void template_mark(trilog_t *T, size_t f) {
   if (T->template_marks_len == T->template_marks_cap) {
     size_t cap = T->template_marks_cap ? T->template_marks_cap * 2 : 64;
-    size_t *grown = realloc(T->template_marks, cap * sizeof *grown);
-    if (!grown) {
-      io_write_err(T, "out of memory\n");
-      exit(1);
-    }
-    T->template_marks = grown;
+    T->template_marks = mem_grow_n(T, T->template_marks, cap, sizeof(size_t));
     T->template_marks_cap = cap;
   }
   T->heap[f].as.func.arity = -1 - T->heap[f].as.func.arity;

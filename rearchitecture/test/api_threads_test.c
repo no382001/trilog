@@ -30,7 +30,7 @@ static void *run(void *arg) {
     }
     char src[64];
     snprintf(src, sizeof src, "mine(%d).", w->id);
-    if (!trilog_load_string(t, src))
+    if (trilog_load_string(t, src) != TRILOG_TRUE)
       w->failures++;
     int64_t n = 0;
     if (trilog_query(t,

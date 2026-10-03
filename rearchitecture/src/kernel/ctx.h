@@ -18,6 +18,13 @@
 struct chunk;
 
 struct trilog {
+  void *(*alloc_realloc)(void *ud, void *p, size_t n);
+  void (*alloc_free)(void *ud, void *p);
+  void *alloc_ud;
+  jmp_buf fatal_jmp;
+  bool halted;
+  int halt_code;
+
   struct chunk *arena_current;
 
   cell_t *heap;

@@ -3,30 +3,22 @@
 #include "atoms.h"
 #include "ctx.h"
 #include "io.h"
+#include "mem.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
-static void *heap_realloc_or_die(trilog_t *T, void *p, size_t n) {
-  void *r = realloc(p, n);
-  if (!r && n != 0) {
-    io_write_err(T, "out of memory\n");
-    exit(1);
-  }
-  return r;
-}
-
 void heap_init(trilog_t *T) {
+  T->heap = mem_grow_n(T, NULL, 1024, sizeof(cell_t));
   T->heap_cap = 1024;
-  T->heap = heap_realloc_or_die(T, NULL, T->heap_cap * sizeof(cell_t));
   T->heap_top = 0;
 
+  T->trail = mem_grow_n(T, NULL, 256, sizeof(size_t));
   T->trail_cap = 256;
-  T->trail = heap_realloc_or_die(T, NULL, T->trail_cap * sizeof(size_t));
   T->trail_top = 0;
 
+  T->atoms = mem_grow_n(T, NULL, 64, sizeof(char *));
   T->atom_cap = 64;
-  T->atoms = heap_realloc_or_die(T, NULL, T->atom_cap * sizeof(char *));
   T->atom_count = 0;
 #define X(name, text) atom_intern(T, text);
   WELL_KNOWN_ATOMS(X)
@@ -36,9 +28,11 @@ void heap_init(trilog_t *T) {
 
 size_t heap_alloc(trilog_t *T, size_t n) {
   if (T->heap_top + n > T->heap_cap) {
-    while (T->heap_top + n > T->heap_cap)
-      T->heap_cap *= 2;
-    T->heap = heap_realloc_or_die(T, T->heap, T->heap_cap * sizeof(cell_t));
+    size_t cap = T->heap_cap;
+    while (T->heap_top + n > cap)
+      cap *= 2;
+    T->heap = mem_grow_n(T, T->heap, cap, sizeof(cell_t));
+    T->heap_cap = cap;
   }
   size_t base = T->heap_top;
   T->heap_top += n;
@@ -107,8 +101,8 @@ void heap_release(trilog_t *T, size_t mark) { T->heap_top = mark; }
 void heap_bind(trilog_t *T, size_t var, size_t target) {
   T->heap[var].as.ref = target;
   if (T->trail_top >= T->trail_cap) {
+    T->trail = mem_grow_n(T, T->trail, T->trail_cap * 2, sizeof(size_t));
     T->trail_cap *= 2;
-    T->trail = heap_realloc_or_die(T, T->trail, T->trail_cap * sizeof(size_t));
   }
   T->trail[T->trail_top++] = var;
 }
@@ -127,8 +121,8 @@ int32_t atom_intern(trilog_t *T, const char *name) {
     if (strcmp(T->atoms[i], name) == 0)
       return i;
   if (T->atom_count >= T->atom_cap) {
+    T->atoms = mem_grow_n(T, T->atoms, (size_t)T->atom_cap * 2, sizeof(char *));
     T->atom_cap *= 2;
-    T->atoms = heap_realloc_or_die(T, T->atoms, T->atom_cap * sizeof(char *));
   }
   T->atoms[T->atom_count] = arena_strdup(T, name);
   return T->atom_count++;
@@ -151,8 +145,11 @@ void heap_set_capacity(trilog_t *T, size_t n) {
     n = 64;
   if (n == T->heap_cap)
     return;
+  cell_t *resized = mem_realloc(T, T->heap, n * sizeof(cell_t));
+  if (!resized)
+    return;
+  T->heap = resized;
   T->heap_cap = n;
-  T->heap = heap_realloc_or_die(T, T->heap, T->heap_cap * sizeof(cell_t));
 }
 
 size_t heap_capacity(trilog_t *T) { return T->heap_cap; }
