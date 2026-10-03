@@ -382,12 +382,29 @@ qa_number_vars_list([A|As], N0, N) :- qa_number_vars(A, N0, N1), qa_number_vars_
 
 is_error_expectation(Atom, Type) :- atom_concat('error(', Rest, Atom), atom_concat(Type, ')', Rest).
 
+% Falls back to comparing as terms: "foo/0" vs /(foo, 0), "a,b" vs "a, b".
 matches_error(Error, ExpType) :-
     term_to_atom(Error, ErrAtom),
     ( ErrAtom == ExpType -> true
     ; atom_concat(ExpType, _, ErrAtom) -> true
-    ; fail
+    ; strip_at_marks(ExpType, Clean),
+      catch(atom_to_term(Clean, ExpTerm, _), _, fail),
+      \+ \+ Error = ExpTerm
     ).
+
+% Some expected errors carry an @ prefix from the
+% suite they were transcribed from, so drop them.
+strip_at_marks(Atom, Clean) :-
+    atom_codes(Atom, Cs),
+    sam(Cs, out, Out),
+    atom_codes(Clean, Out).
+
+sam([], _, []).
+sam([0'@|Cs], out, Out) :- !, sam(Cs, out, Out).
+sam([0'\', 0'\'|Cs], sq, [0'\', 0'\'|Out]) :- !, sam(Cs, sq, Out).
+sam([0'\'|Cs], out, [0'\'|Out]) :- !, sam(Cs, sq, Out).
+sam([0'\'|Cs], sq, [0'\'|Out]) :- !, sam(Cs, out, Out).
+sam([C|Cs], St, [C|Out]) :- sam(Cs, St, Out).
 
 format_atom(Fmt, Args, Atom) :- with_output_to(atom(Atom), format_write(Fmt, Args)).
 

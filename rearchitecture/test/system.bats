@@ -986,6 +986,18 @@ TRILOG="./trilog"
   [[ "$output" != *"yes:"* ]]
 }
 
+@test "assert/retract/abolish raise the ISO errors for bad arguments" {
+  run "$TRILOG" -e "
+    E = error(X, _),
+    findall(X, ( member(G, [assertz(_), assertz(4), asserta((foo :- 4)), retract((4 :- _)),
+                            abolish(_), abolish(foo), abolish(foo/_), abolish(foo/a),
+                            abolish(5/2), abolish(foo/(-1))]),
+                 catch(G, E, true) ), Xs),
+    write(Xs), nl.
+  "
+  [[ "$output" == *"[instantiation_error, type_error(callable, 4), type_error(callable, 4), type_error(callable, 4), instantiation_error, type_error(predicate_indicator, foo), instantiation_error, type_error(integer, a), type_error(atom, 5), domain_error(not_less_than_zero, -1)]"* ]]
+}
+
 @test "an asserted predicate still exists, and fails, once its last clause is retracted (regression)" {
   # regression: a predicate counted as existing only while it had clauses, so calling an emptied one raised existence_error.
   run "$TRILOG" -e "

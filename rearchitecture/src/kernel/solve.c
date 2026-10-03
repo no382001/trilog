@@ -1950,6 +1950,9 @@ B: {
   predicate_known = bk && bk->count > 0;
   int32_t next = next_candidate(clause_idx, caller_key);
   if (next < 0) {
+    if (clause_idx > 0)
+      goto C; // resuming a call that already matched: out of clauses is a
+              // plain fail, even if the predicate was abolished meanwhile
     if (!predicate_known &&
         is_dynamic(caller_key.pred_id, caller_key.pred_arity))
       goto C; // declared dynamic - no clauses is a normal fail, not

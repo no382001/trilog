@@ -227,10 +227,10 @@ sort(L, Sorted) :- msort(L, M), '$dedup'(M, Sorted).
 %   Refuses static (consulted) predicates with permission_error unless declared dynamic/1;
 %   asserting makes the predicate dynamic, so it still exists (and fails) once
 %   its last clause is retracted.
-assertz(Clause) :- '$check_static'(Clause), '$make_dynamic'(Clause), '$$assertz'(Clause).
-assert(Clause) :- '$check_static'(Clause), '$make_dynamic'(Clause), '$$assert'(Clause).
-asserta(Clause) :- '$check_static'(Clause), '$make_dynamic'(Clause), '$$asserta'(Clause).
-retract(Clause) :- '$check_static'(Clause), '$$retract'(Clause).
+assertz(Clause) :- '$check_clause'(Clause), '$check_static'(Clause), '$make_dynamic'(Clause), '$$assertz'(Clause).
+assert(Clause) :- '$check_clause'(Clause), '$check_static'(Clause), '$make_dynamic'(Clause), '$$assert'(Clause).
+asserta(Clause) :- '$check_clause'(Clause), '$check_static'(Clause), '$make_dynamic'(Clause), '$$asserta'(Clause).
+retract(Clause) :- '$check_head'(Clause), '$check_static'(Clause), '$$retract'(Clause).
 
 '$check_static'(Clause) :-
     '$clause_head'(Clause, Head),
@@ -239,6 +239,31 @@ retract(Clause) :- '$check_static'(Clause), '$$retract'(Clause).
     -> throw(error(permission_error(modify, static_procedure, Name/Arity), _))
     ;  true
     ).
+
+% check:
+% - unbound clause or head
+% - non-callable head, or if a
+% - body cannot be converted to a goal
+'$check_clause'(Clause) :-
+    '$check_head'(Clause),
+    ( Clause = (_ :- Body), \+ '$body_goal'(Body)
+    -> throw(error(type_error(callable, Body), _))
+    ;  true
+    ).
+
+'$check_head'(Clause) :-
+    ( var(Clause) -> throw(error(instantiation_error, _)) ; true ),
+    '$clause_head'(Clause, Head),
+    ( var(Head) -> throw(error(instantiation_error, _))
+    ; callable(Head) -> true
+    ; throw(error(type_error(callable, Head), _))
+    ).
+
+'$body_goal'(B) :- var(B), !.
+'$body_goal'((A, B)) :- !, '$body_goal'(A), '$body_goal'(B).
+'$body_goal'((A ; B)) :- !, '$body_goal'(A), '$body_goal'(B).
+'$body_goal'((A -> B)) :- !, '$body_goal'(A), '$body_goal'(B).
+'$body_goal'(B) :- callable(B).
 
 '$make_dynamic'(Clause) :-
     '$clause_head'(Clause, Head),
@@ -441,7 +466,15 @@ retractall(Head) :-
 
 %!  abolish(+Name/Arity) is det.
 %   the predicate stops existing
-abolish(Name/Arity) :-
+abolish(PI) :-
+    ( var(PI) -> throw(error(instantiation_error, _)) ; true ),
+    ( PI = Name/Arity -> true ; throw(error(type_error(predicate_indicator, PI), _)) ),
+    ( ( var(Name) ; var(Arity) ) -> throw(error(instantiation_error, _)) ; true ),
+    ( atom(Name) -> true ; throw(error(type_error(atom, Name), _)) ),
+    ( integer(Arity) -> true ; throw(error(type_error(integer, Arity), _)) ),
+    ( Arity >= 0 -> true ; throw(error(domain_error(not_less_than_zero, Arity), _)) ),
+    current_prolog_flag(max_arity, MaxArity),
+    ( Arity =< MaxArity -> true ; throw(error(representation_error(max_arity), _)) ),
     functor(Head, Name, Arity),
     retractall(Head),
     '$$undynamic'(Name, Arity).
