@@ -97,13 +97,19 @@ static void pred_bucket_remove_index(int32_t pred_id, int32_t pred_arity,
   pred_bucket_t *b = pred_bucket_find(pred_id, pred_arity);
   if (!b)
     return;
-  for (int32_t i = 0; i < b->count; i++)
-    if (b->indices[i] == idx) {
-      memmove(&b->indices[i], &b->indices[i + 1],
-              (size_t)(b->count - i - 1) * sizeof(int32_t));
-      b->count--;
-      return;
-    }
+  int32_t lo = 0, hi = b->count; // indices stay sorted ascending
+  while (lo < hi) {
+    int32_t mid = lo + (hi - lo) / 2;
+    if (b->indices[mid] < idx)
+      lo = mid + 1;
+    else
+      hi = mid;
+  }
+  if (lo < b->count && b->indices[lo] == idx) {
+    memmove(&b->indices[lo], &b->indices[lo + 1],
+            (size_t)(b->count - lo - 1) * sizeof(int32_t));
+    b->count--;
+  }
 }
 
 static void pred_index_fixup_insert_at(int32_t at) {
@@ -112,13 +118,6 @@ static void pred_index_fixup_insert_at(int32_t at) {
       for (int32_t j = 0; j < b->count; j++)
         if (b->indices[j] >= at)
           b->indices[j]++;
-}
-static void pred_index_fixup_remove_at(int32_t at) {
-  for (int i = 0; i < PRED_HASH_SIZE; i++)
-    for (pred_bucket_t *b = pred_hash[i]; b; b = b->next)
-      for (int32_t j = 0; j < b->count; j++)
-        if (b->indices[j] > at)
-          b->indices[j]--;
 }
 
 static frame_t *stack = NULL;
@@ -505,11 +504,6 @@ static void db_fixup_choice_points_insert_at(int32_t at) {
     if (stack[i].clause_idx >= at)
       stack[i].clause_idx++;
 }
-static void db_fixup_choice_points_remove_at(int32_t at) {
-  for (size_t i = 0; i < sp; i++)
-    if (stack[i].clause_idx > at)
-      stack[i].clause_idx--;
-}
 
 static void db_add_front(tterm_t *head, tterm_t **body, int32_t nbody,
                          int32_t nvars) {
@@ -525,13 +519,40 @@ static void db_add_front(tterm_t *head, tterm_t **body, int32_t nbody,
   // asserta: never marks static - see db_add's comment.
 }
 
+static int32_t db_dead = 0;
+
+// slides live clauses down over dead slots, remapping every stored db index:
+// bucket entries, and choicepoints' resume positions (a lower bound, so it
+// maps to the number of live slots before it).
+static void db_compact(void) {
+  int32_t *newpos =
+      solve_realloc_or_die(NULL, (size_t)(db_count + 1) * sizeof(int32_t));
+  int32_t live = 0;
+  for (int32_t i = 0; i < db_count; i++) {
+    newpos[i] = live;
+    if (db[i].head)
+      db[live++] = db[i];
+  }
+  newpos[db_count] = live;
+  for (int i = 0; i < PRED_HASH_SIZE; i++)
+    for (pred_bucket_t *b = pred_hash[i]; b; b = b->next)
+      for (int32_t j = 0; j < b->count; j++)
+        b->indices[j] = newpos[b->indices[j]];
+  for (size_t i = 0; i < sp; i++)
+    stack[i].clause_idx = newpos[stack[i].clause_idx];
+  db_count = live;
+  db_dead = 0;
+  free(newpos);
+}
+
+// unlinks the clause from its bucket and leaves db[idx] as a dead slot, so no
+// shifting or fixups per removal; db_compact reclaims slots once dead ones
+// outnumber live ones.
 static void db_remove_at(int32_t idx) {
   pred_bucket_remove_index(db[idx].key.pred_id, db[idx].key.pred_arity, idx);
-  memmove(&db[idx], &db[idx + 1],
-          (size_t)(db_count - idx - 1) * sizeof(clause_t));
-  db_count--;
-  db_fixup_choice_points_remove_at(idx);
-  pred_index_fixup_remove_at(idx);
+  db[idx].head = NULL;
+  if (++db_dead >= 64 && db_dead > db_count - db_dead)
+    db_compact();
 }
 
 // boot/core.pl declares fail/0 and false/0 this way
