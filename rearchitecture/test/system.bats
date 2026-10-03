@@ -229,6 +229,76 @@ TRILOG="./trilog"
   [[ "$output" == *"F=-1"* ]]
 }
 
+# --- integer edge cases ---
+
+@test "min_int divided by -1 raises int_overflow instead of trapping (regression)" {
+  # regression: INT64_MIN / -1 killed the process with SIGFPE.
+  run "$TRILOG" -e "
+    catch(_ is -9223372036854775808 // -1, error(E1, _), true),
+    catch(_ is -9223372036854775808 / -1, error(E2, _), true),
+    write(r(E1, E2)), nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"r(evaluation_error(int_overflow), evaluation_error(int_overflow))"* ]]
+}
+
+@test "mod takes the divisor's sign and never overflows (regression)" {
+  # regression: min_int mod -1 trapped, and ((a % b) + b) % b overflowed near max_int.
+  run "$TRILOG" -e "
+    A is -9223372036854775808 mod -1,
+    B is 9223372036854775806 mod 9223372036854775807,
+    C is -7 mod 3, D is 7 mod -3, E is 6 mod 3,
+    write(r(A, B, C, D, E)), nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"r(0, 9223372036854775806, 2, -2, 0)"* ]]
+}
+
+@test "negating min_int raises int_overflow (regression)" {
+  # regression: -(min_int) and abs(min_int) silently returned min_int.
+  run "$TRILOG" -e "
+    catch(_ is -(-9223372036854775808), error(E1, _), true),
+    catch(_ is abs(-9223372036854775808), error(E2, _), true),
+    A is abs(-5), B is -(7),
+    write(r(E1, E2, A, B)), nl.
+  "
+  [[ "$output" == *"r(evaluation_error(int_overflow), evaluation_error(int_overflow), 5, -7)"* ]]
+}
+
+@test "shifts are defined for every shift amount (regression)" {
+  # regression: 1 << 64 gave 1 and 1 >> -1 gave 0 (C shift UB).
+  run "$TRILOG" -e "
+    A is 1 << 62, B is -1 << 3, C is 1 >> 64, D is -1 >> 70,
+    E is 1 >> -2, F is -16 >> 2, G is 8 << -1,
+    catch(_ is 1 << 63, error(E1, _), true),
+    catch(_ is 1 << 64, error(E2, _), true),
+    write(r(A, B, C, D, E, F, G, E1, E2)), nl.
+  "
+  [[ "$output" == *"r(4611686018427387904, -8, 0, -1, 4, -4, 4, evaluation_error(int_overflow), evaluation_error(int_overflow))"* ]]
+}
+
+@test "an integer literal too large for 64 bits is a syntax error, not clamped (regression)" {
+  # regression: strtoll silently clamped 99999999999999999999 to max_int.
+  run "$TRILOG" -e "X = 99999999999999999999."
+  [[ "$output" == *"parse error"* ]]
+  [[ "$output" != *"9223372036854775807"* ]]
+  run "$TRILOG" -e "
+    catch(atom_number('99999999999999999999', _), error(E1, _), true),
+    catch(atom_number('-99999999999999999999', _), error(E2, _), true),
+    write(r(E1, E2)), nl.
+  "
+  [[ "$output" == *"r(representation_error(max_integer), representation_error(min_integer))"* ]]
+}
+
+@test "input ending inside 0' or a quoted escape stops at the end (regression)" {
+  # regression: the parser stepped over the terminating NUL and read on into the environment.
+  for q in "X = 0'" "X = 0'\\" "X = 'ab\\" 'X = "ab\'; do
+    run env -i TRILOG_LEAK_CANARY=leaked "$TRILOG" -e "$q"
+    [[ "$output" == *"parse error"* ]]
+    [[ "$output" != *"TRILOG_LEAK_CANARY"* ]]
+  done
+}
+
 @test "float arithmetic in is/2: mixed-mode promotion, //, float/1" {
   run "$TRILOG" -e "
     A is 1.5 + 2,

@@ -7,6 +7,7 @@
 #include "parse.h"
 #include "streams.h"
 #include "unify.h"
+#include <errno.h>
 #include <inttypes.h>
 #include <math.h>
 #include <stdio.h>
@@ -723,6 +724,30 @@ static int arith_require_int(size_t v, int64_t *out, int *ok) {
   return 1;
 }
 
+// INT64_MIN / -1 and friends overflow (and trap on x86) in C.
+static size_t arith_int_overflow(int *ok) {
+  pending_error_ball = make_evaluation_error(atom_int_overflow);
+  *ok = 0;
+  return 0;
+}
+
+// a >> b for b >= 0, arithmetic (rounds towards -infinity) on every target.
+static int64_t arith_shift_right(int64_t a, int64_t b) {
+  if (b >= 63)
+    return a < 0 ? -1 : 0;
+  return a < 0 ? ~(~a >> b) : a >> b;
+}
+
+static size_t arith_shift_left(int64_t a, int64_t b, int *ok) {
+  if (a == 0)
+    return heap_new_int(0);
+  if (b == 63 && a == -1)
+    return heap_new_int(INT64_MIN);
+  if (b >= 63 || a > (INT64_MAX >> b) || a < arith_shift_right(INT64_MIN, b))
+    return arith_int_overflow(ok);
+  return heap_new_int(a * ((int64_t)1 << b));
+}
+
 static size_t eval_arith(size_t r, int *ok) {
   r = heap_deref(r);
   if (heap[r].tag == TAG_REF) {
@@ -786,6 +811,8 @@ static size_t eval_arith(size_t r, int *ok) {
           *ok = 0;
           return 0;
         }
+        if (heap[a].as.ival == INT64_MIN && heap[b].as.ival == -1)
+          return arith_int_overflow(ok);
         return heap_new_int(heap[a].as.ival / heap[b].as.ival);
       }
       if (id == atom_intdiv || id == atom_mod) {
@@ -797,8 +824,16 @@ static size_t eval_arith(size_t r, int *ok) {
           *ok = 0;
           return 0;
         }
-        if (id == atom_mod)
-          return heap_new_int(((ai % bi) + bi) % bi); // sign of the divisor
+        if (bi == -1) // x mod -1 is 0; x // -1 overflows only for INT64_MIN
+          return ai == INT64_MIN && id == atom_intdiv
+                     ? arith_int_overflow(ok)
+                     : heap_new_int(id == atom_mod ? 0 : -ai);
+        if (id == atom_mod) {
+          int64_t rem = ai % bi;
+          if (rem != 0 && (rem < 0) != (bi < 0))
+            rem += bi; // take the divisor's sign, without overflowing
+          return heap_new_int(rem);
+        }
         return heap_new_int(ai / bi);
       }
       // min(1, 2.5) = 1.0, not 1: the winner goes float if either side is.
@@ -821,15 +856,21 @@ static size_t eval_arith(size_t r, int *ok) {
           return heap_new_int(ai | bi);
         if (id == atom_bitxor)
           return heap_new_int(ai ^ bi);
-        if (id == atom_shl)
-          return heap_new_int(ai << bi);
-        return heap_new_int(ai >> bi);
+        // negative shift amount shifts the other way.
+        int left = id == atom_shl ? bi >= 0 : bi < 0;
+        int64_t amount = bi >= 0 ? bi : bi == INT64_MIN ? INT64_MAX : -bi;
+        if (left)
+          return arith_shift_left(ai, amount, ok);
+        return heap_new_int(arith_shift_right(ai, amount));
       }
     } else if (arity == 1) {
       size_t a = eval_arith(f + 1, ok);
       if (!*ok)
         return 0;
       int a_flt = heap[a].tag == TAG_FLT;
+      if (!a_flt && heap[a].as.ival == INT64_MIN &&
+          (id == atom_minus || id == atom_abs))
+        return arith_int_overflow(ok);
       if (id == atom_minus)
         return a_flt ? heap_new_flt(-heap[a].as.fval)
                      : heap_new_int(-heap[a].as.ival);
@@ -1695,8 +1736,17 @@ static int dispatch_builtin(size_t goal, int *ok) {
       return 1;
     }
     char *end;
+    errno = 0;
     int64_t iv = strtoll(buf, &end, 10);
     if (*end == '\0' && end != buf) {
+      if (errno == ERANGE) {
+        size_t args[1] = {
+            heap_new_atom(atom_intern(iv > 0 ? "max_integer" : "min_integer"))};
+        pending_error_ball = make_error(
+            heap_new_struct(atom_intern("representation_error"), 1, args));
+        *ok = 0;
+        return 1;
+      }
       *ok = unify(f + 1, heap_new_int(iv));
       return 1;
     }

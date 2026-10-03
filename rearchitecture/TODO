@@ -17,3 +17,9 @@ missing requirements:
 - move rearchitecture/ to the root, drop old src/ and lib/, update makefile/readme
 - re-check all issues for regressions
 - detecting cycles?
+
+guidelines:
+- as much logic in prolog as possible
+- minimize the interpreter code in C
+- same kind of embeddability goals as on main
+- malloc/realloc usage minimized, ideally the memory we can use is up to the user embedding the interpreter

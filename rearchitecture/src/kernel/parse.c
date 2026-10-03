@@ -5,6 +5,7 @@
 #include "io.h"
 #include "solve.h"
 #include <ctype.h>
+#include <errno.h>
 #include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -176,6 +177,8 @@ static void read_quoted(char quote, char *buf) {
     char v = *P;
     if (*P == '\\') {
       P++;
+      if (*P == '\0')
+        perr("unterminated quoted token");
       char c = *P++;
       switch (c) {
       case 'n':
@@ -276,6 +279,8 @@ static tterm_t *parse_string(void) {
 static tterm_t *parse_char_code(void) {
   P += 2; // "0'"
   int code;
+  if (*P == '\0' || (*P == '\\' && P[1] == '\0'))
+    perr("unexpected end of input in 0' character code");
   if (*P == '\\') {
     P++;
     char c = *P++;
@@ -343,7 +348,13 @@ static tterm_t *parse_number(void) {
     perr("number literal too long");
   memcpy(buf, start, n);
   buf[n] = '\0';
-  return is_float ? tt_flt(strtod(buf, NULL)) : tt_int(strtoll(buf, NULL, 10));
+  if (is_float)
+    return tt_flt(strtod(buf, NULL));
+  errno = 0;
+  long long v = strtoll(buf, NULL, 10);
+  if (errno == ERANGE)
+    perr("integer literal out of range");
+  return tt_int(v);
 }
 
 static tterm_t *parse_primary(void) {
