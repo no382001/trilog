@@ -1501,6 +1501,19 @@ PLEOF
   rm -f /tmp/mi_op_test.pl /tmp/mi_op_test2.pl
 }
 
+@test "the release build runs from an empty directory, its libraries baked in" {
+  run make -s -C "$BATS_TEST_DIRNAME/.." release
+  [ "$status" -eq 0 ]
+  dir=$(mktemp -d)
+  cp "$BATS_TEST_DIRNAME/../_build/trilog" "$dir/"
+  run bash -c "cd '$dir' && ./trilog -f -e \"append(X, [c], [a,b,c]), maplist(atom, X), phrase([a], [a]), consult('lib/meta.pl'), findall(Y, solve(member(Y, [1, 2])), L), write(done(L)), nl.\""
+  rm -rf "$dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"done([1, 2])"* ]]
+  [[ "$output" != *"uncaught"* ]]
+  [[ "$output" != *"cannot open"* ]]
+}
+
 @test "loading boot/core.pl and lib/ at startup produces no uncaught exceptions (regression)" {
   run "$TRILOG" -f -e "true."
   [ "$status" -eq 0 ]

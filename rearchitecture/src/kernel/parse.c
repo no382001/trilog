@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "parse.h"
 #include "arena.h"
+#include "embedded.h"
 #include "heap.h"
 #include "io.h"
 #include "solve.h"
@@ -580,29 +581,93 @@ static void assemble_clause(tterm_t *t, int32_t nvars) {
 
 static const char *consulting = NULL; // path of the file being consulted
 
+// library files baked into a release build are consulted as "embedded:PATH".
+#define EMBED_PREFIX "embedded:"
+#define EMBED_PREFIX_LEN (sizeof EMBED_PREFIX - 1)
+
+// folds "." and "dir/.." segments in place, so that "boot/../lib/lists.pl"
+// matches the embedded file "lib/lists.pl".
+static void normalize_path(char *path) {
+  char *seg[256];
+  int n = 0;
+  for (char *tok = strtok(path, "/"); tok; tok = strtok(NULL, "/")) {
+    if (!strcmp(tok, "."))
+      continue;
+    if (!strcmp(tok, "..") && n > 0 && strcmp(seg[n - 1], ".."))
+      n--;
+    else if (n < 256)
+      seg[n++] = tok;
+  }
+  char out[4096];
+  size_t len = 0;
+  out[0] = '\0';
+  for (int i = 0; i < n; i++)
+    len += (size_t)snprintf(out + len, sizeof out - len, "%s%s", i ? "/" : "",
+                            seg[i]);
+  memcpy(path, out, strlen(out) + 1);
+}
+
+// the embedded text for a relative path, or NULL. On a hit, resolved gets
+// the "embedded:" name that later relative consults resolve against.
+static const char *find_embedded(const char *path, char *resolved, size_t cap) {
+  char key[4096];
+  snprintf(key, sizeof key, "%s", path);
+  normalize_path(key);
+  for (const embedded_file *e = embedded_files; e->path; e++)
+    if (!strcmp(e->path, key)) {
+      snprintf(resolved, cap, EMBED_PREFIX "%s", e->path);
+      return e->data;
+    }
+  return NULL;
+}
+
+static char *read_whole_file(FILE *f) {
+  fseek(f, 0, SEEK_END);
+  long sz = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  char *buf = arena_alloc((size_t)(sz > 0 ? sz : 0) + 1); // FIXME: never freed
+  size_t got = fread(buf, 1, (size_t)(sz > 0 ? sz : 0), f);
+  buf[got] = '\0';
+  fclose(f);
+  return buf;
+}
+
 // A relative path consulted from inside a file resolves against that file's
-// directory first, then the current directory.
-static FILE *open_consult_path(const char *path, char *resolved, size_t cap) {
+// directory first, then the current directory, then the embedded libraries.
+static const char *consult_text(const char *path, char *resolved, size_t cap) {
+  if (!strncmp(path, EMBED_PREFIX, EMBED_PREFIX_LEN))
+    return find_embedded(path + EMBED_PREFIX_LEN, resolved, cap);
   const char *slash = consulting ? strrchr(consulting, '/') : NULL;
   if (path[0] != '/' && slash) {
     snprintf(resolved, cap, "%.*s/%s", (int)(slash - consulting), consulting,
              path);
-    FILE *f = fopen(resolved, "rb");
-    if (f)
-      return f;
+    if (!strncmp(resolved, EMBED_PREFIX, EMBED_PREFIX_LEN)) {
+      char rel[4096];
+      snprintf(rel, sizeof rel, "%s", resolved + EMBED_PREFIX_LEN);
+      const char *text = find_embedded(rel, resolved, cap);
+      if (text)
+        return text;
+    } else {
+      FILE *f = fopen(resolved, "rb");
+      if (f)
+        return read_whole_file(f);
+    }
   }
   snprintf(resolved, cap, "%s", path);
-  return fopen(resolved, "rb");
+  FILE *f = fopen(resolved, "rb");
+  if (f)
+    return read_whole_file(f);
+  return path[0] != '/' ? find_embedded(path, resolved, cap) : NULL;
 }
 
-static bool consult_stream(FILE *f, const char *path);
+static bool consult_source(const char *text, const char *path);
 
 // Re-entrant: a consult/1 directive inside the file saves and restores the
 // outer file's parse state.
 bool consult_file(const char *path) {
   char resolved[4096];
-  FILE *f = open_consult_path(path, resolved, sizeof resolved);
-  if (!f) {
+  const char *text = consult_text(path, resolved, sizeof resolved);
+  if (!text) {
     char msg[300];
     snprintf(msg, sizeof msg, "cannot open %s\n", path);
     io_write_err(msg);
@@ -612,24 +677,15 @@ bool consult_file(const char *path) {
   jmp_buf saved_jmp;
   memcpy(saved_jmp, err_jmp, sizeof(jmp_buf));
   consulting = resolved;
-  bool ok = consult_stream(f, resolved);
+  bool ok = consult_source(text, resolved);
   consulting = saved_consulting;
   P = saved_P;
   memcpy(err_jmp, saved_jmp, sizeof(jmp_buf));
   return ok;
 }
 
-static bool consult_stream(FILE *f, const char *path) {
-  fseek(f, 0, SEEK_END);
-  long sz = ftell(f);
-  fseek(f, 0, SEEK_SET);
-
-  char *buf = arena_alloc((size_t)sz + 1); // FIXME: this is never cleaned up
-  size_t got = fread(buf, 1, (size_t)sz, f);
-  buf[got] = '\0';
-  fclose(f);
-
-  P = buf;
+static bool consult_source(const char *text, const char *path) {
+  P = text;
   if (setjmp(err_jmp)) {
     char msg[300 + sizeof err_msg];
     snprintf(msg, sizeof msg, "parse error in %s: %s\n", path, err_msg);

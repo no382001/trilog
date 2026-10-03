@@ -6,8 +6,20 @@ IO_SRCS = src/io/io.c src/io/streams.c
 SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/main.c
 HDRS = $(wildcard src/kernel/*.h) $(wildcard src/io/*.h)
 
-trilog: format $(SRCS) src/kernel/*.h src/io/*.h
-	$(CC) $(CFLAGS) -o trilog $(SRCS) -lm
+trilog: format $(SRCS) src/kernel/embedded_none.c src/kernel/*.h src/io/*.h
+	$(CC) $(CFLAGS) -o trilog $(SRCS) src/kernel/embedded_none.c -lm
+
+# The release build bakes boot/core.pl and lib/*.pl into the binary, so it
+# runs from anywhere without the library files next to it.
+EMBED_FILES = boot/core.pl $(sort $(wildcard lib/*.pl))
+
+_build/embedded.c: $(EMBED_FILES) tools/embed_libs.sh
+	@mkdir -p _build
+	sh tools/embed_libs.sh $(EMBED_FILES) > $@
+
+.PHONY: release
+release: format $(SRCS) _build/embedded.c src/kernel/*.h src/io/*.h
+	$(CC) $(CFLAGS) -DTRILOG_EMBEDDED -o _build/trilog $(SRCS) _build/embedded.c -lm
 
 .PHONY: test test-upstream clean format format-check
 test: trilog
@@ -62,10 +74,10 @@ quad-junit: trilog
 	@echo "JUnit reports written to _build/test-results/"
 
 clean:
-	rm -f trilog
+	rm -f trilog _build/trilog _build/embedded.c
 
 format:
-	clang-format -i $(SRCS) $(HDRS)
+	clang-format -i $(SRCS) src/kernel/embedded_none.c $(HDRS)
 
 format-check:
-	clang-format --dry-run --Werror $(SRCS) $(HDRS)
+	clang-format --dry-run --Werror $(SRCS) src/kernel/embedded_none.c $(HDRS)

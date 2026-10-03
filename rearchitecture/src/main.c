@@ -77,6 +77,15 @@ static void print_exit_stats(void) {
   io_write_err(msg);
 }
 
+#ifdef TRILOG_EMBEDDED
+// The release build bakes boot/ and lib/ into the binary (make release).
+static void resolve_core_path(const char *argv0, char *out, size_t out_size) {
+  (void)argv0;
+  snprintf(out, out_size, "embedded:boot/core.pl");
+}
+#else
+// The dev build reads boot/core.pl from next to the binary, so library edits
+// need no rebuild.
 static void resolve_core_path(const char *argv0, char *out, size_t out_size) {
   char exe[4096];
   char dir[4096];
@@ -90,6 +99,7 @@ static void resolve_core_path(const char *argv0, char *out, size_t out_size) {
   dir[sizeof(dir) - 1] = '\0';
   snprintf(out, out_size, "%s/boot/core.pl", dirname(dir));
 }
+#endif
 
 static void load_init_file(int verbose) {
   const char *home = getenv("HOME");
