@@ -1,18 +1,27 @@
+#define _POSIX_C_SOURCE 200809L
 #include "gc.h"
 #include "heap.h"
 #include "io.h"
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
+
+static jmp_buf gc_oom;
 
 static void *gc_realloc_or_die(void *p, size_t n) {
   void *r = realloc(p, n);
-  if (!r && n != 0) {
-    io_write_err("out of memory during garbage collection\n");
-    exit(1);
-  }
+  if (!r && n != 0)
+    longjmp(gc_oom, 1);
   return r;
+}
+
+// Shrinking runs after compaction, so a failure keeps the bigger buffer.
+static void *gc_shrink(void *p, size_t n) {
+  void *r = realloc(p, n);
+  return r ? r : p;
 }
 
 // ---- mark phase: DFS via pointer reversal (O(1) space), marking
@@ -133,15 +142,15 @@ static void shrink_scratch_to(size_t n) {
   if (n < 1024)
     n = 1024;
   if (marked_cap > n) {
-    marked = gc_realloc_or_die(marked, n);
+    marked = gc_shrink(marked, n);
     marked_cap = n;
   }
   if (new_index_cap > n) {
-    new_index = gc_realloc_or_die(new_index, n * sizeof(size_t));
+    new_index = gc_shrink(new_index, n * sizeof(size_t));
     new_index_cap = n;
   }
   if (trail_new_index_cap > n) {
-    trail_new_index = gc_realloc_or_die(trail_new_index, n * sizeof(size_t));
+    trail_new_index = gc_shrink(trail_new_index, n * sizeof(size_t));
     trail_new_index_cap = n;
   }
 }
@@ -190,6 +199,31 @@ static size_t compact_trail(size_t old_trail_top) {
 #ifndef GC_MIN_CELLS
 #define GC_MIN_CELLS 16384
 #endif
+
+// live cells allowed after a collection before the solver throws
+#ifndef GC_MAX_LIVE_CELLS
+#define GC_MAX_LIVE_CELLS ((size_t)64 << 20)
+#endif
+
+static size_t gc_max_live(void) {
+  static size_t max = 0;
+  if (max == 0) {
+    max = GC_MAX_LIVE_CELLS;
+    struct rlimit rl;
+    if (getrlimit(RLIMIT_AS, &rl) == 0 && rl.rlim_cur != RLIM_INFINITY &&
+        rl.rlim_cur / 128 < max)
+      max = rl.rlim_cur / 128;
+  }
+  return max;
+}
+
+static int heap_exhausted = 0;
+
+int gc_heap_exhausted(void) {
+  int e = heap_exhausted;
+  heap_exhausted = 0;
+  return e;
+}
 
 static size_t gc_threshold = 0; // 0 = uninitialized
 
@@ -276,6 +310,10 @@ void gc_maybe_run(size_t *cn, frame_t *frames, size_t nframes, size_t *rename,
   size_t old_top = heap_size();
   if (old_top < gc_get_threshold())
     return;
+  if (setjmp(gc_oom)) {
+    heap_exhausted = 1;
+    return;
+  }
 
   size_t old_trail_top = trail_size();
   ensure_marked_cap(old_top);
@@ -322,6 +360,8 @@ void gc_maybe_run(size_t *cn, frame_t *frames, size_t nframes, size_t *rename,
   }
 
   size_t new_top = compact_heap(old_top);
+  if (new_top > gc_max_live())
+    heap_exhausted = 1;
   size_t new_trail_top = compact_trail(old_trail_top);
 
   *cn = new_index[*cn];

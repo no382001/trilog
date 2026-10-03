@@ -901,6 +901,20 @@ TRILOG="./trilog"
   [[ "$output" == *"yes:"* ]]
 }
 
+@test "runaway allocation throws a catchable resource_error(memory) instead of dying (regression)" {
+  # regression: the heap grew until GC's scratch arrays failed to allocate, killing the process.
+  run bash -c "ulimit -v 524288; timeout 60 $TRILOG -e \"L = ['1'|L], catch(number_chars(_, L), error(E, _), true), write(caught(E)), nl.\""
+  [[ "$output" == *"caught(resource_error(memory))"* ]]
+}
+
+@test "printing a tail-cyclic list terminates (regression)" {
+  # regression: the list printer walked the spine with no limit, looping forever on L = [a|L].
+  run timeout 10 "$TRILOG" -e "L = [a|L], write(done), nl."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"done"* ]]
+  [[ "$output" == *"|...]"* ]]
+}
+
 @test "copy_term/2 throws on a cyclic term instead of crashing (regression)" {
   run "$TRILOG" -e "X = f(X), catch(copy_term(X, _), error(E, _), (write(caught(E)), nl))."
   [ "$status" -eq 0 ]

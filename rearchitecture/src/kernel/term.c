@@ -173,9 +173,13 @@ static void print_atom(const char *name, int quoted, emit_fn emit) {
 
 // A proper list of single-character atoms (what "abc" parses to) prints as
 // "abc" for write/1 and writeq/1 alike.
+#define MAX_PRINT_DEPTH 10000
+
 static int try_print_char_string(size_t r, emit_fn emit) {
   size_t cell = r;
-  for (;;) {
+  for (int n = 0;; n++) {
+    if (n >= MAX_PRINT_DEPTH)
+      return 0; // too long, or cyclic: print as a capped list instead
     size_t cf = heap[cell].as.ptr;
     size_t head = heap_deref(cf + 1);
     if (heap[head].tag != TAG_ATOM)
@@ -228,7 +232,6 @@ static int try_print_char_string(size_t r, emit_fn emit) {
 // C stack - a long acyclic list is safe since the list branch below
 // walks its spine iteratively.
 static int print_depth = 0;
-#define MAX_PRINT_DEPTH 10000
 
 static void print_term_ex(size_t r, int quoted, emit_fn emit) {
   if (print_depth >= MAX_PRINT_DEPTH) {
@@ -266,7 +269,7 @@ static void print_term_ex(size_t r, int quoted, emit_fn emit) {
         break;
       emit("[");
       size_t cell = r;
-      for (int first = 1;; first = 0) {
+      for (int first = 1, n = 0;; first = 0, n++) {
         size_t cf = heap[cell].as.ptr;
         if (!first)
           emit(", ");
@@ -278,6 +281,10 @@ static void print_term_ex(size_t r, int quoted, emit_fn emit) {
           size_t tf = heap[tail].as.ptr;
           if (heap[tf].as.func.arity == 2 &&
               heap[tf].as.func.atom_id == atom_dot) {
+            if (n + 1 >= MAX_PRINT_DEPTH) {
+              emit("|...");
+              break;
+            }
             cell = tail;
             continue;
           }

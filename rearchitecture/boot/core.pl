@@ -207,15 +207,35 @@ can_be(_, Term) :- var(Term), !.
 can_be(Type, Term) :- must_be(Type, Term).
 
 % --- sorting ---
-% TODO: O(n^2) insertion sort.
 
 %!  msort(+List, -Sorted) is det.
-msort(L, Sorted) :- '$isort'(L, [], Sorted).
-'$isort'([], Acc, Acc).
-'$isort'([H|T], Acc, Sorted) :- '$insert'(H, Acc, Acc1), '$isort'(T, Acc1, Sorted).
-'$insert'(X, [], [X]).
-'$insert'(X, [H|T], [X,H|T]) :- X @=< H, !.
-'$insert'(X, [H|T], [H|T1]) :- '$insert'(X, T, T1).
+%   Stable merge sort: O(n log n)
+msort(L, Sorted) :-
+    '$sort_length'(L, L, 0, N),
+    '$msort'(N, L, Sorted, _).
+
+% The length of a proper list
+'$sort_length'(T, _, _, _) :- var(T), !, throw(error(instantiation_error, _)).
+'$sort_length'([], _, N, N) :- !.
+'$sort_length'([_|T], L, N0, N) :- !, N1 is N0 + 1, '$sort_length'(T, L, N1, N).
+'$sort_length'(_, L, _, _) :- throw(error(type_error(list, L), _)).
+
+% Sorts the first N elements of L into Sorted, leaving the rest in Rest.
+'$msort'(0, L, [], L) :- !.
+'$msort'(1, [X|L], [X], L) :- !.
+'$msort'(N, L, Sorted, Rest) :-
+    A is N // 2,
+    B is N - A,
+    '$msort'(A, L, S1, L1),
+    '$msort'(B, L1, S2, Rest),
+    '$merge'(S1, S2, Sorted).
+
+'$merge'([], L, L) :- !.
+'$merge'(L, [], L) :- !.
+'$merge'([X|Xs], [Y|Ys], [Z|Zs]) :-
+    ( Y @< X -> Z = Y, '$merge'([X|Xs], Ys, Zs)
+    ; Z = X, '$merge'(Xs, [Y|Ys], Zs)
+    ).
 
 %!  sort(+List, -Sorted) is det.
 sort(L, Sorted) :- msort(L, M), '$dedup'(M, Sorted).

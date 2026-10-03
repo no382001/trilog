@@ -205,6 +205,10 @@ static size_t make_cyclic_term_error(void) {
       heap_new_struct(atom_intern("representation_error"), 1, args));
 }
 
+static size_t make_resource_error(const char *what) {
+  size_t args[1] = {heap_new_atom(atom_intern(what))};
+  return make_error(heap_new_struct(atom_intern("resource_error"), 1, args));
+}
 static size_t make_evaluation_error(int32_t what_atom) {
   size_t args[1] = {heap_new_atom(what_atom)};
   return make_error(heap_new_struct(atom_evaluation_error, 1, args));
@@ -1776,8 +1780,14 @@ A:
   // query would move or free the outer queries' live terms
   // Nested queries skip GC instead; the real fix is GC marking
   // and relocating every running query's roots.
-  if (query_depth == 1)
+  if (query_depth == 1) {
     gc_maybe_run(&cn, stack, sp, rename, nvars, &active_catch);
+    if (gc_heap_exhausted()) {
+      if (do_throw(make_resource_error("memory"), &cn, &active_catch))
+        goto A;
+      return;
+    }
+  }
   {
     // check cn == true before decompose, or a mid-clause true goal
     // wrongly ends the query.
