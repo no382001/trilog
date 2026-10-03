@@ -369,6 +369,15 @@ nl(S) :- write(S, '\n').
 writeln(T) :- write(T), nl.
 writeln(S, T) :- write(S, T), nl(S).
 
+%!  read_line_to_chars(+Stream, -Chars) is det.
+read_line_to_chars(S, Cs) :-
+    read_line_to_atom(S, A),
+    ( A == end_of_file -> Cs = end_of_file ; atom_chars(A, Cs) ).
+
+%!  put_chars(+Chars) is det.
+put_chars(Cs) :- atom_chars(A, Cs), write(A).
+put_chars(S, Cs) :- atom_chars(A, Cs), write(S, A).
+
 %!  char_code(?Char, ?Code) is det.
 char_code(Char, Code) :- atom_codes(Char, [Code]).
 

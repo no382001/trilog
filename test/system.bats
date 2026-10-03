@@ -2,6 +2,18 @@
 
 TRILOG="./trilog"
 
+succeeded() {
+  [[ "$output" != *"   false."* && "$output" != *"uncaught exception"* && "$output" != *"parse error"* ]]
+}
+
+answers() {
+  if succeeded; then
+    echo $(($(echo "$output" | grep -c '^;  ') + 1))
+  else
+    echo 0
+  fi
+}
+
 # --- exit code contract ---
 
 @test "exit 0 on successful query" {
@@ -29,74 +41,74 @@ TRILOG="./trilog"
 @test "file arg loads clauses and -e can query them" {
   run "$TRILOG" test/family.pl -e "grandparent(tom, W)."
   [ "$status" -eq 0 ]
-  [[ "$output" == *"W=ann"* ]]
+  [[ "$output" == *"W = ann"* ]]
 }
 
 @test "arithmetic via is/2" {
   run "$TRILOG" test/family.pl -e "double(21, R)."
-  [[ "$output" == *"R=42"* ]]
+  [[ "$output" == *"R = 42"* ]]
 }
 
 # --- backtracking and cut: the core of the ABC loop ---
 
 @test "backtracking enumerates every solution" {
   run "$TRILOG" test/family.pl -e "choice(W)."
-  [[ "$output" == *"W=a"* ]]
-  [[ "$output" == *"W=b"* ]]
-  [[ "$output" == *"W=c"* ]]
+  [[ "$output" == *"W = a"* ]]
+  [[ "$output" == *"W = b"* ]]
+  [[ "$output" == *"W = c"* ]]
 }
 
 @test "cut prunes remaining choice points" {
   run "$TRILOG" test/family.pl -e "first_choice(W)."
-  [ "$(echo "$output" | grep -c 'yes:')" -eq 1 ]
-  [[ "$output" == *"W=a"* ]]
+  [ "$(answers)" -eq 1 ]
+  [[ "$output" == *"W = a"* ]]
 }
 
 @test "cut is scoped to its own clause across a nested call (regression)" {
   # solving q between the call and '!' must not clobber the barrier and
   # let p(2) leak through.
   run "$TRILOG" test/family.pl -e "p(X)."
-  [ "$(echo "$output" | grep -c 'yes:')" -eq 1 ]
-  [[ "$output" == *"X=1"* ]]
-  [[ "$output" != *"X=2"* ]]
+  [ "$(answers)" -eq 1 ]
+  [[ "$output" == *"X = 1"* ]]
+  [[ "$output" != *"X = 2"* ]]
 }
 
 @test "cut inside recursion only prunes its own call" {
   run "$TRILOG" test/family.pl -e "first_gt3([1,3,4,5,6], X)."
-  [ "$(echo "$output" | grep -c 'yes:')" -eq 1 ]
-  [[ "$output" == *"X=4"* ]]
+  [ "$(answers)" -eq 1 ]
+  [[ "$output" == *"X = 4"* ]]
 }
 
 # --- boot/core.pl control constructs, built from cut + meta-call ---
 
 @test "disjunction tries both branches on backtrack" {
   run "$TRILOG" test/family.pl -e "(choice(W) ; W=none)."
-  [[ "$output" == *"W=a"* ]]
-  [[ "$output" == *"W=none"* ]]
+  [[ "$output" == *"W = a"* ]]
+  [[ "$output" == *"W = none"* ]]
 }
 
 @test "if-then commits to the condition's first solution only" {
   # Exactly one solution: Else must be unreachable once Cond succeeds
   # (regression: ';'/2's own cut used to miss this).
   run "$TRILOG" test/family.pl -e "(choice(W) -> true ; true)."
-  [ "$(echo "$output" | grep -c 'yes:')" -eq 1 ]
-  [[ "$output" == *"W=a"* ]]
+  [ "$(answers)" -eq 1 ]
+  [[ "$output" == *"W = a"* ]]
 }
 
 @test "if-then-else takes the else branch on condition failure" {
   run "$TRILOG" test/family.pl -e "(fail -> W=yes ; W=no)."
-  [[ "$output" == *"W=no"* ]]
+  [[ "$output" == *"W = no"* ]]
 }
 
 @test "negation as failure" {
   run "$TRILOG" test/family.pl -e "(\\+ parent(ann,tom), W=ok)."
-  [[ "$output" == *"W=ok"* ]]
+  [[ "$output" == *"W = ok"* ]]
 }
 
 @test "once commits to the first solution" {
   run "$TRILOG" test/family.pl -e "once(choice(W))."
-  [ "$(echo "$output" | grep -c 'yes:')" -eq 1 ]
-  [[ "$output" == *"W=a"* ]]
+  [ "$(answers)" -eq 1 ]
+  [[ "$output" == *"W = a"* ]]
 }
 
 # --- raw I/O ---
@@ -127,7 +139,7 @@ TRILOG="./trilog"
     nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"A=hithere"* ]]
+  [[ "$output" == *"A = hithere"* ]]
 }
 
 @test "with_output_to/2 nests correctly, each level popping its own slice (regression)" {
@@ -193,7 +205,7 @@ TRILOG="./trilog"
     \\+ callable(1).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"yes:"* ]]
+  succeeded
 }
 
 @test "extended arithmetic: mod, abs, min, max" {
@@ -204,11 +216,11 @@ TRILOG="./trilog"
     W is min(3,7),
     V is max(3,7).
   "
-  [[ "$output" == *"X=1"* ]]
-  [[ "$output" == *"Y=2"* ]]
-  [[ "$output" == *"Z=5"* ]]
-  [[ "$output" == *"W=3"* ]]
-  [[ "$output" == *"V=7"* ]]
+  [[ "$output" == *"X = 1"* ]]
+  [[ "$output" == *"Y = 2"* ]]
+  [[ "$output" == *"Z = 5"* ]]
+  [[ "$output" == *"W = 3"* ]]
+  [[ "$output" == *"V = 7"* ]]
 }
 
 @test "bitwise operators in is/2: /\\, \\/, xor, <<, >>, unary \\" {
@@ -221,12 +233,12 @@ TRILOG="./trilog"
     F is \ 0.
   '
   [ "$status" -eq 0 ]
-  [[ "$output" == *"A=2"* ]]
-  [[ "$output" == *"B=7"* ]]
-  [[ "$output" == *"C=5"* ]]
-  [[ "$output" == *"D=16"* ]]
-  [[ "$output" == *"E=8"* ]]
-  [[ "$output" == *"F=-1"* ]]
+  [[ "$output" == *"A = 2"* ]]
+  [[ "$output" == *"B = 7"* ]]
+  [[ "$output" == *"C = 5"* ]]
+  [[ "$output" == *"D = 16"* ]]
+  [[ "$output" == *"E = 8"* ]]
+  [[ "$output" == *"F = -1"* ]]
 }
 
 # --- integer edge cases ---
@@ -357,18 +369,18 @@ TRILOG="./trilog"
     K is 7.0 / 2.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"yes:"* ]]
-  [[ "$output" == *"A=3.5"* ]]
-  [[ "$output" == *"B=2"* ]]
-  [[ "$output" == *"C=1"* ]]
-  [[ "$output" == *"F=1.5"* ]]
-  [[ "$output" == *"G=3"* ]]
-  [[ "$output" == *"H=-3"* ]]
-  [[ "$output" == *"J=3"* ]]
-  [[ "$output" == *"K=3.5"* ]]
-  [[ "$output" == *"D=1.0"* ]]
-  [[ "$output" == *"E=2.0"* ]]
-  [[ "$output" == *"I=3.0"* ]]
+  succeeded
+  [[ "$output" == *"A = 3.5"* ]]
+  [[ "$output" == *"B = 2"* ]]
+  [[ "$output" == *"C = 1"* ]]
+  [[ "$output" == *"F = 1.5"* ]]
+  [[ "$output" == *"G = 3"* ]]
+  [[ "$output" == *"H = -3"* ]]
+  [[ "$output" == *"J = 3"* ]]
+  [[ "$output" == *"K = 3.5"* ]]
+  [[ "$output" == *"D = 1.0"* ]]
+  [[ "$output" == *"E = 2.0"* ]]
+  [[ "$output" == *"I = 3.0"* ]]
 }
 
 @test "float arithmetic rejects int-only operators" {
@@ -385,23 +397,23 @@ TRILOG="./trilog"
   # failing the goal.
   run "$TRILOG" -e "X is Y."
   [ "$status" -eq 0 ]
-  [[ "$output" != *"yes:"* ]]
+  ! succeeded
 
   run "$TRILOG" -e "X < Y."
   [ "$status" -eq 0 ]
-  [[ "$output" != *"yes:"* ]]
+  ! succeeded
 
   run "$TRILOG" -e "X is foo(1,2)."
   [ "$status" -eq 0 ]
-  [[ "$output" != *"yes:"* ]]
+  ! succeeded
 
   # ordinary arithmetic is unaffected
   run "$TRILOG" -e "
     X is 1 + 2 * 3,
     Y is X mod 5.
   "
-  [[ "$output" == *"X=7"* ]]
-  [[ "$output" == *"Y=2"* ]]
+  [[ "$output" == *"X = 7"* ]]
+  [[ "$output" == *"Y = 2"* ]]
 }
 
 @test "division by zero throws evaluation_error(zero_divisor), not a silent failure" {
@@ -423,14 +435,14 @@ TRILOG="./trilog"
     functor(foo(a,b,c), N, A),
     functor(T, foo, 3).
   "
-  [[ "$output" == *"N=foo"* ]]
-  [[ "$output" == *"A=3"* ]]
-  [[ "$output" == *"T=foo("* ]]
+  [[ "$output" == *"N = foo"* ]]
+  [[ "$output" == *"A = 3"* ]]
+  [[ "$output" == *"T = foo("* ]]
 }
 
 @test "arg/3 extracts a 1-indexed argument" {
   run "$TRILOG" -e "arg(2, foo(a,b,c), X)."
-  [[ "$output" == *"X=b"* ]]
+  [[ "$output" == *"X = b"* ]]
 }
 
 @test "univ =.. decomposes and constructs both ways" {
@@ -438,8 +450,8 @@ TRILOG="./trilog"
     foo(a,b,c) =.. L,
     T =.. [foo,a,b,c].
   "
-  [[ "$output" == *"L=[foo, a, b, c]"* ]]
-  [[ "$output" == *"T=foo(a, b, c)"* ]]
+  [[ "$output" == *"L = [foo, a, b, c]"* ]]
+  [[ "$output" == *"T = foo(a, b, c)"* ]]
 }
 
 @test "compare/3 gives standard order of terms" {
@@ -448,9 +460,9 @@ TRILOG="./trilog"
     compare(O2, foo, abc),
     compare(O3, foo(1), foo(1)).
   "
-  [[ "$output" == *"O1=<"* ]]
-  [[ "$output" == *"O2=>"* ]]
-  [[ "$output" == *'O3=='* ]]
+  [[ "$output" == *"O1 = <"* ]]
+  [[ "$output" == *"O2 = >"* ]]
+  [[ "$output" == *'O3 = ='* ]]
 }
 
 @test "atom_codes, char_code, and number_codes round-trip both ways" {
@@ -462,12 +474,12 @@ TRILOG="./trilog"
     number_codes(42, L2),
     number_codes(N, [52,50]).
   "
-  [[ "$output" == *"L1=[104, 105]"* ]]
-  [[ "$output" == *"A=hi"* ]]
-  [[ "$output" == *"C=97"* ]]
-  [[ "$output" == *"Ch=a"* ]]
-  [[ "$output" == *"L2=[52, 50]"* ]]
-  [[ "$output" == *"N=42"* ]]
+  [[ "$output" == *"L1 = [104, 105]"* ]]
+  [[ "$output" == *"A = hi"* ]]
+  [[ "$output" == *"C = 97"* ]]
+  [[ "$output" == *"Ch = a"* ]]
+  [[ "$output" == *"L2 = [52, 50]"* ]]
+  [[ "$output" == *"N = 42"* ]]
 }
 
 @test "atom_to_term/3 populates NameVars, sharing repeated vars, skipping bare _" {
@@ -489,9 +501,9 @@ TRILOG="./trilog"
     close(S).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"L1=line one"* ]]
-  [[ "$output" == *"L2=line two"* ]]
-  [[ "$output" == *"L3=end_of_file"* ]]
+  [[ "$output" == *"L1 = line one"* ]]
+  [[ "$output" == *"L2 = line two"* ]]
+  [[ "$output" == *"L3 = end_of_file"* ]]
 }
 
 @test "0'c character-code literals, including escapes and the doubled quote" {
@@ -504,12 +516,12 @@ TRILOG="./trilog"
     F is 0'''.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"A=97"* ]]
-  [[ "$output" == *"B=32"* ]]
-  [[ "$output" == *"C=10"* ]]
-  [[ "$output" == *"D=9"* ]]
-  [[ "$output" == *"E=92"* ]]
-  [[ "$output" == *"F=39"* ]]
+  [[ "$output" == *"A = 97"* ]]
+  [[ "$output" == *"B = 32"* ]]
+  [[ "$output" == *"C = 10"* ]]
+  [[ "$output" == *"D = 9"* ]]
+  [[ "$output" == *"E = 92"* ]]
+  [[ "$output" == *"F = 39"* ]]
 }
 
 @test "Op(Args) compound-term syntax works even when Op is also an operator" {
@@ -519,12 +531,12 @@ TRILOG="./trilog"
     Z is -(5).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"X=-(1, 2)"* ]]
-  [[ "$output" == *"Y===(a, b)"* ]]
-  [[ "$output" == *"Z=-5"* ]]
+  [[ "$output" == *"X = -(1, 2)"* ]]
+  [[ "$output" == *"Y = ==(a, b)"* ]]
+  [[ "$output" == *"Z = -5"* ]]
 
   run "$TRILOG" -e "X = 3, Y is -X."
-  [[ "$output" == *"Y=-3"* ]]
+  [[ "$output" == *"Y = -3"* ]]
 }
 
 @test "a bare operator atom parses as a plain atom in argument position" {
@@ -534,9 +546,9 @@ TRILOG="./trilog"
     Z = [\\+, -, +].
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"X=\\+"* ]]
-  [[ "$output" == *"Y=-"* ]]
-  [[ "$output" == *"Z=[\\+, -, +]"* ]]
+  [[ "$output" == *"X = \\+"* ]]
+  [[ "$output" == *"Y = -"* ]]
+  [[ "$output" == *"Z = [\\+, -, +]"* ]]
 }
 
 # --- boot/core.pl library ---
@@ -554,14 +566,14 @@ TRILOG="./trilog"
     \\+ (1 \\= 1).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"yes:"* ]]
+  succeeded
 }
 
 @test "if-then-else makes the else branch unreachable once cond succeeds (regression)" {
   # regression: max_list/2 (built on ->/;) used to produce multiple
   # "maximum" values instead of one.
   run "$TRILOG" -e "findall(M, max_list([3,1,4,1,5], M), L)."
-  [[ "$output" == *"L=[5]"* ]]
+  [[ "$output" == *"L = [5]"* ]]
 }
 
 @test "append, member, memberchk, reverse, length" {
@@ -575,10 +587,10 @@ TRILOG="./trilog"
     length([a,b,c],N),
     length(L2,3).
   "
-  [[ "$output" == *"L1=[1, 2, 3, 4]"* ]]
-  [[ "$output" == *"X=[1, 2]"* ]]
-  [[ "$output" == *"R=[3, 2, 1]"* ]]
-  [[ "$output" == *"N=3"* ]]
+  [[ "$output" == *"L1 = [1, 2, 3, 4]"* ]]
+  [[ "$output" == *"X = [1, 2]"* ]]
+  [[ "$output" == *"R = [3, 2, 1]"* ]]
+  [[ "$output" == *"N = 3"* ]]
 }
 
 @test "nth0, nth1, last, is_list, sum_list, max_list, min_list, numlist" {
@@ -593,13 +605,13 @@ TRILOG="./trilog"
     min_list([3,1,4,1,5],Mn),
     numlist(1,5,NL).
   "
-  [[ "$output" == *"X1=b"* ]]
-  [[ "$output" == *"X2=a"* ]]
-  [[ "$output" == *"X3=3"* ]]
-  [[ "$output" == *"S=10"* ]]
-  [[ "$output" == *"Mx=5"* ]]
-  [[ "$output" == *"Mn=1"* ]]
-  [[ "$output" == *"NL=[1, 2, 3, 4, 5]"* ]]
+  [[ "$output" == *"X1 = b"* ]]
+  [[ "$output" == *"X2 = a"* ]]
+  [[ "$output" == *"X3 = 3"* ]]
+  [[ "$output" == *"S = 10"* ]]
+  [[ "$output" == *"Mx = 5"* ]]
+  [[ "$output" == *"Mn = 1"* ]]
+  [[ "$output" == *"NL = [1, 2, 3, 4, 5]"* ]]
 }
 
 @test "select, delete, subtract, intersection, union, permutation" {
@@ -611,12 +623,12 @@ TRILOG="./trilog"
     union([1,2,3],[2,3,4],R5),
     findall(P,permutation([1,2],P),Ps).
   "
-  [[ "$output" == *"R1=[1, 3]"* ]]
-  [[ "$output" == *"R2=[2, 3]"* ]]
-  [[ "$output" == *"R3=[1, 3]"* ]]
-  [[ "$output" == *"R4=[2, 4]"* ]]
-  [[ "$output" == *"R5=[1, 2, 3, 4]"* ]]
-  [[ "$output" == *"Ps=[[1, 2], [2, 1]]"* ]]
+  [[ "$output" == *"R1 = [1, 3]"* ]]
+  [[ "$output" == *"R2 = [2, 3]"* ]]
+  [[ "$output" == *"R3 = [1, 3]"* ]]
+  [[ "$output" == *"R4 = [2, 4]"* ]]
+  [[ "$output" == *"R5 = [1, 2, 3, 4]"* ]]
+  [[ "$output" == *"Ps = [[1, 2], [2, 1]]"* ]]
 }
 
 @test "flatten, list_to_set, max_member, min_member, repeat" {
@@ -627,11 +639,11 @@ TRILOG="./trilog"
     min_member(Mn,[3,1,4,1,5]),
     (repeat, X=done, !).
   "
-  [[ "$output" == *"R1=[1, 2, 3, 4, 5, 6]"* ]]
-  [[ "$output" == *"R2=[1, 2, 3]"* ]]
-  [[ "$output" == *"Mx=5"* ]]
-  [[ "$output" == *"Mn=1"* ]]
-  [[ "$output" == *"X=done"* ]]
+  [[ "$output" == *"R1 = [1, 2, 3, 4, 5, 6]"* ]]
+  [[ "$output" == *"R2 = [1, 2, 3]"* ]]
+  [[ "$output" == *"Mx = 5"* ]]
+  [[ "$output" == *"Mn = 1"* ]]
+  [[ "$output" == *"X = done"* ]]
 }
 
 @test "atom_length, atom_concat (all 3 modes + nondet split), sub_atom, current_op" {
@@ -647,13 +659,13 @@ TRILOG="./trilog"
     current_op(750,xfx,foo_op).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"L1=5"* ]]
-  [[ "$output" == *"C1=foobar"* ]]
-  [[ "$output" == *"C2=bar"* ]]
-  [[ "$output" == *"C3=foo"* ]]
-  [[ "$output" == *"NSplits=3"* ]]
-  [[ "$output" == *"Sub=ell"* ]]
-  [[ "$output" == *"yes:"* ]]
+  [[ "$output" == *"L1 = 5"* ]]
+  [[ "$output" == *"C1 = foobar"* ]]
+  [[ "$output" == *"C2 = bar"* ]]
+  [[ "$output" == *"C3 = foo"* ]]
+  [[ "$output" == *"NSplits = 3"* ]]
+  [[ "$output" == *"Sub = ell"* ]]
+  succeeded
 }
 
 @test "atom_chars, atom_number, number_chars (both modes), writeln, retractall, abolish" {
@@ -674,13 +686,13 @@ TRILOG="./trilog"
     catch(tmp2(_,_), error(existence_error(procedure,_),_), true).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Chars=\"hi\""* ]]
-  [[ "$output" == *"A1=hi"* ]]
-  [[ "$output" == *"N1=42"* ]]
-  [[ "$output" == *"A2=42"* ]]
-  [[ "$output" == *'NC="42"'* ]]
-  [[ "$output" == *"N2=42"* ]]
-  [[ "$output" == *"yes:"* ]]
+  [[ "$output" == *"Chars = \"hi\""* ]]
+  [[ "$output" == *"A1 = hi"* ]]
+  [[ "$output" == *"N1 = 42"* ]]
+  [[ "$output" == *"A2 = 42"* ]]
+  [[ "$output" == *'NC = "42"'* ]]
+  [[ "$output" == *"N2 = 42"* ]]
+  succeeded
 
   run "$TRILOG" -e "writeln(hi)."
   [ "$status" -eq 0 ]
@@ -693,7 +705,7 @@ TRILOG="./trilog"
     length(Vs, N).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"N=3"* ]]
+  [[ "$output" == *"N = 3"* ]]
 }
 
 @test "bagof does not group by Goal's free variables (regression)" {
@@ -706,7 +718,7 @@ TRILOG="./trilog"
     findall(K-L, bagof(X,bagof_p(K,X),L), Groups), length(Groups, N), write(N).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"N=1"* ]]
+  [[ "$output" == *"N = 1"* ]]
 }
 
 @test "bagof with V^Goal has no effect on the ungrouped result (regression)" {
@@ -717,13 +729,13 @@ TRILOG="./trilog"
     bagof(X, K^bagof_p(K,X), L).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"L=[1, 2, 3]"* ]]
+  [[ "$output" == *"L = [1, 2, 3]"* ]]
 }
 
 @test "bagof fails outright on no solutions, unlike findall's []" {
   run "$TRILOG" -e "bagof(X, member(X,[]), L)."
   [ "$status" -eq 0 ]
-  [[ "$output" != *"yes:"* ]]
+  ! succeeded
 }
 
 @test "calling a non-callable term throws type_error(callable, _), not a crash (regression)" {
@@ -747,7 +759,7 @@ TRILOG="./trilog"
 @test "setof sorts and dedups, built on bagof plus sort/2" {
   run "$TRILOG" -e "setof(X, member(X,[3,1,2,1]), L)."
   [ "$status" -eq 0 ]
-  [[ "$output" == *"L=[1, 2, 3]"* ]]
+  [[ "$output" == *"L = [1, 2, 3]"* ]]
 }
 
 @test "must_be throws type_error/domain_error/instantiation_error" {
@@ -761,7 +773,7 @@ TRILOG="./trilog"
   [[ "$output" == *"type_error(integer, foo)"* ]]
   [[ "$output" == *"domain_error(not_less_than_zero, -1)"* ]]
   [[ "$output" == *"uninstantiation_error(foo)"* ]]
-  [[ "$output" == *"E4=error(instantiation_error,"* ]]
+  [[ "$output" == *"E4 = error(instantiation_error,"* ]]
 }
 
 @test "must_be passes valid terms silently, boolean/1 and character/1 delegate through call/2" {
@@ -773,13 +785,13 @@ TRILOG="./trilog"
     \\+ character(ab).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"yes:"* ]]
+  succeeded
 }
 
 @test "can_be passes an unbound Term without throwing, unlike must_be" {
   run "$TRILOG" -e "can_be(integer, X)."
   [ "$status" -eq 0 ]
-  [[ "$output" == *"yes:"* ]]
+  succeeded
 
   run "$TRILOG" -e "catch(can_be(integer, foo), E, true)."
   [[ "$output" == *"type_error(integer, foo)"* ]]
@@ -795,10 +807,10 @@ TRILOG="./trilog"
     succ(S2,4),
     plus(2,3,P).
   "
-  [[ "$output" == *"L=[1, 2, 3, 4, 5]"* ]]
-  [[ "$output" == *"S1=4"* ]]
-  [[ "$output" == *"S2=3"* ]]
-  [[ "$output" == *"P=5"* ]]
+  [[ "$output" == *"L = [1, 2, 3, 4, 5]"* ]]
+  [[ "$output" == *"S1 = 4"* ]]
+  [[ "$output" == *"S2 = 3"* ]]
+  [[ "$output" == *"P = 5"* ]]
 }
 
 @test "call/2,3,4 dispatch through univ, including partial application" {
@@ -807,8 +819,8 @@ TRILOG="./trilog"
     call(is,X,1+2),
     maplist(plus(10),[1,2,3],L).
   "
-  [[ "$output" == *"X=3"* ]]
-  [[ "$output" == *"L=[11, 12, 13]"* ]]
+  [[ "$output" == *"X = 3"* ]]
+  [[ "$output" == *"L = [11, 12, 13]"* ]]
 }
 
 @test "maplist/2,3,4, foldl, include, exclude, partition" {
@@ -821,12 +833,12 @@ TRILOG="./trilog"
     exclude(integer,[1,foo,2,bar,3],L3),
     partition(integer,[1,foo,2,bar,3],Inc,Exc).
   "
-  [[ "$output" == *"L1=[2, 3, 4]"* ]]
-  [[ "$output" == *"S=10"* ]]
-  [[ "$output" == *"L2=[1, 2, 3]"* ]]
-  [[ "$output" == *"L3=[foo, bar]"* ]]
-  [[ "$output" == *"Inc=[1, 2, 3]"* ]]
-  [[ "$output" == *"Exc=[foo, bar]"* ]]
+  [[ "$output" == *"L1 = [2, 3, 4]"* ]]
+  [[ "$output" == *"S = 10"* ]]
+  [[ "$output" == *"L2 = [1, 2, 3]"* ]]
+  [[ "$output" == *"L3 = [foo, bar]"* ]]
+  [[ "$output" == *"Inc = [1, 2, 3]"* ]]
+  [[ "$output" == *"Exc = [foo, bar]"* ]]
 }
 
 @test "sort dedups and orders, msort keeps duplicates" {
@@ -834,24 +846,24 @@ TRILOG="./trilog"
     sort([3,1,4,1,5,9,2,6], L1),
     msort([3,1,4,1,5,9,2,6], L2).
   "
-  [[ "$output" == *"L1=[1, 2, 3, 4, 5, 6, 9]"* ]]
-  [[ "$output" == *"L2=[1, 1, 2, 3, 4, 5, 6, 9]"* ]]
+  [[ "$output" == *"L1 = [1, 2, 3, 4, 5, 6, 9]"* ]]
+  [[ "$output" == *"L2 = [1, 1, 2, 3, 4, 5, 6, 9]"* ]]
 }
 
 # --- first-argument indexing ---
 
 @test "indexing finds the right clause on a bound first argument" {
   run "$TRILOG" test/family.pl -e "item(three, X)."
-  [[ "$output" == *"X=3"* ]]
+  [[ "$output" == *"X = 3"* ]]
 }
 
 @test "indexing does not break backtracking (regression)" {
   # regression: a stale binding from the clause that just failed used to
   # wrongly rule out every other clause by index.
   run "$TRILOG" test/family.pl -e "choice(W)."
-  [[ "$output" == *"W=a"* ]]
-  [[ "$output" == *"W=b"* ]]
-  [[ "$output" == *"W=c"* ]]
+  [[ "$output" == *"W = a"* ]]
+  [[ "$output" == *"W = b"* ]]
+  [[ "$output" == *"W = c"* ]]
 }
 
 @test "indexing proves determinism across predicates, not just within one (regression)" {
@@ -867,18 +879,18 @@ TRILOG="./trilog"
 
 @test "catch/3 catches a matching thrown ball" {
   run "$TRILOG" -e "catch(throw(oops), oops, W=caught)."
-  [[ "$output" == *"W=caught"* ]]
+  [[ "$output" == *"W = caught"* ]]
 }
 
 @test "catch/3 unifies structured balls" {
   run "$TRILOG" -e "catch(throw(err(1,foo)), err(N,X), true)."
-  [[ "$output" == *"N=1"* ]]
-  [[ "$output" == *"X=foo"* ]]
+  [[ "$output" == *"N = 1"* ]]
+  [[ "$output" == *"X = foo"* ]]
 }
 
 @test "non-matching catcher re-throws to the next outer catch/3" {
   run "$TRILOG" -e "catch(catch(throw(a), b, W=inner), a, W=outer)."
-  [[ "$output" == *"W=outer"* ]]
+  [[ "$output" == *"W = outer"* ]]
 }
 
 @test "uncaught exception is reported, not a crash" {
@@ -890,7 +902,7 @@ TRILOG="./trilog"
 @test "catch/3 is transparent to a goal that just succeeds or fails" {
   run "$TRILOG" -e "catch(fail, _, true)."
   [ "$status" -eq 0 ]
-  [[ "$output" != *"yes:"* ]]
+  ! succeeded
 }
 
 # --- cut scoping through ;/->, call/1, catch/3 (regression) ---
@@ -900,7 +912,7 @@ TRILOG="./trilog"
   [ "$status" -eq 0 ]
   [[ "$output" == *"a"* ]]
   [[ "$output" != *"b"* ]]
-  [[ "$output" != *"yes:"* ]]
+  ! succeeded
 }
 
 @test "call/1 gives an embedded cut its own scope, opaque to the enclosing ; (regression)" {
@@ -908,7 +920,7 @@ TRILOG="./trilog"
   [ "$status" -eq 0 ]
   [[ "$output" == *"a"* ]]
   [[ "$output" == *"b"* ]]
-  [[ "$output" == *"yes:"* ]]
+  succeeded
 }
 
 @test "catch/3's Goal argument gives an embedded cut its own scope too (regression)" {
@@ -916,7 +928,7 @@ TRILOG="./trilog"
   [ "$status" -eq 0 ]
   [[ "$output" == *"a"* ]]
   [[ "$output" == *"b"* ]]
-  [[ "$output" == *"yes:"* ]]
+  succeeded
 }
 
 @test "once/1 and \\+/1 don't crash on an embedded cut (regression)" {
@@ -935,8 +947,8 @@ TRILOG="./trilog"
   # opt(a) succeeds first, so opt(b)'s later throw needs the catch scope
   # to survive independently of any one attempt.
   run "$TRILOG" test/family.pl -e "catch(opt(W), bad_b, W=recovered)."
-  [[ "$output" == *"W=a"* ]]
-  [[ "$output" == *"W=recovered"* ]]
+  [[ "$output" == *"W = a"* ]]
+  [[ "$output" == *"W = recovered"* ]]
 }
 
 @test "catch/3 under GC pressure stays correct (regression)" {
@@ -955,32 +967,32 @@ TRILOG="./trilog"
     (true, X=ok),
     Y=X.
   "
-  [[ "$output" == *"X=ok"* ]]
-  [[ "$output" == *"Y=ok"* ]]
+  [[ "$output" == *"X = ok"* ]]
+  [[ "$output" == *"Y = ok"* ]]
 }
 
 # --- findall/3, via assert-based accumulation ---
 
 @test "findall/3 collects every solution in order" {
   run "$TRILOG" test/family.pl -e "findall(X, choice(X), L)."
-  [[ "$output" == *'L="abc"'* ]]
+  [[ "$output" == *'L = "abc"'* ]]
 }
 
 @test "findall/3 gives an empty list, not failure, for no solutions" {
   run "$TRILOG" test/family.pl -e "findall(X, choice(nonexistent), L)."
   [ "$status" -eq 0 ]
-  [[ "$output" == *"L=[]"* ]]
+  [[ "$output" == *"L = []"* ]]
 }
 
 @test "findall/3 applies the template, not just the goal's bindings" {
   run "$TRILOG" test/family.pl -e "findall(Y, (choice(X), Y = pair(X,X)), L)."
-  [[ "$output" == *"L=[pair(a, a), pair(b, b), pair(c, c)]"* ]]
+  [[ "$output" == *"L = [pair(a, a), pair(b, b), pair(c, c)]"* ]]
 }
 
 @test "nested findall/3 does not conflate inner and outer items (regression)" {
   # regression: unqualified '$findall_item' facts let a nested findall sweep up an outer call's leftover items; fixed via a unique id per call.
   run "$TRILOG" test/family.pl -e "findall(Outer, (choice(_), findall(Inner, inner_choice(Inner), Outer)), L)."
-  [[ "$output" == *'L=["abc", "abc", "abc"]'* ]]
+  [[ "$output" == *'L = ["abc", "abc", "abc"]'* ]]
 }
 
 # --- term copying: variable sharing, cyclic terms, occurs check ---
@@ -1035,7 +1047,7 @@ TRILOG="./trilog"
 
 @test "copy_term/2 preserves variable sharing" {
   run "$TRILOG" -e "copy_term(f(X,Y,X,g(Y)), f(A,B,C,g(D))), A == C, B == D, A \\== B."
-  [[ "$output" == *"yes:"* ]]
+  succeeded
 }
 
 @test "runaway allocation throws a catchable resource_error(memory) instead of dying (regression)" {
@@ -1098,8 +1110,8 @@ TRILOG="./trilog"
     assertz(dyn_fact(2)),
     dyn_fact(X).
   "
-  [[ "$output" == *"X=1"* ]]
-  [[ "$output" == *"X=2"* ]]
+  [[ "$output" == *"X = 1"* ]]
+  [[ "$output" == *"X = 2"* ]]
 }
 
 @test "asserta/1 prepends rather than appends" {
@@ -1108,8 +1120,8 @@ TRILOG="./trilog"
     asserta(dyn_order(a)),
     dyn_order(X).
   "
-  [[ "$output" == *"X=a"* ]]
-  [[ "$output" == *"X=z"* ]]
+  [[ "$output" == *"X = a"* ]]
+  [[ "$output" == *"X = z"* ]]
 }
 
 @test "assertz/1 stores a rule, not just a fact" {
@@ -1117,7 +1129,7 @@ TRILOG="./trilog"
     assertz((dyn_double(X,Y) :- Y is X*2)),
     dyn_double(21,R).
   "
-  [[ "$output" == *"R=42"* ]]
+  [[ "$output" == *"R = 42"* ]]
 }
 
 @test "retract/1 removes exactly the matching clause" {
@@ -1127,14 +1139,14 @@ TRILOG="./trilog"
     retract(dyn_r(1)),
     dyn_r(X).
   "
-  [[ "$output" == *"X=2"* ]]
-  [[ "$output" != *"X=1"* ]]
+  [[ "$output" == *"X = 2"* ]]
+  [[ "$output" != *"X = 1"* ]]
 }
 
 @test "retract/1 fails, not errors, when nothing matches" {
   run "$TRILOG" -e "retract(dyn_nonexistent(1))."
   [ "$status" -eq 0 ]
-  [[ "$output" != *"yes:"* ]]
+  ! succeeded
 }
 
 # --- logical update view: a call iterates the clauses that existed when it started ---
@@ -1218,13 +1230,13 @@ TRILOG="./trilog"
 
 @test "GC does not corrupt correctness under a forced low threshold" {
   run env TRILOG_GC_THRESHOLD=50 "$TRILOG" test/family.pl -e "grandparent(tom, W)."
-  [[ "$output" == *"W=ann"* ]]
+  [[ "$output" == *"W = ann"* ]]
   run env TRILOG_GC_THRESHOLD=50 "$TRILOG" test/family.pl -e "p(X)."
-  [ "$(echo "$output" | grep -c 'yes:')" -eq 1 ]
-  [[ "$output" == *"X=1"* ]]
+  [ "$(answers)" -eq 1 ]
+  [[ "$output" == *"X = 1"* ]]
   run env TRILOG_GC_THRESHOLD=50 "$TRILOG" test/family.pl -e "(choice(W) ; W=none)."
-  [[ "$output" == *"W=a"* ]]
-  [[ "$output" == *"W=none"* ]]
+  [[ "$output" == *"W = a"* ]]
+  [[ "$output" == *"W = none"* ]]
 }
 
 @test "a binding made before a still-live choice point survives GC and backtracking out of it (regression)" {
@@ -1234,8 +1246,8 @@ TRILOG="./trilog"
     length(L,N).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"L=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]"* ]]
-  [[ "$output" == *"N=20"* ]]
+  [[ "$output" == *"L = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]"* ]]
+  [[ "$output" == *"N = 20"* ]]
 }
 
 @test "cut-discarded garbage is reclaimed, not just accumulated (regression)" {
@@ -1253,7 +1265,7 @@ TRILOG="./trilog"
     list_len(L, N).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"N=50000"* ]]
+  [[ "$output" == *"N = 50000"* ]]
 }
 
 # --- interactive solution-stepping (real tty only) ---
@@ -1296,9 +1308,9 @@ TRILOG="./trilog"
 @test "DCG: terminals and phrase/2" {
   printf 'greeting --> [hello], [world].\n' > /tmp/trilog_dcg1.pl
   run "$TRILOG" /tmp/trilog_dcg1.pl -e "phrase(greeting, [hello, world])."
-  [[ "$output" == *"yes:"* ]]
+  succeeded
   run "$TRILOG" /tmp/trilog_dcg1.pl -e "phrase(greeting, [hello, there])."
-  [[ "$output" != *"yes:"* ]]
+  ! succeeded
   rm -f /tmp/trilog_dcg1.pl
 }
 
@@ -1306,7 +1318,7 @@ TRILOG="./trilog"
   printf 'digits([D|Ds]) --> [D], { D >= 0, D =< 9 }, digits(Ds).\n' > /tmp/trilog_dcg2.pl
   printf 'digits([D]) --> [D], { D >= 0, D =< 9 }.\n' >> /tmp/trilog_dcg2.pl
   run "$TRILOG" /tmp/trilog_dcg2.pl -e "phrase(digits(Ds), [1,2,3])."
-  [[ "$output" == *"Ds=[1, 2, 3]"* ]]
+  [[ "$output" == *"Ds = [1, 2, 3]"* ]]
   rm -f /tmp/trilog_dcg2.pl
 }
 
@@ -1317,13 +1329,13 @@ opt --> [z], !, [w].
 opt --> [].
 EOF
   run "$TRILOG" /tmp/trilog_dcg3.pl -e "phrase(alt, [x])."
-  [[ "$output" == *"yes:"* ]]
+  succeeded
   run "$TRILOG" /tmp/trilog_dcg3.pl -e "phrase(alt, [y])."
-  [[ "$output" == *"yes:"* ]]
+  succeeded
   run "$TRILOG" /tmp/trilog_dcg3.pl -e "phrase(opt, [z, w])."
-  [[ "$output" == *"yes:"* ]]
+  succeeded
   run "$TRILOG" /tmp/trilog_dcg3.pl -e "phrase(opt, [])."
-  [[ "$output" == *"yes:"* ]]
+  succeeded
   rm -f /tmp/trilog_dcg3.pl
 }
 
@@ -1335,7 +1347,7 @@ count(N, N) --> [].
 EOF
   run bash -c "ulimit -v 1048576; timeout 30 $TRILOG /tmp/trilog_dcg4.pl -e \"length(L, 2000), phrase(count(0, N), L).\""
   [ "$status" -eq 0 ]
-  [[ "$output" == *"N=2000"* ]]
+  [[ "$output" == *"N = 2000"* ]]
   rm -f /tmp/trilog_dcg4.pl
 }
 
@@ -1361,8 +1373,8 @@ EOF
     write(W).
   "
   [ "$status" -eq 0 ]
-  [ "$(echo "$output" | grep -c 'yes:')" -eq 1 ]
-  [[ "$output" == *"W=a"* ]]
+  [ "$(answers)" -eq 1 ]
+  [[ "$output" == *"W = a"* ]]
 }
 
 @test "solve/2: a cut-committed base case keeps every binding it made, including the final list tail" {
@@ -1425,10 +1437,10 @@ EOF
   printf 'opt --> [z], !, [w].\nopt --> [].\n' > /tmp/mi_dcg_test.pl
   run "$TRILOG" /tmp/mi_dcg_test.pl -e "phrase(opt, [z, w])."
   [ "$status" -eq 0 ]
-  [[ "$output" == *"yes:"* ]]
+  succeeded
   run "$TRILOG" /tmp/mi_dcg_test.pl -e "phrase(opt, [])."
   [ "$status" -eq 0 ]
-  [[ "$output" == *"yes:"* ]]
+  succeeded
   rm -f /tmp/mi_dcg_test.pl
 }
 
@@ -1442,7 +1454,7 @@ PLEOF
     write(X).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"yes:"* ]]
+  succeeded
   [[ "$output" == *"1"* ]]
   rm -f /tmp/mi_directive_test.pl
 }
@@ -1453,8 +1465,8 @@ PLEOF
   printf "a(1).\n:- consult('sub/b.pl').\na(2).\n" > /tmp/mi_nest_test/a.pl
   printf "b(1).\n" > /tmp/mi_nest_test/sub/b.pl
   run "$TRILOG" /tmp/mi_nest_test/a.pl -e "findall(X, a(X), A), findall(Y, b(Y), B)."
-  [[ "$output" == *"A=[1, 2]"* ]]
-  [[ "$output" == *"B=[1]"* ]]
+  [[ "$output" == *"A = [1, 2]"* ]]
+  [[ "$output" == *"B = [1]"* ]]
   rm -rf /tmp/mi_nest_test
 }
 
@@ -1465,8 +1477,8 @@ PLEOF
   printf ":- op(700, xfx, '==>').\n:- X = f(a).\ninner_fact(1).\n" > /tmp/mi_gcnest_test/inner.pl
   TRILOG_GC_THRESHOLD=2000 run "$TRILOG" -f /tmp/mi_gcnest_test/outer.pl -e "after(X), inner_fact(Y)."
   [[ "$output" != *"uncaught exception"* ]]
-  [[ "$output" == *"X=1"* ]]
-  [[ "$output" == *"Y=1"* ]]
+  [[ "$output" == *"X = 1"* ]]
+  [[ "$output" == *"Y = 1"* ]]
   rm -rf /tmp/mi_gcnest_test
 }
 
@@ -1475,7 +1487,7 @@ PLEOF
   printf ":- consult('sub/b.pl').\n" > /tmp/mi_rel_test/a.pl
   printf "b(1).\n" > /tmp/mi_rel_test/sub/b.pl
   run "$TRILOG" /tmp/mi_rel_test/a.pl -e "b(X)."
-  [[ "$output" == *"X=1"* ]]
+  [[ "$output" == *"X = 1"* ]]
   rm -rf /tmp/mi_rel_test
 }
 
@@ -1491,7 +1503,7 @@ PLEOF
     write(B).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"yes:"* ]]
+  succeeded
   [[ "$output" == *"ab"* ]]
 
   cat > /tmp/mi_op_test2.pl <<'PLEOF'
@@ -1504,7 +1516,7 @@ PLEOF
     write(X).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"yes:"* ]]
+  succeeded
   [[ "$output" == *"===>(===>(a, b), c)"* ]]
   rm -f /tmp/mi_op_test.pl /tmp/mi_op_test2.pl
 }
@@ -1549,16 +1561,44 @@ PLEOF
     phrase(greeting,[hello,world]).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"yes:"* ]]
+  succeeded
 }
 
 @test "the engine keeps no writable global state" {
   root="$BATS_TEST_DIRNAME/.."
   for f in "$root"/src/kernel/*.c "$root"/src/io/*.c "$root"/src/trilog.c "$root"/src/platform/*.c; do
-    gcc -std=c11 -O2 -I"$root/include" -I"$root/src/kernel" -I"$root/src/io" -I"$root/src/platform" \
+    gcc -std=c11 -O2 -I"$root/include" -I"$root/src/kernel" -I"$root/src/io" -I"$root/src/platform" -I"$root/_build" \
       -c "$f" -o "$BATS_TEST_TMPDIR/obj.o"
     run bash -c "size -A '$BATS_TEST_TMPDIR/obj.o' | awk '\$1 ~ /^\\.(data|bss|data\\.rel|data\\.rel\\.local)\$/ && \$2 > 0'"
     [ "$status" -eq 0 ]
     [ -z "$output" ] || { echo "$f: $output"; false; }
   done
 }
+
+@test "the library exports only the trilog_ API" {
+  run make -s -C "$BATS_TEST_DIRNAME/.." lib
+  [ "$status" -eq 0 ]
+  run bash -c "nm -g --defined-only '$BATS_TEST_DIRNAME/../_build/dev-posix/libtrilog.a' | awk '\$2 ~ /[TDBR]/ {print \$3}' | grep -v '^trilog_'"
+  [ -z "$output" ]
+}
+
+@test "trilog -V prints git describe and the branch" {
+  root="$BATS_TEST_DIRNAME/.."
+  expected="trilog $(git -C "$root" describe --tags --always --dirty) ($(git -C "$root" rev-parse --abbrev-ref HEAD))"
+  run make -s -C "$root" trilog
+  run "$TRILOG" -V
+  [ "$status" -eq 0 ]
+  [ "$output" = "$expected" ]
+}
+
+@test "trilog.h compiles and links as C++" {
+  command -v g++ >/dev/null || skip "no g++"
+  root="$BATS_TEST_DIRNAME/.."
+  printf '#include "trilog.h"\nint main() { return trilog_version()[0] == 0; }\n' > "$BATS_TEST_TMPDIR/host.cpp"
+  run g++ -std=c++17 -Wall -Wextra -pedantic -Werror -I"$root/include" -o "$BATS_TEST_TMPDIR/host" \
+    "$BATS_TEST_TMPDIR/host.cpp" "$root/_build/dev-posix/libtrilog.a" -lm
+  [ "$status" -eq 0 ]
+  run "$BATS_TEST_TMPDIR/host"
+  [ "$status" -eq 0 ]
+}
+

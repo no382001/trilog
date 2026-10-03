@@ -66,6 +66,7 @@
   X(atom_get_time_ms, "get_time_ms")                                           \
   X(atom_read_line_to_atom, "read_line_to_atom")                               \
   X(atom_end_of_file, "end_of_file")                                           \
+  X(atom_user_input, "user_input")                                             \
   X(atom_is_static_pred, "$$is_static")                                        \
   X(atom_undynamic, "$$undynamic")                                             \
   X(atom_prolog_flag_value, "$$prolog_flag_value")                             \
@@ -91,7 +92,6 @@
   X(atom_functor, "functor")                                                   \
   X(atom_arg, "arg")                                                           \
   X(atom_univ, "=..")                                                          \
-  X(atom_var_addr, "$$var_addr")                                               \
   X(atom_atom_codes, "atom_codes")                                             \
   X(atom_number_codes, "number_codes")                                         \
   X(atom_mode_read, "read")                                                    \

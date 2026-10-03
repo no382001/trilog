@@ -7,6 +7,7 @@
 #include "parse.h"
 #include "solve.h"
 #include "term.h"
+#include "version.h"
 #include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
@@ -143,6 +144,8 @@ trilog_status_t trilog_load_string(trilog_t *t, const char *text) {
 }
 
 int trilog_halt_code(trilog_t *t) { return t->halt_code; }
+
+const char *trilog_version(void) { return TRILOG_BUILD_VERSION; }
 
 static bool register_parsed(trilog_t *t, const char *name, const char *types,
                             int32_t nin, int32_t nout, trilog_fn fn, void *ud) {

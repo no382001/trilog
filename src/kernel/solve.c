@@ -1217,13 +1217,19 @@ static int dispatch_builtin(trilog_t *T, size_t goal, int *ok) {
     return 1;
   }
   if (arity == 2 && id == atom_read_line_to_atom) {
+    char buf[8192];
+    char *got;
+    size_t sd = heap_deref(T, f + 1);
     int sid;
-    if (!resolve_stream_id(T, f + 1, &sid)) {
+    if (T->heap[sd].tag == TAG_ATOM &&
+        T->heap[sd].as.atom_id == atom_user_input) {
+      got = io_read_line(T, buf, sizeof buf);
+    } else if (resolve_stream_id(T, f + 1, &sid)) {
+      got = io_file_read_line(T, stream_handle(T, sid), buf, sizeof buf);
+    } else {
       *ok = 0;
       return 1;
     }
-    char buf[8192];
-    char *got = io_file_read_line(T, stream_handle(T, sid), buf, sizeof buf);
     size_t line;
     if (!got) {
       line = heap_new_atom(T, atom_end_of_file);
@@ -1616,11 +1622,6 @@ static int dispatch_builtin(trilog_t *T, size_t goal, int *ok) {
         ne == 0 ? head
                 : heap_new_struct(T, T->heap[head].as.atom_id, ne, elems);
     *ok = unify(T, term, built);
-    return 1;
-  }
-  if (arity == 2 && id == atom_var_addr) {
-    size_t d = heap_deref(T, f + 1);
-    *ok = unify(T, f + 2, heap_new_int(T, (int64_t)d));
     return 1;
   }
   if (arity == 2 && id == atom_atom_codes) {

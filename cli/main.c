@@ -58,9 +58,10 @@ static bool toplevel_solution(trilog_t *t, void *ud, bool has_more) {
   return false;
 }
 
-static void toplevel_query(const char *goal, bool interactive) {
+static trilog_status_t toplevel_query(const char *goal, bool interactive) {
   toplevel_state st = {.interactive = interactive};
-  switch (trilog_query(T, goal, toplevel_solution, &st)) {
+  trilog_status_t s = trilog_query(T, goal, toplevel_solution, &st);
+  switch (s) {
   case TRILOG_TRUE:
     if (!st.closed)
       fputs(".\n", stdout);
@@ -77,24 +78,14 @@ static void toplevel_query(const char *goal, bool interactive) {
   case TRILOG_ABORTED:
     break;
   }
-}
-
-static bool batch_solution(trilog_t *t, void *ud, bool has_more) {
-  (void)ud;
-  (void)has_more;
-  fputs("yes:", stdout);
-  int n = trilog_binding_count(t);
-  for (int i = 0; i < n; i++) {
-    printf(" %s=", trilog_binding_name(t, i));
-    print_term(stdout, trilog_binding_value(t, i));
-  }
-  fputs("\n", stdout);
-  return true;
+  return s;
 }
 
 // One line, one query TODO: no support yet for a query spanning multiple lines.
 static void repl(void) {
   bool interactive = terminal_stdin_is_tty();
+  if (interactive)
+    printf("trilog %s\n", trilog_version());
   char line[8192];
   for (;;) {
     if (interactive) {
@@ -122,6 +113,7 @@ static const char *usage = "Usage: trilog [options] [file...]\n"
                            "  -f        fast startup: skip ~/.trilog\n"
                            "  -v        verbose: echo startup consults\n"
                            "  -s        print resource-usage stats on exit\n"
+                           "  -V        print the version and exit\n"
                            "  -h        show this help\n";
 
 static void print_exit_stats(void) {
@@ -190,6 +182,10 @@ int main(int argc, char **argv) {
       fputs(usage, stdout);
       return 0;
     }
+    if (!strcmp(argv[i], "-V")) {
+      printf("trilog %s\n", trilog_version());
+      return 0;
+    }
     if (!strcmp(argv[i], "-f")) {
       fast = 1;
     } else if (!strcmp(argv[i], "-v")) {
@@ -229,14 +225,9 @@ int main(int argc, char **argv) {
   }
 
   if (query) {
-    trilog_status_t s = trilog_query(T, query, batch_solution, NULL);
-    if (s == TRILOG_HALT)
-      exit(trilog_halt_code(T));
-    if (s == TRILOG_ERROR) {
-      if (trilog_term_type(T, trilog_error_term(T)) == TRILOG_INVALID)
-        return 1;
-      print_uncaught();
-    }
+    if (toplevel_query(query, false) == TRILOG_ERROR &&
+        trilog_term_type(T, trilog_error_term(T)) == TRILOG_INVALID)
+      return 1;
   } else {
     repl();
   }

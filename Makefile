@@ -1,7 +1,9 @@
+.DEFAULT_GOAL := trilog
+
 CC = gcc
 AR = gcc-ar
 CFLAGS = -Wall -Wextra -std=c11 -O2
-CPPFLAGS = -Iinclude -Isrc/kernel -Isrc/io -Isrc/platform -MMD -MP
+CPPFLAGS = -Iinclude -Isrc/kernel -Isrc/io -Isrc/platform -I_build -MMD -MP
 
 PLATFORM ?= posix
 KERNEL_SRCS = src/kernel/heap.c src/kernel/unify.c src/kernel/term.c src/kernel/solve.c \
@@ -29,13 +31,31 @@ $(REL)/%.o: %.c | format
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) -DTRILOG_EMBEDDED $(CFLAGS) -flto=auto -c $< -o $@
 
+# internal names are not exported.
 $(DEV)/libtrilog.a: $(DEV_LIB_OBJS)
 	@rm -f $@
-	$(AR) rcs $@ $^
+	$(CC) -r -nostdlib -o $(DEV)/libtrilog.o $^
+	objcopy --wildcard --keep-global-symbol='trilog_*' $(DEV)/libtrilog.o
+	$(AR) rcs $@ $(DEV)/libtrilog.o
 
 $(REL)/libtrilog.a: $(REL_LIB_OBJS)
 	@rm -f $@
-	$(AR) rcs $@ $^
+	$(CC) -r -nostdlib -flto=auto -flinker-output=nolto-rel -o $(REL)/libtrilog.o $^
+	objcopy --wildcard --keep-global-symbol='trilog_*' $(REL)/libtrilog.o
+	$(AR) rcs $@ $(REL)/libtrilog.o
+
+GIT_DESCRIBE := $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+
+_build/version.h: FORCE
+	@mkdir -p _build
+	@printf '#define TRILOG_BUILD_VERSION "%s (%s)"\n' '$(GIT_DESCRIBE)' '$(GIT_BRANCH)' > $@.tmp
+	@if cmp -s $@.tmp $@; then rm $@.tmp; else mv $@.tmp $@; fi
+
+$(DEV)/src/trilog.o $(REL)/src/trilog.o: _build/version.h
+
+.PHONY: FORCE
+FORCE:
 
 $(DEV)/trilog: $(DEV_CLI_OBJS) $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -o $@ $^ -lm
@@ -44,7 +64,7 @@ $(REL)/trilog: $(REL_CLI_OBJS) $(REL)/libtrilog.a
 	$(CC) $(CFLAGS) -flto=auto -o $@ $^ -lm
 
 -include $(DEV_LIB_OBJS:.o=.d) $(REL_LIB_OBJS:.o=.d) $(DEV_CLI_OBJS:.o=.d) $(REL_CLI_OBJS:.o=.d) \
-         $(DEV)/test/api_test.d $(DEV)/test/api_threads_test.d $(DEV)/test/api_oom_test.d $(DEV)/examples/embed.d
+         $(DEV)/test/api_test.d $(DEV)/test/api_threads_test.d $(DEV)/test/api_oom_test.d $(DEV)/test/api_namespace_test.d $(DEV)/examples/embed.d
 
 .PHONY: trilog release lib
 trilog: $(DEV)/trilog
@@ -69,6 +89,9 @@ _build/api_test: $(DEV)/test/api_test.o $(DEV)/libtrilog.a
 examples/embed: $(DEV)/examples/embed.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
+_build/api_namespace_test: $(DEV)/test/api_namespace_test.o $(DEV)/libtrilog.a
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
 _build/api_oom_test: $(DEV)/test/api_oom_test.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
@@ -79,8 +102,9 @@ _build/api_threads_test: $(DEV)/test/api_threads_test.o $(DEV)/libtrilog.a
 test: trilog test-api
 	bats test/
 
-test-api: _build/api_test _build/api_threads_test _build/api_oom_test examples/embed
+test-api: _build/api_test _build/api_threads_test _build/api_oom_test _build/api_namespace_test examples/embed
 	examples/embed
+	_build/api_namespace_test
 	_build/api_test
 	_build/api_threads_test
 	_build/api_oom_test 2>/dev/null
@@ -128,10 +152,10 @@ quad-junit: trilog
 	@echo "JUnit reports written to _build/test-results/"
 
 clean:
-	rm -rf trilog _build/trilog _build/embedded.c _build/api_test _build/api_threads_test _build/api_oom_test examples/embed _build/dev-* _build/release-*
+	rm -rf trilog _build/trilog _build/embedded.c _build/api_test _build/api_threads_test _build/api_oom_test _build/api_namespace_test examples/embed _build/dev-* _build/release-*
 
 format:
-	clang-format -i $(SRCS) test/api_test.c test/api_threads_test.c test/api_oom_test.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
+	clang-format -i $(SRCS) test/api_test.c test/api_threads_test.c test/api_oom_test.c test/api_namespace_test.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
 
 format-check:
-	clang-format --dry-run --Werror $(SRCS) test/api_test.c test/api_threads_test.c test/api_oom_test.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
+	clang-format --dry-run --Werror $(SRCS) test/api_test.c test/api_threads_test.c test/api_oom_test.c test/api_namespace_test.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)

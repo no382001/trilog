@@ -7,6 +7,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct trilog trilog_t;
 
 // A term owned by the interpreter.
@@ -151,3 +155,11 @@ bool trilog_register(trilog_t *t, const char *name, const char *sig,
 typedef bool (*trilog_yield_fn)(trilog_t *t, size_t depth, void *ud);
 void trilog_set_yield(trilog_t *t, trilog_yield_fn fn, unsigned every,
                       void *ud);
+
+// The build's git describe output and branch, e.g. "v0.2-3-gabc1234-dirty
+// (main)".
+const char *trilog_version(void);
+
+#ifdef __cplusplus
+}
+#endif

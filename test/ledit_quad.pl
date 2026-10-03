@@ -11,18 +11,18 @@
 
 % ===== Pure utilities =====
 
-% --- reverse/3 (from core.pl) ---
+% --- l_reverse/3 ---
 
-?- reverse([], [], L).
+?- l_reverse([], [], L).
    L = [].
 
-?- reverse([1, 2, 3], [], L).
+?- l_reverse([1, 2, 3], [], L).
    L = [3, 2, 1].
 
-?- reverse([a, b], [c, d], L).
+?- l_reverse([a, b], [c, d], L).
    L = "bacd".
 
-?- reverse([x], [], L).
+?- l_reverse([x], [], L).
    L = "x".
 
 % --- member/2 (from core.pl) ---
@@ -328,7 +328,7 @@
 
 % ===== l_listing (line ordering assembly) =====
 
-?- reverse([b, a, top], [c], [_|L3]), !.
+?- l_reverse([b, a, top], [c], [_|L3]), !.
    L3 = "abc".
 
 % ===== l_contains/2 =====
