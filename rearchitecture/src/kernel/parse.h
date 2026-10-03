@@ -6,6 +6,7 @@
 void parse_init(void);
 
 bool consult_file(const char *path);
+bool consult_string(const char *text);
 
 bool parse_query(const char *src, tterm_t ***goals_out, int32_t *ngoals_out,
                  int32_t *nvars_out, const char ***varnames_out);

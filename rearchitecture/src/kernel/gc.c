@@ -1,13 +1,12 @@
-#define _POSIX_C_SOURCE 200809L
 #include "gc.h"
 #include "heap.h"
 #include "io.h"
+#include "platform.h"
 #include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/resource.h>
 
 static jmp_buf gc_oom;
 
@@ -209,10 +208,9 @@ static size_t gc_max_live(void) {
   static size_t max = 0;
   if (max == 0) {
     max = GC_MAX_LIVE_CELLS;
-    struct rlimit rl;
-    if (getrlimit(RLIMIT_AS, &rl) == 0 && rl.rlim_cur != RLIM_INFINITY &&
-        rl.rlim_cur / 128 < max)
-      max = rl.rlim_cur / 128;
+    size_t limit = platform_address_space_limit();
+    if (limit != 0 && limit / 128 < max)
+      max = limit / 128;
   }
   return max;
 }

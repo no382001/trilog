@@ -1,4 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
 #include "parse.h"
 #include "arena.h"
 #include "embedded.h"
@@ -95,7 +94,7 @@ static void perr(const char *msg) {
 }
 
 static int is_symbol_char(int c) {
-  return strchr("+-*/\\^<>=~:.?@#&$", c) != NULL;
+  return c != '\0' && strchr("+-*/\\^<>=~:.?@#&$", c) != NULL;
 }
 
 static void skip_ws(void) {
@@ -552,14 +551,20 @@ static tterm_t **flatten_conj(tterm_t *t, int32_t *n_out) {
   return out;
 }
 
+static int all_solutions(void *ud, int has_more) {
+  (void)ud;
+  (void)has_more;
+  return 1;
+}
+
 static void run_directive(tterm_t *goal, int32_t nvars) {
   int32_t n;
   tterm_t **goals = flatten_conj(goal, &n);
-  const char **names =
-      arena_alloc((size_t)(nvars > 0 ? nvars : 1) * sizeof(char *));
-  for (int32_t i = 0; i < nvars; i++)
-    names[i] = arena_strdup(var_names[i]);
-  run_query(goals, n, nvars, names, RUN_SILENT);
+  if (run_query(goals, n, nvars, all_solutions, NULL) == QUERY_ERROR) {
+    io_write_err("uncaught exception: ");
+    print_term_via(query_error_ball(), 0, io_write_err);
+    io_write_err("\n");
+  }
 }
 
 static void assemble_clause(tterm_t *t, int32_t nvars) {
@@ -664,6 +669,19 @@ static bool consult_source(const char *text, const char *path);
 
 // Re-entrant: a consult/1 directive inside the file saves and restores the
 // outer file's parse state.
+static bool consult_nested(const char *text, const char *file,
+                           const char *name) {
+  const char *saved_P = P, *saved_consulting = consulting;
+  jmp_buf saved_jmp;
+  memcpy(saved_jmp, err_jmp, sizeof(jmp_buf));
+  consulting = file;
+  bool ok = consult_source(text, name);
+  consulting = saved_consulting;
+  P = saved_P;
+  memcpy(err_jmp, saved_jmp, sizeof(jmp_buf));
+  return ok;
+}
+
 bool consult_file(const char *path) {
   char resolved[4096];
   const char *text = consult_text(path, resolved, sizeof resolved);
@@ -673,15 +691,11 @@ bool consult_file(const char *path) {
     io_write_err(msg);
     return false;
   }
-  const char *saved_P = P, *saved_consulting = consulting;
-  jmp_buf saved_jmp;
-  memcpy(saved_jmp, err_jmp, sizeof(jmp_buf));
-  consulting = resolved;
-  bool ok = consult_source(text, resolved);
-  consulting = saved_consulting;
-  P = saved_P;
-  memcpy(err_jmp, saved_jmp, sizeof(jmp_buf));
-  return ok;
+  return consult_nested(text, resolved, resolved);
+}
+
+bool consult_string(const char *text) {
+  return consult_nested(text, NULL, "<string>");
 }
 
 static bool consult_source(const char *text, const char *path) {

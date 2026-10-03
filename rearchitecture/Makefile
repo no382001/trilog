@@ -1,13 +1,17 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -O2 -Isrc/kernel -Isrc/io
+CFLAGS = -Wall -Wextra -std=c11 -O2 -Iinclude -Isrc/kernel -Isrc/io -Isrc/platform
+
+PLATFORM ?= posix
+PLATFORM_SRC = src/platform/$(PLATFORM).c
 KERNEL_SRCS = src/kernel/heap.c src/kernel/unify.c src/kernel/term.c src/kernel/solve.c \
               src/kernel/parse.c src/kernel/arena.c src/kernel/gc.c
 IO_SRCS = src/io/io.c src/io/streams.c
-SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/main.c
-HDRS = $(wildcard src/kernel/*.h) $(wildcard src/io/*.h)
+LIB_SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c
+SRCS = $(LIB_SRCS) src/main.c
+HDRS = include/trilog.h $(wildcard src/kernel/*.h) $(wildcard src/io/*.h) $(wildcard src/platform/*.h)
 
-trilog: format $(SRCS) src/kernel/embedded_none.c src/kernel/*.h src/io/*.h
-	$(CC) $(CFLAGS) -o trilog $(SRCS) src/kernel/embedded_none.c -lm
+trilog: format $(SRCS) $(PLATFORM_SRC) src/kernel/embedded_none.c $(HDRS)
+	$(CC) $(CFLAGS) -o trilog $(SRCS) $(PLATFORM_SRC) src/kernel/embedded_none.c -lm
 
 # The release build bakes boot/core.pl and lib/*.pl into the binary, so it
 # runs from anywhere without the library files next to it.
@@ -18,12 +22,19 @@ _build/embedded.c: $(EMBED_FILES) tools/embed_libs.sh
 	sh tools/embed_libs.sh $(EMBED_FILES) > $@
 
 .PHONY: release
-release: format $(SRCS) _build/embedded.c src/kernel/*.h src/io/*.h
-	$(CC) $(CFLAGS) -DTRILOG_EMBEDDED -o _build/trilog $(SRCS) _build/embedded.c -lm
+release: format $(SRCS) $(PLATFORM_SRC) _build/embedded.c $(HDRS)
+	$(CC) $(CFLAGS) -DTRILOG_EMBEDDED -o _build/trilog $(SRCS) $(PLATFORM_SRC) _build/embedded.c -lm
 
-.PHONY: test test-upstream clean format format-check
-test: trilog
+_build/api_test: test/api_test.c $(LIB_SRCS) $(PLATFORM_SRC) src/kernel/embedded_none.c $(HDRS)
+	@mkdir -p _build
+	$(CC) $(CFLAGS) -o $@ test/api_test.c $(LIB_SRCS) $(PLATFORM_SRC) src/kernel/embedded_none.c -lm
+
+.PHONY: test test-api test-upstream clean format format-check
+test: trilog test-api
 	bats test/
+
+test-api: _build/api_test
+	_build/api_test
 
 test-upstream: trilog
 	@tmp=$$(mktemp); \
@@ -74,10 +85,10 @@ quad-junit: trilog
 	@echo "JUnit reports written to _build/test-results/"
 
 clean:
-	rm -f trilog _build/trilog _build/embedded.c
+	rm -f trilog _build/trilog _build/embedded.c _build/api_test
 
 format:
-	clang-format -i $(SRCS) src/kernel/embedded_none.c $(HDRS)
+	clang-format -i $(SRCS) test/api_test.c src/kernel/embedded_none.c src/platform/*.c $(HDRS)
 
 format-check:
-	clang-format --dry-run --Werror $(SRCS) src/kernel/embedded_none.c $(HDRS)
+	clang-format --dry-run --Werror $(SRCS) test/api_test.c src/kernel/embedded_none.c src/platform/*.c $(HDRS)

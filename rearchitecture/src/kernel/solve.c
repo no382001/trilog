@@ -1,10 +1,10 @@
-#define _POSIX_C_SOURCE 200809L // clock_gettime/CLOCK_MONOTONIC (get_time_ms/1)
 #include "solve.h"
 #include "arena.h"
 #include "gc.h"
 #include "heap.h"
 #include "io.h"
 #include "parse.h"
+#include "platform.h"
 #include "streams.h"
 #include "unify.h"
 #include <errno.h>
@@ -1185,9 +1185,7 @@ static int dispatch_builtin(size_t goal, int *ok) {
 
   if (arity == 1 && id == atom_get_time_ms) {
     static long long epoch_ms = -1;
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    long long now_ms = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    long long now_ms = platform_monotonic_ms();
     if (epoch_ms < 0)
       epoch_ms = now_ms;
     *ok = unify(f + 1, heap_new_int(now_ms - epoch_ms));
@@ -1794,6 +1792,13 @@ static void rename_init(size_t *rename, int32_t n) {
     rename[i] = (size_t)-1;
 }
 
+static size_t uncaught_ball = (size_t)-1;
+static size_t *solution_rename = NULL;
+
+size_t query_error_ball(void) { return uncaught_ball; }
+
+size_t query_binding(int32_t i) { return solution_rename[i]; }
+
 static int do_throw(size_t ball, size_t *cn_out, size_t *active_catch_ptr) {
   int32_t nballvars;
   tterm_t *ball_template = heap_to_template(ball, &nballvars);
@@ -1802,9 +1807,7 @@ static int do_throw(size_t ball, size_t *cn_out, size_t *active_catch_ptr) {
   size_t idx = *active_catch_ptr;
   for (;;) {
     if (idx == (size_t)-1) {
-      io_write_err("uncaught exception: ");
-      print_term_via(ball, 0, io_write_err);
-      io_write_err("\n");
+      uncaught_ball = ball;
       return 0;
     }
     catch_frame_t entry = catch_stack[idx];
@@ -1824,22 +1827,28 @@ static int do_throw(size_t ball, size_t *cn_out, size_t *active_catch_ptr) {
 static size_t query_sp_base = 0;
 static int query_depth = 0;
 
-static void run_query_body(tterm_t **goals, int32_t ngoals, int32_t nvars,
-                           const char **varnames, int mode);
+static query_result_t run_query_body(tterm_t **goals, int32_t ngoals,
+                                     int32_t nvars, solution_fn on_solution,
+                                     void *ud);
 
-void run_query(tterm_t **goals, int32_t ngoals, int32_t nvars,
-               const char **varnames, int mode) {
+query_result_t run_query(tterm_t **goals, int32_t ngoals, int32_t nvars,
+                         solution_fn on_solution, void *ud) {
   size_t saved_base = query_sp_base;
+  size_t *saved_rename = solution_rename;
   query_sp_base = sp;
   query_depth++;
-  run_query_body(goals, ngoals, nvars, varnames, mode);
+  uncaught_ball = (size_t)-1;
+  query_result_t r = run_query_body(goals, ngoals, nvars, on_solution, ud);
   query_depth--;
   sp = query_sp_base;
   query_sp_base = saved_base;
+  solution_rename = saved_rename;
+  return r;
 }
 
-static void run_query_body(tterm_t **goals, int32_t ngoals, int32_t nvars,
-                           const char **varnames, int mode) {
+static query_result_t run_query_body(tterm_t **goals, int32_t ngoals,
+                                     int32_t nvars, solution_fn on_solution,
+                                     void *ud) {
   size_t rename[nvars > 0 ? nvars : 1];
   rename_init(rename, nvars);
 
@@ -1867,7 +1876,7 @@ A:
     if (gc_heap_exhausted()) {
       if (do_throw(make_resource_error("memory"), &cn, &active_catch))
         goto A;
-      return;
+      return QUERY_ERROR;
     }
   }
   {
@@ -1875,42 +1884,10 @@ A:
     // wrongly ends the query.
     size_t cnd = heap_deref(cn);
     if (heap[cnd].tag == TAG_ATOM && heap[cnd].as.atom_id == atom_true) {
-      if (mode == RUN_INTERACTIVE) {
-        io_write_str(any_found ? "\n;  " : "   ");
-        any_found = 1;
-        int any_var = 0;
-        for (int32_t i = 0; i < nvars; i++)
-          if (rename[i] != (size_t)-1) {
-            char buf[300];
-            snprintf(buf, sizeof buf, "%s%s = ", any_var ? ", " : "",
-                     varnames[i]);
-            io_write_str(buf);
-            print_term(rename[i]);
-            any_var = 1;
-          }
-        if (!any_var)
-          io_write_str("true");
-
-        if (sp == query_sp_base) {
-          io_write_str(".\n");
-          return;
-        }
-        int key = io_read_key();
-        if (key != ';' && key != ' ') {
-          io_write_str(".\n");
-          return;
-        }
-      } else if (mode == RUN_BATCH) {
-        io_write_str("yes:");
-        for (int32_t i = 0; i < nvars; i++)
-          if (rename[i] != (size_t)-1) {
-            char buf[300];
-            snprintf(buf, sizeof buf, " %s=", varnames[i]);
-            io_write_str(buf);
-            print_term(rename[i]);
-          }
-        io_write_str("\n");
-      }
+      any_found = 1;
+      solution_rename = rename;
+      if (!on_solution(ud, sp != query_sp_base))
+        return QUERY_TRUE;
       goto C;
     }
   }
@@ -1971,7 +1948,7 @@ A:
         size_t ball = heap_deref(cf + 1);
         if (do_throw(ball, &cn, &active_catch))
           goto A;
-        return;
+        return QUERY_ERROR;
       }
       if (fd_arity == 1 && (fd_id == atom_assertz || fd_id == atom_assert ||
                             fd_id == atom_asserta)) {
@@ -1990,7 +1967,7 @@ A:
         if (!heap_terms_to_templates(all_terms, 1 + nbody, templates, &nvars)) {
           if (do_throw(make_cyclic_term_error(), &cn, &active_catch))
             goto A;
-          return;
+          return QUERY_ERROR;
         }
 
         if (fd_id == atom_asserta)
@@ -2054,7 +2031,7 @@ A:
         pending_error_ball = (size_t)-1;
         if (do_throw(ball, &cn, &active_catch))
           goto A;
-        return;
+        return QUERY_ERROR;
       }
       goto C;
     }
@@ -2104,7 +2081,7 @@ B: {
         ball = make_type_error("callable", first_d);
       if (do_throw(ball, &cn, &active_catch))
         goto A;
-      return;
+      return QUERY_ERROR;
     }
     goto C;
   }
@@ -2140,11 +2117,8 @@ B: {
   }
 
 C:
-  if (sp == query_sp_base) {
-    if (mode == RUN_INTERACTIVE)
-      io_write_str(any_found ? ".\n" : "   false.\n");
-    return;
-  }
+  if (sp == query_sp_base)
+    return any_found ? QUERY_TRUE : QUERY_FALSE;
   {
     frame_t f = stack[--sp];
     cn = f.goals;

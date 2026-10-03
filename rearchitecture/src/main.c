@@ -1,43 +1,103 @@
-#define _POSIX_C_SOURCE 200809L
-#include "heap.h"
-#include "io.h"
-#include "parse.h"
-#include "solve.h"
-#include "term.h"
+#include "platform.h"
+#include "trilog.h"
 #include <ctype.h>
-#include <libgen.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <termios.h>
-#include <unistd.h>
 
-// raw single-keypress for interactive solution prompting
-static int read_key_hook(void *ud) {
+static trilog_t *T;
+
+static void print_term(FILE *out, trilog_term_t term) {
+  char small[256];
+  size_t n = trilog_format(T, term, 0, small, sizeof small);
+  if (n < sizeof small) {
+    fputs(small, out);
+    return;
+  }
+  char *big = malloc(n + 1);
+  if (!big) {
+    fputs("...", out);
+    return;
+  }
+  trilog_format(T, term, 0, big, n + 1);
+  fputs(big, out);
+  free(big);
+}
+
+static void print_uncaught(void) {
+  fputs("uncaught exception: ", stderr);
+  print_term(stderr, trilog_error_term(T));
+  fputs("\n", stderr);
+}
+
+typedef struct {
+  bool interactive;
+  bool any_found;
+  bool closed;
+} toplevel_state;
+
+static bool toplevel_solution(trilog_t *t, void *ud, bool has_more) {
+  toplevel_state *st = ud;
+  fputs(st->any_found ? "\n;  " : "   ", stdout);
+  st->any_found = true;
+  int n = trilog_binding_count(t);
+  for (int i = 0; i < n; i++) {
+    printf("%s%s = ", i ? ", " : "", trilog_binding_name(t, i));
+    print_term(stdout, trilog_binding_value(t, i));
+  }
+  if (n == 0)
+    fputs("true", stdout);
+  if (has_more) {
+    fflush(stdout);
+    int key = st->interactive ? platform_read_key() : ';';
+    if (key == ';' || key == ' ')
+      return true;
+  }
+  fputs(".\n", stdout);
+  st->closed = true;
+  return false;
+}
+
+static void toplevel_query(const char *goal, bool interactive) {
+  toplevel_state st = {.interactive = interactive};
+  switch (trilog_query(T, goal, toplevel_solution, &st)) {
+  case TRILOG_TRUE:
+    if (!st.closed)
+      fputs(".\n", stdout);
+    break;
+  case TRILOG_FALSE:
+    fputs("   false.\n", stdout);
+    break;
+  case TRILOG_ERROR:
+    if (trilog_term_type(T, trilog_error_term(T)) != TRILOG_INVALID)
+      print_uncaught();
+    break;
+  }
+}
+
+static bool batch_solution(trilog_t *t, void *ud, bool has_more) {
   (void)ud;
-  struct termios old, raw;
-  tcgetattr(STDIN_FILENO, &old);
-  raw = old;
-  raw.c_lflag &= ~(ICANON | ECHO);
-  raw.c_cc[VMIN] = 1;
-  raw.c_cc[VTIME] = 0;
-  tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
-  int c = getchar();
-  tcsetattr(STDIN_FILENO, TCSAFLUSH, &old);
-  return c;
+  (void)has_more;
+  fputs("yes:", stdout);
+  int n = trilog_binding_count(t);
+  for (int i = 0; i < n; i++) {
+    printf(" %s=", trilog_binding_name(t, i));
+    print_term(stdout, trilog_binding_value(t, i));
+  }
+  fputs("\n", stdout);
+  return true;
 }
 
 // One line = one query - no support yet for a query spanning multiple lines.
 static void repl(void) {
-  int interactive = isatty(fileno(stdin));
+  bool interactive = platform_stdin_is_tty();
   char line[8192];
   for (;;) {
     if (interactive) {
-      io_write_str("?- ");
-      io_flush();
+      fputs("?- ", stdout);
+      fflush(stdout);
     }
-    if (!io_read_line(line, sizeof line))
+    if (!fgets(line, sizeof line, stdin))
       break;
     line[strcspn(line, "\n")] = '\0';
 
@@ -49,13 +109,7 @@ static void repl(void) {
       }
     if (blank)
       continue;
-
-    tterm_t **goals;
-    int32_t ngoals, nvars;
-    const char **names;
-    if (!parse_query(line, &goals, &ngoals, &nvars, &names))
-      continue;
-    run_query(goals, ngoals, nvars, names, RUN_INTERACTIVE);
+    toplevel_query(line, interactive);
   }
 }
 
@@ -69,12 +123,12 @@ static const char *usage = "Usage: trilog [options] [file...]\n"
 // registered via atexit(), not called directly - halt/1 exits via a raw
 // exit(), so this is the only hook that reliably fires either way.
 static void print_exit_stats(void) {
-  char msg[128];
-  snprintf(msg, sizeof msg, "heap_peak_cells=%zu\n", heap_peak_size());
-  io_write_err(msg);
-  snprintf(msg, sizeof msg, "heap_peak_bytes=%zu\n",
-           heap_peak_size() * sizeof(cell_t));
-  io_write_err(msg);
+  if (!T)
+    return;
+  trilog_usage_t u;
+  trilog_usage(T, &u);
+  fprintf(stderr, "heap_peak_cells=%zu\nheap_peak_bytes=%zu\n",
+          u.heap_peak_cells, u.heap_peak_bytes);
 }
 
 #ifdef TRILOG_EMBEDDED
@@ -87,17 +141,23 @@ static void resolve_core_path(const char *argv0, char *out, size_t out_size) {
 // The dev build reads boot/core.pl from next to the binary, so library edits
 // need no rebuild.
 static void resolve_core_path(const char *argv0, char *out, size_t out_size) {
+  char dir[4096 - sizeof "/boot/core.pl"];
   char exe[4096];
-  char dir[4096];
-  ssize_t len = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
-  if (len > 0) {
-    exe[len] = '\0';
-    strncpy(dir, exe, sizeof(dir) - 1);
-  } else {
-    strncpy(dir, argv0, sizeof(dir) - 1);
-  }
-  dir[sizeof(dir) - 1] = '\0';
-  snprintf(out, out_size, "%s/boot/core.pl", dirname(dir));
+  const char *self = platform_executable_path(exe, sizeof exe) ? exe : argv0;
+  size_t n = strlen(self);
+  if (n >= sizeof dir)
+    n = 0;
+  memcpy(dir, self, n);
+  dir[n] = '\0';
+  char *sep = strrchr(dir, '/');
+  char *bsep = strrchr(dir, '\\');
+  if (bsep && (!sep || bsep > sep))
+    sep = bsep;
+  if (sep)
+    *sep = '\0';
+  else
+    snprintf(dir, sizeof dir, ".");
+  snprintf(out, out_size, "%s/boot/core.pl", dir);
 }
 #endif
 
@@ -107,34 +167,24 @@ static void load_init_file(int verbose) {
     return;
   char path[4096];
   snprintf(path, sizeof path, "%s/.trilog", home);
-  if (verbose) {
-    char msg[4096 + 32];
-    snprintf(msg, sizeof msg, "?- consult('%s').\n", path);
-    io_write_str(msg);
-  }
+  if (verbose)
+    printf("?- consult('%s').\n", path);
   FILE *f = fopen(path, "r");
   if (!f) {
     if (verbose)
-      io_write_str("false.\n");
+      fputs("false.\n", stdout);
     return;
   }
   fclose(f);
-  consult_file(path);
+  trilog_load_file(T, path);
 }
 
 int main(int argc, char **argv) {
-  io_hooks_init_default();
-  if (isatty(fileno(stdin))) {
-    io_hooks_t hooks = io_hooks_get();
-    hooks.read_key = read_key_hook;
-    io_hooks_replace(hooks);
-  }
-
   int fast = 0, verbose = 0, exit_stats = 0;
   const char *query = NULL;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "-h")) {
-      io_write_str(usage);
+      fputs(usage, stdout);
       return 0;
     }
     if (!strcmp(argv[i], "-f")) {
@@ -150,19 +200,12 @@ int main(int argc, char **argv) {
   if (exit_stats)
     atexit(print_exit_stats);
 
-  heap_init();
-  term_init();
-  solve_init();
-  parse_init();
-
   char core_path[4096];
   resolve_core_path(argv[0], core_path, sizeof core_path);
-  if (verbose) {
-    char msg[4096 + 32];
-    snprintf(msg, sizeof msg, "?- consult('%s').\n", core_path);
-    io_write_str(msg);
-  }
-  if (!consult_file(core_path))
+  if (verbose)
+    printf("?- consult('%s').\n", core_path);
+  T = trilog_new(&(trilog_config_t){.boot_path = core_path});
+  if (!T)
     return 1;
   if (!fast)
     load_init_file(verbose);
@@ -174,18 +217,17 @@ int main(int argc, char **argv) {
     } else if (!strcmp(argv[i], "-e") && i + 1 < argc) {
       i++;
     } else {
-      if (!consult_file(argv[i]))
+      if (!trilog_load_file(T, argv[i]))
         return 1;
     }
   }
 
   if (query) {
-    tterm_t **goals;
-    int32_t ngoals, nvars;
-    const char **names;
-    if (!parse_query(query, &goals, &ngoals, &nvars, &names))
-      return 1;
-    run_query(goals, ngoals, nvars, names, RUN_BATCH);
+    if (trilog_query(T, query, batch_solution, NULL) == TRILOG_ERROR) {
+      if (trilog_term_type(T, trilog_error_term(T)) == TRILOG_INVALID)
+        return 1;
+      print_uncaught();
+    }
   } else {
     repl();
   }

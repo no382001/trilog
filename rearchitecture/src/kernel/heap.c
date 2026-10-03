@@ -1,4 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
 #include "heap.h"
 #include "arena.h"
 #include "io.h"

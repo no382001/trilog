@@ -328,6 +328,14 @@ TRILOG="./trilog"
   done
 }
 
+@test "input ending in a symbol-char token stops at the end (regression)" {
+  for q in "X = (:-" "X = f(:- ." "X = f(+"; do
+    run env -i TRILOG_LEAK_CANARY=leaked "$TRILOG" -e "$q"
+    [[ "$output" == *"parse error"* ]]
+    [[ "$output" != *"TRILOG_LEAK_CANARY"* ]]
+  done
+}
+
 @test "float arithmetic in is/2: mixed-mode promotion, //, float/1" {
   run "$TRILOG" -e "
     A is 1.5 + 2,
@@ -1512,6 +1520,20 @@ PLEOF
   [[ "$output" == *"done([1, 2])"* ]]
   [[ "$output" != *"uncaught"* ]]
   [[ "$output" != *"cannot open"* ]]
+}
+
+@test "the no_posix platform build links no POSIX symbols and runs" {
+  run make -s -C "$BATS_TEST_DIRNAME/.." PLATFORM=no_posix release
+  [ "$status" -eq 0 ]
+  bin="$BATS_TEST_DIRNAME/../_build/trilog"
+  run bash -c "nm -u '$bin' | grep -wE 'clock_gettime|getrlimit|stat|isatty|tcgetattr|tcsetattr|readlink|fileno'"
+  [ "$status" -ne 0 ]
+  dir=$(mktemp -d)
+  cp "$bin" "$dir/"
+  run bash -c "cd '$dir' && ./trilog -f -e \"get_time_ms(T), integer(T), append(X, [bb], [aa,bb]), write(ok(X)), nl.\""
+  rm -rf "$dir"
+  make -s -C "$BATS_TEST_DIRNAME/.." release
+  [[ "$output" == *"ok([aa])"* ]]
 }
 
 @test "loading boot/core.pl and lib/ at startup produces no uncaught exceptions (regression)" {

@@ -1,0 +1,174 @@
+#include "trilog.h"
+#include <stdio.h>
+#include <string.h>
+
+static int failures = 0;
+
+static bool streq(const char *a, const char *b) {
+  return a && b && strcmp(a, b) == 0;
+}
+
+#define CHECK(cond)                                                            \
+  do {                                                                         \
+    if (!(cond)) {                                                             \
+      fprintf(stderr, "%s:%d: CHECK failed: %s\n", __FILE__, __LINE__, #cond); \
+      failures++;                                                              \
+    }                                                                          \
+  } while (0)
+
+typedef struct {
+  int count;
+  int stop_after;
+  bool last_has_more;
+  char text[8][64];
+} collected;
+
+static bool collect(trilog_t *t, void *ud, bool has_more) {
+  collected *c = ud;
+  if (c->count < 8 && trilog_binding_count(t) > 0)
+    trilog_format(t, trilog_binding_value(t, 0), TRILOG_FORMAT_QUOTED,
+                  c->text[c->count], sizeof c->text[0]);
+  c->count++;
+  c->last_has_more = has_more;
+  return c->stop_after == 0 || c->count < c->stop_after;
+}
+
+static void test_solutions(trilog_t *t) {
+  CHECK(trilog_load_string(t, "p(1). p(two). p(\"x y\").\n"
+                              "q(X) :- p(X), X \\== two.\n"));
+  collected c = {0};
+  CHECK(trilog_query(t, "p(X)", collect, &c) == TRILOG_TRUE);
+  CHECK(c.count == 3);
+  CHECK(!c.last_has_more);
+  CHECK(streq(c.text[0], "1"));
+  CHECK(streq(c.text[1], "two"));
+  CHECK(streq(c.text[2], "\"x y\""));
+
+  collected first = {.stop_after = 1};
+  CHECK(trilog_query(t, "q(X).", collect, &first) == TRILOG_TRUE);
+  CHECK(first.count == 1);
+  CHECK(first.last_has_more);
+
+  collected none = {0};
+  CHECK(trilog_query(t, "p(3)", collect, &none) == TRILOG_FALSE);
+  CHECK(none.count == 0);
+}
+
+static bool inspect(trilog_t *t, void *ud, bool has_more) {
+  (void)has_more;
+  int *checked = ud;
+  CHECK(trilog_binding_count(t) == 3);
+  CHECK(streq(trilog_binding_name(t, 0), "X"));
+  CHECK(streq(trilog_binding_name(t, 1), "T"));
+  CHECK(streq(trilog_binding_name(t, 2), "U"));
+  CHECK(trilog_binding_name(t, 3) == NULL);
+  CHECK(trilog_term_type(t, trilog_binding_value(t, 2)) == TRILOG_VAR);
+
+  trilog_term_t term = trilog_binding_value(t, 1);
+  const char *name = "";
+  int arity = 0;
+  CHECK(trilog_get_functor(t, term, &name, &arity));
+  CHECK(streq(name, "f") && arity == 3);
+
+  trilog_term_t a1 = {(size_t)-1}, a2 = a1, a3 = a1, none = a1;
+  CHECK(trilog_get_arg(t, term, 1, &a1));
+  CHECK(trilog_get_arg(t, term, 2, &a2));
+  CHECK(trilog_get_arg(t, term, 3, &a3));
+  CHECK(!trilog_get_arg(t, term, 0, &none));
+  CHECK(!trilog_get_arg(t, term, 4, &none));
+
+  int64_t i;
+  double d;
+  CHECK(trilog_get_int(t, a1, &i) && i == -9223372036854775807 - 1);
+  CHECK(trilog_get_float(t, a2, &d) && d == 2.5);
+  CHECK(streq(trilog_get_atom(t, a3), "hello world"));
+  CHECK(trilog_get_atom(t, a1) == NULL);
+  CHECK(!trilog_get_int(t, a3, &i));
+
+  char buf[64];
+  size_t n = trilog_format(t, a3, TRILOG_FORMAT_QUOTED, buf, sizeof buf);
+  CHECK(n == 13 && streq(buf, "'hello world'"));
+  CHECK(trilog_format(t, a3, 0, buf, sizeof buf) == 11);
+  CHECK(streq(buf, "hello world"));
+  char tiny[4];
+  CHECK(trilog_format(t, a3, 0, tiny, sizeof tiny) == 11);
+  CHECK(streq(tiny, "hel"));
+
+  CHECK(trilog_query(t, "true", collect, &(collected){0}) == TRILOG_ERROR);
+  CHECK(!trilog_load_string(t, "r(1)."));
+
+  ++*checked;
+  return true;
+}
+
+static void test_terms(trilog_t *t) {
+  int checked = 0;
+  CHECK(trilog_query(t,
+                     "X is -(9223372036854775807) - 1, "
+                     "T = f(X, 2.5, 'hello world'), var(U)",
+                     inspect, &checked) == TRILOG_TRUE);
+  CHECK(checked == 1);
+  CHECK(trilog_binding_count(t) == 0);
+
+  trilog_term_t stale = {(size_t)-1};
+  CHECK(trilog_term_type(t, stale) == TRILOG_INVALID);
+}
+
+static void test_errors(trilog_t *t) {
+  collected c = {0};
+  CHECK(trilog_query(t, "throw(oops(1, \"a\"))", collect, &c) == TRILOG_ERROR);
+  char buf[64];
+  trilog_format(t, trilog_error_term(t), TRILOG_FORMAT_QUOTED, buf, sizeof buf);
+  CHECK(streq(buf, "oops(1, \"a\")"));
+
+  CHECK(trilog_query(t, "undefined_pred", collect, &c) == TRILOG_ERROR);
+  trilog_format(t, trilog_error_term(t), 0, buf, sizeof buf);
+  CHECK(!strncmp(
+      buf, "error(existence_error(procedure, /(undefined_pred, 0))",
+      strlen("error(existence_error(procedure, /(undefined_pred, 0))")));
+
+  CHECK(trilog_query(t, "foo(", collect, &c) == TRILOG_ERROR);
+  CHECK(trilog_term_type(t, trilog_error_term(t)) == TRILOG_INVALID);
+  CHECK(!trilog_load_string(t, "broken( :- ."));
+  CHECK(!trilog_load_file(t, "/nonexistent/file.pl"));
+  CHECK(c.count == 0);
+
+  collected after = {0};
+  CHECK(trilog_query(t, "p(1)", collect, &after) == TRILOG_TRUE);
+  CHECK(after.count == 1);
+}
+
+static void test_directives(trilog_t *t) {
+  CHECK(trilog_load_string(t, ":- dynamic(seen/1).\n"
+                              ":- assertz(seen(directive)).\n"));
+  collected c = {0};
+  CHECK(trilog_query(t, "seen(X)", collect, &c) == TRILOG_TRUE);
+  CHECK(c.count == 1 && streq(c.text[0], "directive"));
+}
+
+int main(void) {
+  trilog_t *t = trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl"});
+  if (!t) {
+    fprintf(stderr, "trilog_new failed\n");
+    return 1;
+  }
+  CHECK(trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl"}) == NULL);
+
+  test_solutions(t);
+  test_terms(t);
+  test_errors(t);
+  test_directives(t);
+
+  trilog_usage_t u;
+  trilog_usage(t, &u);
+  CHECK(u.heap_peak_cells > 0);
+  CHECK(u.heap_peak_bytes >= u.heap_peak_cells);
+
+  trilog_free(t);
+  if (failures) {
+    fprintf(stderr, "api_test: %d check(s) failed\n", failures);
+    return 1;
+  }
+  printf("api_test: ok\n");
+  return 0;
+}

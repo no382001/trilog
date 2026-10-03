@@ -47,10 +47,16 @@ void solve_init(void);
 void db_add(tterm_t *head, tterm_t **body, int32_t nbody, int32_t nvars,
             int mark_static);
 
-enum { RUN_BATCH = 0, RUN_INTERACTIVE = 1, RUN_SILENT = 2 };
+typedef enum { QUERY_FALSE, QUERY_TRUE, QUERY_ERROR } query_result_t;
 
-void run_query(tterm_t **goals, int32_t ngoals, int32_t nvars,
-               const char **varnames, int mode);
+typedef int (*solution_fn)(void *ud, int has_more);
+
+query_result_t run_query(tterm_t **goals, int32_t ngoals, int32_t nvars,
+                         solution_fn on_solution, void *ud);
+
+size_t query_binding(int32_t i);
+
+size_t query_error_ball(void);
 
 int op_lookup_infix(int32_t name_atom_id, int *pri, int *assoc_code);
 int op_lookup_prefix(int32_t name_atom_id, int *pri, int *assoc_code);
