@@ -17,10 +17,11 @@ typedef struct {
 } trilog_term_t;
 
 typedef enum {
-  TRILOG_FALSE = 0, // no solution
-  TRILOG_TRUE = 1,  // at least one solution
-  TRILOG_ERROR = 2, // uncaught exception, syntax error, out of memory, misuse
-  TRILOG_HALT = 3,  // halt/1 ran; see trilog_halt_code
+  TRILOG_FALSE = 0,   // no solution
+  TRILOG_TRUE = 1,    // at least one solution
+  TRILOG_ERROR = 2,   // uncaught exception, syntax error, out of memory, misuse
+  TRILOG_HALT = 3,    // halt/1 ran; see trilog_halt_code
+  TRILOG_ABORTED = 4, // the yield callback returned false
 } trilog_status_t;
 
 typedef enum {
@@ -33,16 +34,40 @@ typedef enum {
 } trilog_type_t;
 
 typedef struct {
+  void (*write_str)(void *ud, const char *str);
+  void (*write_err)(void *ud, const char *str);
+  void (*flush)(void *ud);
+  int (*read_char)(void *ud);
+  char *(*read_line)(void *ud, char *buf, int size);
+  void *(*file_open)(void *ud, const char *path, const char *mode);
+  void (*file_close)(void *ud, void *handle);
+  char *(*file_read_line)(void *ud, void *handle, char *buf, int size);
+  bool (*file_write)(void *ud, void *handle, const char *str);
+  bool (*file_exists)(void *ud, const char *path);
+  long long (*file_mtime)(void *ud, const char *path); // -1 when unknown
+  void *userdata;
+} trilog_io_t;
+
+typedef struct {
   // NULL boots from the copy of boot/core.pl baked in by `make release`.
   const char *boot_path;
   void *(*realloc)(void *ud, void *p, size_t n);
   void (*free)(void *ud, void *p);
   void *alloc_ud;
+  // NULL means stdio. Also used to read the boot file.
+  const trilog_io_t *io;
 } trilog_config_t;
 
 typedef struct {
+  size_t heap_cells;
+  size_t heap_capacity_cells;
   size_t heap_peak_cells;
   size_t heap_peak_bytes;
+  size_t trail_entries;
+  size_t choicepoints;
+  size_t clauses;
+  size_t atoms;
+  size_t arena_bytes; // clauses, atom names and parsed source
 } trilog_usage_t;
 
 // Accepts a NULL config. Returns NULL if booting fails,
@@ -96,3 +121,33 @@ size_t trilog_format(trilog_t *t, trilog_term_t term, int flags, char *buf,
                      size_t cap);
 
 void trilog_usage(trilog_t *t, trilog_usage_t *out);
+
+// Replaces the I/O hooks; NULL restores stdio.
+void trilog_set_io(trilog_t *t, const trilog_io_t *io);
+
+#define TRILOG_MAX_FOREIGN_ARGS 8
+
+typedef union {
+  int64_t i;
+  double f;
+  const char *a;
+} trilog_value_t;
+
+// Returning false makes the call fail.
+typedef bool (*trilog_fn)(trilog_t *t, void *ud, const trilog_value_t *in,
+                          trilog_value_t *out);
+
+// Defines name/N as a call to fn. sig types each argument: i integer,
+// f float (integers convert), a atom; '>' splits inputs from outputs, so
+// "ii>i" is name(+Integer, +Integer, -Integer). Bad inputs raise
+// instantiation_error or type_error. Atoms in `out` are copied; NULL fails.
+// Returns false for a bad sig, a name with clauses, or out of memory.
+bool trilog_register(trilog_t *t, const char *name, const char *sig,
+                     trilog_fn fn, void *ud);
+
+// Calls fn every `every` steps; returning false makes the running call
+// return TRILOG_ABORTED, which catch/3 cannot intercept. NULL disables it.
+// fn must not call trilog_query or trilog_load_* on t.
+typedef bool (*trilog_yield_fn)(trilog_t *t, size_t depth, void *ud);
+void trilog_set_yield(trilog_t *t, trilog_yield_fn fn, unsigned every,
+                      void *ud);

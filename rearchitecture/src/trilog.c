@@ -49,6 +49,10 @@ static trilog_status_t unwound(trilog_t *t) {
     t->halted = false;
     return TRILOG_HALT;
   }
+  if (t->aborted) {
+    t->aborted = false;
+    return TRILOG_ABORTED;
+  }
   return TRILOG_ERROR;
 }
 
@@ -71,7 +75,7 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   t->pending_error_ball = (size_t)-1;
   t->uncaught_ball = (size_t)-1;
   t->epoch_ms = -1;
-  io_hooks_init_default(t);
+  io_set(t, c.io);
   if (setjmp(t->fatal_jmp)) {
     trilog_free(t);
     return NULL;
@@ -99,6 +103,7 @@ void trilog_free(trilog_t *t) {
   mem_free(t, t->db);
   mem_free(t, t->consulted_decls);
   mem_free(t, t->dynamic_decls);
+  mem_free(t, t->foreign);
   mem_free(t, t->stack);
   mem_free(t, t->catch_stack);
   pair_visits_free(t, &t->compare_visits);
@@ -138,6 +143,46 @@ trilog_status_t trilog_load_string(trilog_t *t, const char *text) {
 }
 
 int trilog_halt_code(trilog_t *t) { return t->halt_code; }
+
+static bool register_parsed(trilog_t *t, const char *name, const char *types,
+                            int32_t nin, int32_t nout, trilog_fn fn, void *ud) {
+  if (setjmp(t->fatal_jmp)) {
+    unwound(t);
+    return false;
+  }
+  return foreign_register(t, name, types, nin, nout, fn, ud);
+}
+
+bool trilog_register(trilog_t *t, const char *name, const char *sig,
+                     trilog_fn fn, void *ud) {
+  if (!name || !sig || !fn || t->in_query)
+    return false;
+  char types[TRILOG_MAX_FOREIGN_ARGS + 1];
+  int32_t n = 0, nin = -1;
+  for (const char *p = sig; *p; p++) {
+    if (*p == '>' && nin < 0) {
+      nin = n;
+      continue;
+    }
+    if ((*p != 'i' && *p != 'f' && *p != 'a') || n == TRILOG_MAX_FOREIGN_ARGS)
+      return false;
+    types[n++] = *p;
+  }
+  types[n] = '\0';
+  if (nin < 0)
+    nin = n;
+  return register_parsed(t, name, types, nin, n - nin, fn, ud);
+}
+
+void trilog_set_io(trilog_t *t, const trilog_io_t *io) { io_set(t, io); }
+
+void trilog_set_yield(trilog_t *t, trilog_yield_fn fn, unsigned every,
+                      void *ud) {
+  t->yield_fn = fn;
+  t->yield_ud = ud;
+  t->yield_every = every > 0 ? every : 1;
+  t->yield_count = 0;
+}
 
 typedef struct {
   trilog_t *t;
@@ -311,6 +356,15 @@ size_t trilog_format(trilog_t *t, trilog_term_t term, int flags, char *buf,
 }
 
 void trilog_usage(trilog_t *t, trilog_usage_t *out) {
-  out->heap_peak_cells = heap_peak_size(t);
-  out->heap_peak_bytes = heap_peak_size(t) * sizeof(cell_t);
+  *out = (trilog_usage_t){
+      .heap_cells = t->heap_top,
+      .heap_capacity_cells = t->heap_cap,
+      .heap_peak_cells = t->heap_peak,
+      .heap_peak_bytes = t->heap_peak * sizeof(cell_t),
+      .trail_entries = t->trail_top,
+      .choicepoints = t->sp,
+      .clauses = (size_t)(t->db_count - t->db_dead),
+      .atoms = (size_t)t->atom_count,
+      .arena_bytes = arena_bytes(t),
+  };
 }

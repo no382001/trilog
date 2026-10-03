@@ -24,6 +24,10 @@ struct trilog {
   jmp_buf fatal_jmp;
   bool halted;
   int halt_code;
+  bool aborted;
+  trilog_yield_fn yield_fn;
+  void *yield_ud;
+  unsigned yield_every, yield_count;
 
   struct chunk *arena_current;
 
@@ -34,7 +38,7 @@ struct trilog {
   char **atoms;
   int32_t atom_count, atom_cap;
 
-  io_hooks_t hooks;
+  trilog_io_t hooks;
   void *open_streams[MAX_OPEN_STREAMS];
 
   pair_visits unify_visits, occurs_check_visits;
@@ -84,6 +88,8 @@ struct trilog {
   // boot/core.pl declares fail/0 and false/0 this way
   dyn_decl_t *dynamic_decls;
   int32_t dynamic_count, dynamic_cap;
+  foreign_t *foreign;
+  int32_t foreign_count, foreign_cap;
   frame_t *stack;
   size_t stack_cap, sp;
   catch_frame_t *catch_stack;

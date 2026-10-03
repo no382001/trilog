@@ -41,6 +41,13 @@ char *arena_strdup(trilog_t *T, const char *s) {
   return p;
 }
 
+size_t arena_bytes(trilog_t *T) {
+  size_t n = 0;
+  for (chunk_t *c = T->arena_current; c; c = c->next)
+    n += c->cap;
+  return n;
+}
+
 void arena_free(trilog_t *T) {
   while (T->arena_current) {
     chunk_t *next = T->arena_current->next;

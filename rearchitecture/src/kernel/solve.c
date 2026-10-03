@@ -946,6 +946,93 @@ static void tta_emit(trilog_t *T, const char *str) {
   }
 }
 
+bool foreign_register(trilog_t *T, const char *name, const char *types,
+                      int32_t nin, int32_t nout, trilog_fn fn, void *ud) {
+  int32_t id = atom_intern(T, name), arity = nin + nout;
+  pred_bucket_t *b = pred_bucket_find_or_create(T, id, arity);
+  if (b->count > 0 || b->dynamic)
+    return false;
+  if (!b->foreign) {
+    if (T->foreign_count >= T->foreign_cap) {
+      int32_t cap = T->foreign_cap ? T->foreign_cap * 2 : 8;
+      T->foreign = mem_grow_n(T, T->foreign, (size_t)cap, sizeof(foreign_t));
+      T->foreign_cap = cap;
+    }
+    mark_consulted(T, id, arity);
+    b->foreign = ++T->foreign_count;
+  }
+  T->foreign[b->foreign - 1] = (foreign_t){.fn = fn,
+                                           .ud = ud,
+                                           .types = arena_strdup(T, types),
+                                           .nin = nin,
+                                           .nout = nout};
+  return true;
+}
+
+static int call_foreign(trilog_t *T, const foreign_t *f, size_t goal,
+                        size_t *ball) {
+  trilog_value_t in[TRILOG_MAX_FOREIGN_ARGS], out[TRILOG_MAX_FOREIGN_ARGS];
+  size_t g = heap_deref(T, goal);
+  size_t base = T->heap[g].tag == TAG_STR ? T->heap[g].as.ptr : 0;
+  for (int32_t i = 0; i < f->nin; i++) {
+    size_t a = heap_deref(T, base + 1 + (size_t)i);
+    cell_t c = T->heap[a];
+    if (c.tag == TAG_REF) {
+      *ball = make_instantiation_error(T);
+      return -1;
+    }
+    switch (f->types[i]) {
+    case 'i':
+      if (c.tag != TAG_INT) {
+        *ball = make_type_error(T, "integer", a);
+        return -1;
+      }
+      in[i].i = c.as.ival;
+      break;
+    case 'f':
+      if (c.tag != TAG_INT && c.tag != TAG_FLT) {
+        *ball = make_type_error(T, "number", a);
+        return -1;
+      }
+      in[i].f = c.tag == TAG_INT ? (double)c.as.ival : c.as.fval;
+      break;
+    default:
+      if (c.tag != TAG_ATOM) {
+        *ball = make_type_error(T, "atom", a);
+        return -1;
+      }
+      in[i].a = atom_name(T, c.as.atom_id);
+      break;
+    }
+  }
+  memset(out, 0, sizeof out);
+  if (!f->fn(T, f->ud, in, out))
+    return 0;
+  for (int32_t j = 0; j < f->nout; j++) {
+    size_t v;
+    switch (f->types[f->nin + j]) {
+    case 'i':
+      v = heap_new_int(T, out[j].i);
+      break;
+    case 'f':
+      if (!isfinite(out[j].f)) {
+        *ball = make_evaluation_error(T, atom_intern(T, "undefined"));
+        return -1;
+      }
+      v = heap_new_flt(T, out[j].f);
+      break;
+    default:
+      if (!out[j].a)
+        return 0;
+      v = heap_new_atom(T, atom_intern(T, out[j].a));
+      break;
+    }
+    if (!unify(T, base + 1 + (size_t)(f->nin + j), v))
+      return 0;
+  }
+  return 1;
+}
+
 static int dispatch_builtin(trilog_t *T, size_t goal, int *ok) {
   size_t g = heap_deref(T, goal);
   size_t f = 0;
@@ -1674,6 +1761,11 @@ static query_result_t run_query_body(trilog_t *T, tterm_t **goals,
   int predicate_known = 0;
 
 A:
+  if (T->yield_fn && ++T->yield_count >= T->yield_every) {
+    T->yield_count = 0;
+    if (!T->yield_fn(T, T->sp, T->yield_ud))
+      engine_abort(T);
+  }
   // FIXME: GC only knows this query's roots, so collecting inside a nested
   // query would move or free the outer queries' live terms
   // Nested queries skip GC instead; the real fix is GC marking
@@ -1849,6 +1941,19 @@ A:
   {
     idx_key_t dk = key_of_goal(T, first);
     pred_bucket_t *dbk = pred_bucket_find(T, dk.pred_id, dk.pred_arity);
+    if (dbk && dbk->foreign) {
+      size_t ball;
+      int r = call_foreign(T, &T->foreign[dbk->foreign - 1], first, &ball);
+      if (r > 0) {
+        cn = rest;
+        goto A;
+      }
+      if (r == 0)
+        goto C;
+      if (do_throw(T, ball, &cn, &active_catch))
+        goto A;
+      return QUERY_ERROR;
+    }
     if (dbk && dbk->dynamic) {
       size_t args[1] = {first};
       size_t dyn_goal = heap_new_struct(T, atom_dyn_call, 1, args);

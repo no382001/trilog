@@ -31,6 +31,11 @@ _Noreturn void mem_fail(trilog_t *T) {
   longjmp(T->fatal_jmp, 1);
 }
 
+_Noreturn void engine_abort(trilog_t *T) {
+  T->aborted = true;
+  longjmp(T->fatal_jmp, 1);
+}
+
 _Noreturn void engine_halt(trilog_t *T, int code) {
   T->halted = true;
   T->halt_code = code;

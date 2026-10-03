@@ -74,6 +74,8 @@ static void toplevel_query(const char *goal, bool interactive) {
     break;
   case TRILOG_HALT:
     exit(trilog_halt_code(T));
+  case TRILOG_ABORTED:
+    break;
   }
 }
 

@@ -6,4 +6,5 @@
 // since clause templates point directly at each other.
 void *arena_alloc(trilog_t *T, size_t n);
 void arena_free(trilog_t *T);
+size_t arena_bytes(trilog_t *T);
 char *arena_strdup(trilog_t *T, const char *s);

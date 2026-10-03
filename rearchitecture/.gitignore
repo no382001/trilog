@@ -1,3 +1,4 @@
 trilog
 *.o
 _build/
+examples/embed

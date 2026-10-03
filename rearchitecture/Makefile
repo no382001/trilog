@@ -44,7 +44,7 @@ $(REL)/trilog: $(REL_CLI_OBJS) $(REL)/libtrilog.a
 	$(CC) $(CFLAGS) -flto=auto -o $@ $^ -lm
 
 -include $(DEV_LIB_OBJS:.o=.d) $(REL_LIB_OBJS:.o=.d) $(DEV_CLI_OBJS:.o=.d) $(REL_CLI_OBJS:.o=.d) \
-         $(DEV)/test/api_test.d $(DEV)/test/api_threads_test.d $(DEV)/test/api_oom_test.d
+         $(DEV)/test/api_test.d $(DEV)/test/api_threads_test.d $(DEV)/test/api_oom_test.d $(DEV)/examples/embed.d
 
 .PHONY: trilog release lib
 trilog: $(DEV)/trilog
@@ -66,6 +66,9 @@ release: $(REL)/trilog
 _build/api_test: $(DEV)/test/api_test.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
+examples/embed: $(DEV)/examples/embed.o $(DEV)/libtrilog.a
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
 _build/api_oom_test: $(DEV)/test/api_oom_test.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
@@ -76,7 +79,8 @@ _build/api_threads_test: $(DEV)/test/api_threads_test.o $(DEV)/libtrilog.a
 test: trilog test-api
 	bats test/
 
-test-api: _build/api_test _build/api_threads_test _build/api_oom_test
+test-api: _build/api_test _build/api_threads_test _build/api_oom_test examples/embed
+	examples/embed
 	_build/api_test
 	_build/api_threads_test
 	_build/api_oom_test 2>/dev/null
@@ -88,8 +92,7 @@ test-upstream: trilog
 
 QUAD_TIMEOUT := 60
 
-# Hard cap in KB (1GB) via `ulimit -v` - a runaway allocation then fails
-# just that process instead of the kernel OOM-killing the whole machine.
+# Hard cap in KB (1GB) via `ulimit -v`
 QUAD_MEM_LIMIT_KB := 1048576
 
 .PHONY: quad
@@ -130,10 +133,10 @@ quad-junit: trilog
 	@echo "JUnit reports written to _build/test-results/"
 
 clean:
-	rm -rf trilog _build/trilog _build/embedded.c _build/api_test _build/api_threads_test _build/api_oom_test _build/dev-* _build/release-*
+	rm -rf trilog _build/trilog _build/embedded.c _build/api_test _build/api_threads_test _build/api_oom_test examples/embed _build/dev-* _build/release-*
 
 format:
-	clang-format -i $(SRCS) test/api_test.c test/api_threads_test.c test/api_oom_test.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
+	clang-format -i $(SRCS) test/api_test.c test/api_threads_test.c test/api_oom_test.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
 
 format-check:
-	clang-format --dry-run --Werror $(SRCS) test/api_test.c test/api_threads_test.c test/api_oom_test.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
+	clang-format --dry-run --Werror $(SRCS) test/api_test.c test/api_threads_test.c test/api_oom_test.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)

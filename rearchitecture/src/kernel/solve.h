@@ -45,8 +45,19 @@ typedef struct pred_bucket {
   int32_t *indices;
   int32_t count, cap;
   int dynamic;
+  int32_t foreign;
   struct pred_bucket *next;
 } pred_bucket_t;
+
+typedef struct {
+  trilog_fn fn;
+  void *ud;
+  const char *types;
+  int32_t nin, nout;
+} foreign_t;
+
+bool foreign_register(trilog_t *T, const char *name, const char *types,
+                      int32_t nin, int32_t nout, trilog_fn fn, void *ud);
 
 typedef struct {
   int32_t pred_id;

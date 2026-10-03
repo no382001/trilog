@@ -146,6 +146,185 @@ static void test_directives(trilog_t *t) {
   CHECK(c.count == 1 && streq(c.text[0], "directive"));
 }
 
+static bool ffi_add(trilog_t *t, void *ud, const trilog_value_t *in,
+                    trilog_value_t *out) {
+  (void)t;
+  int *calls = ud;
+  ++*calls;
+  out[0].i = in[0].i + in[1].i;
+  return true;
+}
+
+static bool ffi_half(trilog_t *t, void *ud, const trilog_value_t *in,
+                     trilog_value_t *out) {
+  (void)t;
+  (void)ud;
+  if (in[0].f == 0.0)
+    return false;
+  out[0].f = in[0].f / 2;
+  out[1].a = in[0].f > 0 ? "positive" : "negative";
+  return true;
+}
+
+static bool ffi_nan(trilog_t *t, void *ud, const trilog_value_t *in,
+                    trilog_value_t *out) {
+  (void)t;
+  (void)ud;
+  (void)in;
+  out[0].f = 0.0 / 0.0;
+  return true;
+}
+
+static bool ffi_greet(trilog_t *t, void *ud, const trilog_value_t *in,
+                      trilog_value_t *out) {
+  (void)t;
+  (void)out;
+  return streq(in[0].a, (const char *)ud);
+}
+
+static trilog_status_t error_text(trilog_t *t, const char *goal, char *buf,
+                                  size_t cap) {
+  collected c = {0};
+  trilog_status_t s = trilog_query(t, goal, collect, &c);
+  trilog_format(t, trilog_error_term(t), 0, buf, cap);
+  return s;
+}
+
+static void test_foreign(trilog_t *t) {
+  int calls = 0;
+  CHECK(trilog_register(t, "c_add", "ii>i", ffi_add, &calls));
+  CHECK(trilog_register(t, "c_half", "f>fa", ffi_half, NULL));
+  CHECK(trilog_register(t, "c_nan", ">f", ffi_nan, NULL));
+  CHECK(trilog_register(t, "c_greet", "a", ffi_greet, "world"));
+
+  collected c = {0};
+  CHECK(trilog_query(t, "c_add(2, 40, X)", collect, &c) == TRILOG_TRUE);
+  CHECK(c.count == 1 && streq(c.text[0], "42") && calls == 1);
+  collected d = {0};
+  CHECK(trilog_query(t, "c_add(2, 40, 41)", collect, &d) == TRILOG_FALSE);
+  collected e = {0};
+  CHECK(trilog_query(t, "c_half(5, X, S)", collect, &e) == TRILOG_TRUE);
+  CHECK(streq(e.text[0], "2.5"));
+  collected f = {0};
+  CHECK(trilog_query(t, "c_half(0, _, _)", collect, &f) == TRILOG_FALSE);
+  collected g = {0};
+  CHECK(trilog_query(t, "c_greet(world), \\+ c_greet(moon)", collect, &g) ==
+        TRILOG_TRUE);
+
+  char buf[128];
+  CHECK(error_text(t, "c_add(X, 1, _)", buf, sizeof buf) == TRILOG_ERROR);
+  CHECK(!strncmp(buf, "error(instantiation_error", 25));
+  CHECK(error_text(t, "c_add(a, 1, _)", buf, sizeof buf) == TRILOG_ERROR);
+  CHECK(!strncmp(buf, "error(type_error(integer, a)", 28));
+  CHECK(error_text(t, "c_greet(1)", buf, sizeof buf) == TRILOG_ERROR);
+  CHECK(!strncmp(buf, "error(type_error(atom, 1)", 25));
+  CHECK(error_text(t, "c_nan(_)", buf, sizeof buf) == TRILOG_ERROR);
+  CHECK(!strncmp(buf, "error(evaluation_error(undefined)", 33));
+  CHECK(error_text(t, "assertz(c_add(1, 2, 3))", buf, sizeof buf) ==
+        TRILOG_ERROR);
+  CHECK(!strncmp(buf, "error(permission_error(modify", 29));
+  collected h = {0};
+  CHECK(trilog_query(t,
+                     "catch(c_add(x, 1, _), error(type_error(T, V), _), "
+                     "true)",
+                     collect, &h) == TRILOG_TRUE);
+
+  CHECK(!trilog_register(t, "c_bad", "iq", ffi_add, NULL));
+  CHECK(!trilog_register(t, "c_bad", "iiiiiiiii", ffi_add, NULL));
+  CHECK(!trilog_register(t, "p", "i", ffi_add, NULL));
+  CHECK(!trilog_register(t, "c_bad", "i", NULL, NULL));
+}
+
+static bool count_steps(trilog_t *t, size_t depth, void *ud) {
+  (void)t;
+  (void)depth;
+  long *steps = ud;
+  return ++*steps < 50;
+}
+
+static void test_yield(trilog_t *t) {
+  CHECK(trilog_load_string(t, "spin :- spin.\n") == TRILOG_TRUE);
+  long steps = 0;
+  trilog_set_yield(t, count_steps, 100, &steps);
+  collected c = {0};
+  CHECK(trilog_query(t, "catch(spin, _, true)", collect, &c) == TRILOG_ABORTED);
+  CHECK(steps == 50 && c.count == 0);
+  trilog_set_yield(t, NULL, 0, NULL);
+  collected d = {0};
+  CHECK(trilog_query(t, "p(1)", collect, &d) == TRILOG_TRUE);
+}
+
+typedef struct {
+  char out[256];
+  size_t len;
+} sink;
+
+static void sink_write(void *ud, const char *s) {
+  sink *k = ud;
+  size_t n = strlen(s);
+  if (k->len + n < sizeof k->out) {
+    memcpy(k->out + k->len, s, n + 1);
+    k->len += n;
+  }
+}
+
+static const char *const vfs_text = "v(1).\nv(2).\n";
+
+static void *vfs_open(void *ud, const char *path, const char *mode) {
+  (void)ud;
+  (void)mode;
+  if (!streq(path, "mem/v.pl"))
+    return NULL;
+  static const char *cursor;
+  cursor = vfs_text;
+  return &cursor;
+}
+
+static char *vfs_read_line(void *ud, void *handle, char *buf, int size) {
+  (void)ud;
+  const char **cursor = handle;
+  if (!**cursor)
+    return NULL;
+  int n = 0;
+  while ((*cursor)[n] && (*cursor)[n] != '\n' && n < size - 2)
+    n++;
+  if ((*cursor)[n] == '\n')
+    n++;
+  memcpy(buf, *cursor, (size_t)n);
+  buf[n] = '\0';
+  *cursor += n;
+  return buf;
+}
+
+static void vfs_close(void *ud, void *handle) {
+  (void)ud;
+  (void)handle;
+}
+
+static void test_io(trilog_t *t) {
+  sink k = {0};
+  trilog_set_io(t, &(trilog_io_t){.write_str = sink_write,
+                                  .file_open = vfs_open,
+                                  .file_read_line = vfs_read_line,
+                                  .file_close = vfs_close,
+                                  .userdata = &k});
+  collected c = {0};
+  CHECK(trilog_query(t, "write(hello(1)), nl", collect, &c) == TRILOG_TRUE);
+  CHECK(streq(k.out, "hello(1)\n"));
+  CHECK(trilog_load_file(t, "mem/v.pl") == TRILOG_TRUE);
+  collected d = {0};
+  CHECK(trilog_query(t, "v(X)", collect, &d) == TRILOG_TRUE && d.count == 2);
+  trilog_set_io(t, NULL);
+}
+
+static void test_usage(trilog_t *t) {
+  trilog_usage_t u;
+  trilog_usage(t, &u);
+  CHECK(u.clauses > 100 && u.atoms >= 116 && u.arena_bytes > 0);
+  CHECK(u.heap_capacity_cells >= u.heap_cells);
+  CHECK(u.heap_peak_cells >= u.heap_cells);
+}
+
 static trilog_t *boot(void) {
   return trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl"});
 }
@@ -208,6 +387,10 @@ int main(void) {
   test_terms(t);
   test_errors(t);
   test_directives(t);
+  test_foreign(t);
+  test_yield(t);
+  test_io(t);
+  test_usage(t);
   test_two_interpreters();
   test_create_free();
 

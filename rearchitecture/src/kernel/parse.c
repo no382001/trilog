@@ -613,15 +613,31 @@ static const char *find_embedded(const char *path, char *resolved, size_t cap) {
   return NULL;
 }
 
-static char *read_whole_file(trilog_t *T, FILE *f) {
-  fseek(f, 0, SEEK_END);
-  long sz = ftell(f);
-  fseek(f, 0, SEEK_SET);
-  char *buf =
-      arena_alloc(T, (size_t)(sz > 0 ? sz : 0) + 1); // FIXME: never freed
-  size_t got = fread(buf, 1, (size_t)(sz > 0 ? sz : 0), f);
-  buf[got] = '\0';
-  fclose(f);
+static size_t read_file_pass(trilog_t *T, const char *path, char *out,
+                             size_t cap) {
+  void *h = io_file_open(T, path, "rb");
+  if (!h)
+    return (size_t)-1;
+  char line[4096];
+  size_t len = 0;
+  while (io_file_read_line(T, h, line, sizeof line)) {
+    size_t n = strlen(line);
+    size_t room = len < cap ? cap - len : 0;
+    if (out)
+      memcpy(out + len, line, n < room ? n : room);
+    len += n;
+  }
+  io_file_close(T, h);
+  return len;
+}
+
+static char *read_whole_file(trilog_t *T, const char *path) {
+  size_t len = read_file_pass(T, path, NULL, 0);
+  if (len == (size_t)-1)
+    return NULL;
+  char *buf = arena_alloc(T, len + 1); // FIXME: never freed
+  size_t got = read_file_pass(T, path, buf, len);
+  buf[got != (size_t)-1 && got < len ? got : len] = '\0';
   return buf;
 }
 
@@ -642,15 +658,15 @@ static const char *consult_text(trilog_t *T, const char *path, char *resolved,
       if (text)
         return text;
     } else {
-      FILE *f = fopen(resolved, "rb");
-      if (f)
-        return read_whole_file(T, f);
+      char *text = read_whole_file(T, resolved);
+      if (text)
+        return text;
     }
   }
   snprintf(resolved, cap, "%s", path);
-  FILE *f = fopen(resolved, "rb");
-  if (f)
-    return read_whole_file(T, f);
+  char *text = read_whole_file(T, resolved);
+  if (text)
+    return text;
   return path[0] != '/' ? find_embedded(path, resolved, cap) : NULL;
 }
 
