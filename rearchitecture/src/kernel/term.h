@@ -1,4 +1,5 @@
 #pragma once
+#include "trilog.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -19,24 +20,24 @@ typedef struct tterm {
   } as;
 } tterm_t;
 
-void term_init(void);
+tterm_t *tt_var(trilog_t *T, int32_t slot);
+tterm_t *tt_atom(trilog_t *T, const char *name);
+tterm_t *tt_int(trilog_t *T, int64_t v);
+tterm_t *tt_flt(trilog_t *T, double v);
+tterm_t *tt_struct(trilog_t *T, const char *name, int32_t arity,
+                   tterm_t **args);
 
-tterm_t *tt_var(int32_t slot);
-tterm_t *tt_atom(const char *name);
-tterm_t *tt_int(int64_t v);
-tterm_t *tt_flt(double v);
-tterm_t *tt_struct(const char *name, int32_t arity, tterm_t **args);
+size_t heap_copy(trilog_t *T, tterm_t *t, size_t *rename, size_t cut_barrier);
+size_t heap_copy_goal(trilog_t *T, tterm_t *t, size_t *rename,
+                      size_t cut_barrier);
+size_t heap_rebake_cuts(trilog_t *T, size_t r, size_t cut_barrier);
 
-size_t heap_copy(tterm_t *t, size_t *rename, size_t cut_barrier);
-size_t heap_copy_goal(tterm_t *t, size_t *rename, size_t cut_barrier);
-size_t heap_rebake_cuts(size_t r, size_t cut_barrier);
+void print_term(trilog_t *T, size_t r);
+void print_term_quoted(trilog_t *T, size_t r);
+typedef void (*emit_fn)(trilog_t *T, const char *s);
+void print_term_via(trilog_t *T, size_t r, int quoted, emit_fn emit);
 
-void print_term(size_t r);
-void print_term_quoted(size_t r);
-typedef void (*emit_fn)(const char *s);
-void print_term_via(size_t r, int quoted, emit_fn emit);
+tterm_t *heap_to_template(trilog_t *T, size_t r, int32_t *nvars_out);
 
-tterm_t *heap_to_template(size_t r, int32_t *nvars_out);
-
-int heap_terms_to_templates(size_t *terms, int32_t n, tterm_t **out,
-                            int32_t *nvars_out);
+int heap_terms_to_templates(trilog_t *T, size_t *terms, int32_t n,
+                            tterm_t **out, int32_t *nvars_out);

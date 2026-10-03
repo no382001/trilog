@@ -1,5 +1,7 @@
 #include "term.h"
 #include "arena.h"
+#include "atoms.h"
+#include "ctx.h"
 #include "heap.h"
 #include "io.h"
 #include <ctype.h>
@@ -7,66 +9,53 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Interned once here, not per call site - atom_intern is a linear scan.
-static int32_t atom_bang, atom_cut, atom_dot, atom_nil, atom_comma,
-    atom_semicolon, atom_arrow;
-
-void term_init(void) {
-  atom_bang = atom_intern("!");
-  atom_cut = atom_intern("$$cut");
-  atom_dot = atom_intern(".");
-  atom_nil = atom_intern("[]");
-  atom_comma = atom_intern(",");
-  atom_semicolon = atom_intern(";");
-  atom_arrow = atom_intern("->");
-}
-
 static int is_transparent_functor(int32_t id) {
   return id == atom_comma || id == atom_semicolon || id == atom_arrow;
 }
 
-static tterm_t *tt_new(ttag_t tag) {
-  tterm_t *t = arena_alloc(sizeof(tterm_t));
+static tterm_t *tt_new(trilog_t *T, ttag_t tag) {
+  tterm_t *t = arena_alloc(T, sizeof(tterm_t));
   t->tag = tag;
   return t;
 }
 
-tterm_t *tt_var(int32_t slot) {
-  tterm_t *t = tt_new(T_VAR);
+tterm_t *tt_var(trilog_t *T, int32_t slot) {
+  tterm_t *t = tt_new(T, T_VAR);
   t->as.slot = slot;
   return t;
 }
 
-tterm_t *tt_atom(const char *name) {
-  tterm_t *t = tt_new(T_ATOM);
-  t->as.atom_id = atom_intern(name);
+tterm_t *tt_atom(trilog_t *T, const char *name) {
+  tterm_t *t = tt_new(T, T_ATOM);
+  t->as.atom_id = atom_intern(T, name);
   return t;
 }
 
-tterm_t *tt_int(int64_t v) {
-  tterm_t *t = tt_new(T_INT);
+tterm_t *tt_int(trilog_t *T, int64_t v) {
+  tterm_t *t = tt_new(T, T_INT);
   t->as.ival = v;
   return t;
 }
 
-tterm_t *tt_flt(double v) {
-  tterm_t *t = tt_new(T_FLT);
+tterm_t *tt_flt(trilog_t *T, double v) {
+  tterm_t *t = tt_new(T, T_FLT);
   t->as.fval = v;
   return t;
 }
 
-tterm_t *tt_struct(const char *name, int32_t arity, tterm_t **args) {
-  tterm_t *t = tt_new(T_STR);
-  t->as.str.atom_id = atom_intern(name);
+tterm_t *tt_struct(trilog_t *T, const char *name, int32_t arity,
+                   tterm_t **args) {
+  tterm_t *t = tt_new(T, T_STR);
+  t->as.str.atom_id = atom_intern(T, name);
   t->as.str.arity = arity;
-  tterm_t **permanent = arena_alloc((size_t)arity * sizeof(tterm_t *));
+  tterm_t **permanent = arena_alloc(T, (size_t)arity * sizeof(tterm_t *));
   memcpy(permanent, args, (size_t)arity * sizeof(tterm_t *));
   t->as.str.args = permanent;
   return t;
 }
 
 // copies every argument but the last recursively and loops on that one
-size_t heap_copy(tterm_t *t, size_t *rename, size_t cut_barrier) {
+size_t heap_copy(trilog_t *T, tterm_t *t, size_t *rename, size_t cut_barrier) {
   size_t first = (size_t)-1, hole = (size_t)-1;
   for (;;) {
     size_t r;
@@ -74,25 +63,25 @@ size_t heap_copy(tterm_t *t, size_t *rename, size_t cut_barrier) {
     switch (t->tag) {
     case T_VAR:
       if (rename[t->as.slot] == (size_t)-1)
-        rename[t->as.slot] = heap_new_var();
+        rename[t->as.slot] = heap_new_var(T);
       r = rename[t->as.slot];
       break;
     case T_ATOM:
-      r = heap_new_atom(t->as.atom_id);
+      r = heap_new_atom(T, t->as.atom_id);
       break;
     case T_INT:
-      r = heap_new_int(t->as.ival);
+      r = heap_new_int(T, t->as.ival);
       break;
     case T_FLT:
-      r = heap_new_flt(t->as.fval);
+      r = heap_new_flt(T, t->as.fval);
       break;
     default: {
       int32_t arity = t->as.str.arity;
       size_t args[arity];
       for (int32_t i = 0; i < arity - 1; i++)
-        args[i] = heap_copy(t->as.str.args[i], rename, cut_barrier);
+        args[i] = heap_copy(T, t->as.str.args[i], rename, cut_barrier);
       args[arity - 1] = 0; // patched on the next iteration
-      r = heap_new_struct(t->as.str.atom_id, arity, args);
+      r = heap_new_struct(T, t->as.str.atom_id, arity, args);
       last = t->as.str.args[arity - 1];
       break;
     }
@@ -100,42 +89,44 @@ size_t heap_copy(tterm_t *t, size_t *rename, size_t cut_barrier) {
     if (hole == (size_t)-1)
       first = r;
     else
-      heap[hole].as.ref = r;
+      T->heap[hole].as.ref = r;
     if (!last)
       return first;
-    hole = heap[r].as.ptr + (size_t)t->as.str.arity;
+    hole = T->heap[r].as.ptr + (size_t)t->as.str.arity;
     t = last;
   }
 }
 
-size_t heap_copy_goal(tterm_t *t, size_t *rename, size_t cut_barrier) {
+size_t heap_copy_goal(trilog_t *T, tterm_t *t, size_t *rename,
+                      size_t cut_barrier) {
   if (t->tag == T_ATOM && t->as.atom_id == atom_bang) {
-    size_t barrier_arg[1] = {heap_new_int((int64_t)cut_barrier)};
-    return heap_new_struct(atom_cut, 1, barrier_arg);
+    size_t barrier_arg[1] = {heap_new_int(T, (int64_t)cut_barrier)};
+    return heap_new_struct(T, atom_cut, 1, barrier_arg);
   }
   if (t->tag == T_STR && t->as.str.arity == 2 &&
       is_transparent_functor(t->as.str.atom_id)) {
-    size_t args[2] = {heap_copy_goal(t->as.str.args[0], rename, cut_barrier),
-                      heap_copy_goal(t->as.str.args[1], rename, cut_barrier)};
-    return heap_new_struct(t->as.str.atom_id, 2, args);
+    size_t args[2] = {
+        heap_copy_goal(T, t->as.str.args[0], rename, cut_barrier),
+        heap_copy_goal(T, t->as.str.args[1], rename, cut_barrier)};
+    return heap_new_struct(T, t->as.str.atom_id, 2, args);
   }
-  return heap_copy(t, rename, cut_barrier);
+  return heap_copy(T, t, rename, cut_barrier);
 }
 
-size_t heap_rebake_cuts(size_t r, size_t cut_barrier) {
-  r = heap_deref(r);
-  if (heap[r].tag == TAG_ATOM && heap[r].as.atom_id == atom_bang) {
-    size_t barrier_arg[1] = {heap_new_int((int64_t)cut_barrier)};
-    return heap_new_struct(atom_cut, 1, barrier_arg);
+size_t heap_rebake_cuts(trilog_t *T, size_t r, size_t cut_barrier) {
+  r = heap_deref(T, r);
+  if (T->heap[r].tag == TAG_ATOM && T->heap[r].as.atom_id == atom_bang) {
+    size_t barrier_arg[1] = {heap_new_int(T, (int64_t)cut_barrier)};
+    return heap_new_struct(T, atom_cut, 1, barrier_arg);
   }
-  if (heap[r].tag == TAG_STR) {
-    size_t f = heap[r].as.ptr;
-    int32_t arity = heap[f].as.func.arity;
-    int32_t id = heap[f].as.func.atom_id;
+  if (T->heap[r].tag == TAG_STR) {
+    size_t f = T->heap[r].as.ptr;
+    int32_t arity = T->heap[f].as.func.arity;
+    int32_t id = T->heap[f].as.func.atom_id;
     if (arity == 2 && is_transparent_functor(id)) {
-      size_t args[2] = {heap_rebake_cuts(f + 1, cut_barrier),
-                        heap_rebake_cuts(f + 2, cut_barrier)};
-      return heap_new_struct(id, 2, args);
+      size_t args[2] = {heap_rebake_cuts(T, f + 1, cut_barrier),
+                        heap_rebake_cuts(T, f + 2, cut_barrier)};
+      return heap_new_struct(T, id, 2, args);
     }
   }
   return r;
@@ -153,7 +144,7 @@ static int atom_needs_quote(const char *s) {
         return 1;
     return 0;
   }
-  static const char *symbol_chars = "+-*/\\^<>=~:.?@#&$";
+  static const char symbol_chars[] = "+-*/\\^<>=~:.?@#&$";
   int all_symbol = 1;
   for (const char *p = s; *p; p++)
     if (!strchr(symbol_chars, *p)) {
@@ -163,248 +154,246 @@ static int atom_needs_quote(const char *s) {
   return !all_symbol;
 }
 
-static void print_atom(const char *name, int quoted, emit_fn emit) {
+static void print_atom(trilog_t *T, const char *name, int quoted,
+                       emit_fn emit) {
   if (!quoted || !atom_needs_quote(name)) {
-    emit(name);
+    emit(T, name);
     return;
   }
-  emit("'");
+  emit(T, "'");
   for (const char *p = name; *p; p++) {
     switch (*p) {
     case '\'':
-      emit("\\'");
+      emit(T, "\\'");
       break;
     case '\\':
-      emit("\\\\");
+      emit(T, "\\\\");
       break;
     case '\n':
-      emit("\\n");
+      emit(T, "\\n");
       break;
     case '\t':
-      emit("\\t");
+      emit(T, "\\t");
       break;
     default: {
       char c[2] = {*p, '\0'};
-      emit(c);
+      emit(T, c);
     }
     }
   }
-  emit("'");
+  emit(T, "'");
 }
 
 // A proper list of single-character atoms (what "abc" parses to) prints as
 // "abc" for write/1 and writeq/1 alike.
 #define MAX_PRINT_DEPTH 10000
 
-static int try_print_char_string(size_t r, emit_fn emit) {
+static int try_print_char_string(trilog_t *T, size_t r, emit_fn emit) {
   size_t cell = r;
   for (int n = 0;; n++) {
     if (n >= MAX_PRINT_DEPTH)
       return 0; // too long, or cyclic: print as a capped list instead
-    size_t cf = heap[cell].as.ptr;
-    size_t head = heap_deref(cf + 1);
-    if (heap[head].tag != TAG_ATOM)
+    size_t cf = T->heap[cell].as.ptr;
+    size_t head = heap_deref(T, cf + 1);
+    if (T->heap[head].tag != TAG_ATOM)
       return 0;
-    const char *name = atom_name(heap[head].as.atom_id);
+    const char *name = atom_name(T, T->heap[head].as.atom_id);
     if (name[0] == '\0' || name[1] != '\0')
       return 0;
-    size_t tail = heap_deref(cf + 2);
-    if (heap[tail].tag == TAG_ATOM && heap[tail].as.atom_id == atom_nil)
+    size_t tail = heap_deref(T, cf + 2);
+    if (T->heap[tail].tag == TAG_ATOM && T->heap[tail].as.atom_id == atom_nil)
       break;
-    if (heap[tail].tag != TAG_STR)
+    if (T->heap[tail].tag != TAG_STR)
       return 0;
-    size_t tf = heap[tail].as.ptr;
-    if (heap[tf].as.func.arity != 2 || heap[tf].as.func.atom_id != atom_dot)
+    size_t tf = T->heap[tail].as.ptr;
+    if (T->heap[tf].as.func.arity != 2 ||
+        T->heap[tf].as.func.atom_id != atom_dot)
       return 0;
     cell = tail;
   }
-  emit("\"");
+  emit(T, "\"");
   for (cell = r;;) {
-    size_t cf = heap[cell].as.ptr;
-    char c = atom_name(heap[heap_deref(cf + 1)].as.atom_id)[0];
+    size_t cf = T->heap[cell].as.ptr;
+    char c = atom_name(T, T->heap[heap_deref(T, cf + 1)].as.atom_id)[0];
     switch (c) {
     case '"':
-      emit("\\\"");
+      emit(T, "\\\"");
       break;
     case '\\':
-      emit("\\\\");
+      emit(T, "\\\\");
       break;
     case '\n':
-      emit("\\n");
+      emit(T, "\\n");
       break;
     case '\t':
-      emit("\\t");
+      emit(T, "\\t");
       break;
     default: {
       char s[2] = {c, '\0'};
-      emit(s);
+      emit(T, s);
     }
     }
-    size_t tail = heap_deref(cf + 2);
-    if (heap[tail].tag == TAG_ATOM && heap[tail].as.atom_id == atom_nil)
+    size_t tail = heap_deref(T, cf + 2);
+    if (T->heap[tail].tag == TAG_ATOM && T->heap[tail].as.atom_id == atom_nil)
       break;
     cell = tail;
   }
-  emit("\"");
+  emit(T, "\"");
   return 1;
 }
 
 // Cyclic terms (X = [X|_], no occurs-check by default) used to blow the
 // C stack - a long acyclic list is safe since the list branch below
 // walks its spine iteratively.
-static int print_depth = 0;
-
-static void print_term_ex(size_t r, int quoted, emit_fn emit) {
-  if (print_depth >= MAX_PRINT_DEPTH) {
-    emit("...");
+static void print_term_ex(trilog_t *T, size_t r, int quoted, emit_fn emit) {
+  if (T->print_depth >= MAX_PRINT_DEPTH) {
+    emit(T, "...");
     return;
   }
-  print_depth++;
-  r = heap_deref(r);
+  T->print_depth++;
+  r = heap_deref(T, r);
   char buf[64];
-  switch (heap[r].tag) {
+  switch (T->heap[r].tag) {
   case TAG_REF:
     snprintf(buf, sizeof buf, "_G%zu", r);
-    emit(buf);
+    emit(T, buf);
     break;
   case TAG_ATOM:
-    print_atom(atom_name(heap[r].as.atom_id), quoted, emit);
+    print_atom(T, atom_name(T, T->heap[r].as.atom_id), quoted, emit);
     break;
   case TAG_INT:
-    snprintf(buf, sizeof buf, "%ld", heap[r].as.ival);
-    emit(buf);
+    snprintf(buf, sizeof buf, "%ld", T->heap[r].as.ival);
+    emit(T, buf);
     break;
   case TAG_FLT:
-    snprintf(buf, sizeof buf, "%g", heap[r].as.fval);
+    snprintf(buf, sizeof buf, "%g", T->heap[r].as.fval);
     if (!strpbrk(buf, ".eEnN")) // force a decimal point: 2.0, not 2
       strncat(buf, ".0", sizeof buf - strlen(buf) - 1);
-    emit(buf);
+    emit(T, buf);
     break;
   case TAG_STR: {
-    size_t f = heap[r].as.ptr;
-    int32_t arity = heap[f].as.func.arity;
-    int32_t f_id = heap[f].as.func.atom_id;
-    const char *name = atom_name(f_id);
+    size_t f = T->heap[r].as.ptr;
+    int32_t arity = T->heap[f].as.func.arity;
+    int32_t f_id = T->heap[f].as.func.atom_id;
+    const char *name = atom_name(T, f_id);
     if (arity == 2 && f_id == atom_dot) {
-      if (try_print_char_string(r, emit))
+      if (try_print_char_string(T, r, emit))
         break;
-      emit("[");
+      emit(T, "[");
       size_t cell = r;
       for (int first = 1, n = 0;; first = 0, n++) {
-        size_t cf = heap[cell].as.ptr;
+        size_t cf = T->heap[cell].as.ptr;
         if (!first)
-          emit(", ");
-        print_term_ex(cf + 1, quoted, emit); // head
-        size_t tail = heap_deref(cf + 2);
-        if (heap[tail].tag == TAG_ATOM && heap[tail].as.atom_id == atom_nil)
+          emit(T, ", ");
+        print_term_ex(T, cf + 1, quoted, emit); // head
+        size_t tail = heap_deref(T, cf + 2);
+        if (T->heap[tail].tag == TAG_ATOM &&
+            T->heap[tail].as.atom_id == atom_nil)
           break;
-        if (heap[tail].tag == TAG_STR) {
-          size_t tf = heap[tail].as.ptr;
-          if (heap[tf].as.func.arity == 2 &&
-              heap[tf].as.func.atom_id == atom_dot) {
+        if (T->heap[tail].tag == TAG_STR) {
+          size_t tf = T->heap[tail].as.ptr;
+          if (T->heap[tf].as.func.arity == 2 &&
+              T->heap[tf].as.func.atom_id == atom_dot) {
             if (n + 1 >= MAX_PRINT_DEPTH) {
-              emit("|...");
+              emit(T, "|...");
               break;
             }
             cell = tail;
             continue;
           }
         }
-        emit("|");
-        print_term_ex(tail, quoted, emit);
+        emit(T, "|");
+        print_term_ex(T, tail, quoted, emit);
         break;
       }
-      emit("]");
+      emit(T, "]");
       break;
     }
-    print_atom(name, quoted, emit);
+    print_atom(T, name, quoted, emit);
     if (arity > 0) {
-      emit("(");
+      emit(T, "(");
       for (int32_t i = 0; i < arity; i++) {
         if (i)
-          emit(", ");
-        print_term_ex(f + 1 + i, quoted, emit);
+          emit(T, ", ");
+        print_term_ex(T, f + 1 + i, quoted, emit);
       }
-      emit(")");
+      emit(T, ")");
     }
     break;
   }
   case TAG_FUNCTOR:
     break; // never a term in its own right
   }
-  print_depth--;
+  T->print_depth--;
 }
 
-void print_term(size_t r) { print_term_ex(r, 0, io_write_str); }
-void print_term_quoted(size_t r) { print_term_ex(r, 1, io_write_str); }
-void print_term_via(size_t r, int quoted, emit_fn emit) {
-  print_term_ex(r, quoted, emit);
+void print_term(trilog_t *T, size_t r) { print_term_ex(T, r, 0, io_write_str); }
+void print_term_quoted(trilog_t *T, size_t r) {
+  print_term_ex(T, r, 1, io_write_str);
+}
+void print_term_via(trilog_t *T, size_t r, int quoted, emit_fn emit) {
+  print_term_ex(T, r, quoted, emit);
 }
 
-static int template_cyclic = 0;
-
-static size_t *template_marks = NULL;
-static size_t template_marks_len = 0, template_marks_cap = 0;
-
-static void template_mark(size_t f) {
-  if (template_marks_len == template_marks_cap) {
-    size_t cap = template_marks_cap ? template_marks_cap * 2 : 64;
-    size_t *grown = realloc(template_marks, cap * sizeof *grown);
+static void template_mark(trilog_t *T, size_t f) {
+  if (T->template_marks_len == T->template_marks_cap) {
+    size_t cap = T->template_marks_cap ? T->template_marks_cap * 2 : 64;
+    size_t *grown = realloc(T->template_marks, cap * sizeof *grown);
     if (!grown) {
-      io_write_err("out of memory\n");
+      io_write_err(T, "out of memory\n");
       exit(1);
     }
-    template_marks = grown;
-    template_marks_cap = cap;
+    T->template_marks = grown;
+    T->template_marks_cap = cap;
   }
-  heap[f].as.func.arity = -1 - heap[f].as.func.arity;
-  template_marks[template_marks_len++] = f;
+  T->heap[f].as.func.arity = -1 - T->heap[f].as.func.arity;
+  T->template_marks[T->template_marks_len++] = f;
 }
 
-static tterm_t *heap_to_template_rec(size_t r, int32_t *nseen) {
-  size_t base = template_marks_len;
+static tterm_t *heap_to_template_rec(trilog_t *T, size_t r, int32_t *nseen) {
+  size_t base = T->template_marks_len;
   tterm_t *first = NULL, **hole = &first;
   for (;;) {
-    r = heap_deref(r);
+    r = heap_deref(T, r);
     tterm_t *t = NULL;
     size_t next = (size_t)-1;
     int32_t arity = 0;
-    switch (heap[r].tag) {
+    switch (T->heap[r].tag) {
     case TAG_REF: {
-      size_t m = heap_alloc(1);
-      heap[m].tag = TAG_FUNCTOR;
-      heap[m].as.func.atom_id = -1;
-      heap[m].as.func.arity = *nseen;
-      heap_bind(r, m);
-      t = tt_var((*nseen)++);
+      size_t m = heap_alloc(T, 1);
+      T->heap[m].tag = TAG_FUNCTOR;
+      T->heap[m].as.func.atom_id = -1;
+      T->heap[m].as.func.arity = *nseen;
+      heap_bind(T, r, m);
+      t = tt_var(T, (*nseen)++);
       break;
     }
     case TAG_FUNCTOR:
-      t = tt_var(heap[r].as.func.arity);
+      t = tt_var(T, T->heap[r].as.func.arity);
       break;
     case TAG_ATOM:
-      t = tt_atom(atom_name(heap[r].as.atom_id));
+      t = tt_atom(T, atom_name(T, T->heap[r].as.atom_id));
       break;
     case TAG_INT:
-      t = tt_int(heap[r].as.ival);
+      t = tt_int(T, T->heap[r].as.ival);
       break;
     case TAG_FLT:
-      t = tt_flt(heap[r].as.fval);
+      t = tt_flt(T, T->heap[r].as.fval);
       break;
     case TAG_STR: {
-      size_t f = heap[r].as.ptr;
-      arity = heap[f].as.func.arity;
-      if (arity < 0 || template_cyclic) {
-        template_cyclic = 1;
-        t = tt_atom("[]");
+      size_t f = T->heap[r].as.ptr;
+      arity = T->heap[f].as.func.arity;
+      if (arity < 0 || T->template_cyclic) {
+        T->template_cyclic = 1;
+        t = tt_atom(T, "[]");
         break;
       }
       tterm_t *args[arity];
-      template_mark(f);
+      template_mark(T, f);
       for (int32_t i = 0; i < arity - 1; i++)
-        args[i] = heap_to_template_rec(f + 1 + (size_t)i, nseen);
+        args[i] = heap_to_template_rec(T, f + 1 + (size_t)i, nseen);
       args[arity - 1] = NULL; // filled in on the next iteration
-      t = tt_struct(atom_name(heap[f].as.func.atom_id), arity, args);
+      t = tt_struct(T, atom_name(T, T->heap[f].as.func.atom_id), arity, args);
       next = f + (size_t)arity;
       break;
     }
@@ -415,30 +404,30 @@ static tterm_t *heap_to_template_rec(size_t r, int32_t *nseen) {
     hole = &t->as.str.args[arity - 1];
     r = next;
   }
-  while (template_marks_len > base) {
-    size_t f = template_marks[--template_marks_len];
-    heap[f].as.func.arity = -1 - heap[f].as.func.arity;
+  while (T->template_marks_len > base) {
+    size_t f = T->template_marks[--T->template_marks_len];
+    T->heap[f].as.func.arity = -1 - T->heap[f].as.func.arity;
   }
   return first;
 }
 
 // 0 if any of terms is cyclic.
-int heap_terms_to_templates(size_t *terms, int32_t n, tterm_t **out,
-                            int32_t *nvars_out) {
-  size_t hmark = heap_mark(), tmark = trail_mark();
+int heap_terms_to_templates(trilog_t *T, size_t *terms, int32_t n,
+                            tterm_t **out, int32_t *nvars_out) {
+  size_t hmark = heap_mark(T), tmark = trail_mark(T);
   int32_t nseen = 0;
-  template_cyclic = 0;
+  T->template_cyclic = 0;
   for (int32_t i = 0; i < n; i++)
-    out[i] = heap_to_template_rec(terms[i], &nseen);
-  trail_release(tmark);
-  heap_release(hmark);
+    out[i] = heap_to_template_rec(T, terms[i], &nseen);
+  trail_release(T, tmark);
+  heap_release(T, hmark);
   *nvars_out =
       nseen > 0 ? nseen : 1; // heap_copy's rename table is never zero-sized
-  return !template_cyclic;
+  return !T->template_cyclic;
 }
 
 // NULL if r is cyclic.
-tterm_t *heap_to_template(size_t r, int32_t *nvars_out) {
+tterm_t *heap_to_template(trilog_t *T, size_t r, int32_t *nvars_out) {
   tterm_t *t;
-  return heap_terms_to_templates(&r, 1, &t, nvars_out) ? t : NULL;
+  return heap_terms_to_templates(T, &r, 1, &t, nvars_out) ? t : NULL;
 }

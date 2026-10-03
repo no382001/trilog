@@ -146,18 +146,70 @@ static void test_directives(trilog_t *t) {
   CHECK(c.count == 1 && streq(c.text[0], "directive"));
 }
 
+static trilog_t *boot(void) {
+  return trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl"});
+}
+
+static bool query_other(trilog_t *t, void *ud, bool has_more) {
+  (void)has_more;
+  trilog_t *other = ud;
+  collected c = {0};
+  CHECK(trilog_query(other, "who(X)", collect, &c) == TRILOG_TRUE);
+  CHECK(c.count == 1 && streq(c.text[0], "second"));
+  CHECK(streq(trilog_get_atom(t, trilog_binding_value(t, 0)), "first"));
+  return true;
+}
+
+static void test_two_interpreters(void) {
+  trilog_t *a = boot(), *b = boot();
+  CHECK(a && b);
+  if (!a || !b)
+    return;
+  CHECK(trilog_load_string(a, "who(first). n(0)."));
+  CHECK(trilog_load_string(b, "who(second)."));
+  for (int i = 0; i < 3; i++) {
+    collected ca = {0}, cb = {0};
+    CHECK(trilog_query(a, "who(X)", collect, &ca) == TRILOG_TRUE);
+    CHECK(trilog_query(b, "who(X)", collect, &cb) == TRILOG_TRUE);
+    CHECK(ca.count == 1 && streq(ca.text[0], "first"));
+    CHECK(cb.count == 1 && streq(cb.text[0], "second"));
+  }
+  collected none = {0};
+  CHECK(trilog_query(b, "n(_)", collect, &none) == TRILOG_ERROR);
+  CHECK(trilog_query(a, "who(X)", query_other, b) == TRILOG_TRUE);
+  CHECK(trilog_query(a, "numlist(1, 50000, L), length(L, N), N > 0", collect,
+                     &none) == TRILOG_TRUE);
+  collected cb = {0};
+  CHECK(trilog_query(b, "who(X)", collect, &cb) == TRILOG_TRUE);
+  CHECK(cb.count == 1 && streq(cb.text[0], "second"));
+  trilog_free(a);
+  trilog_free(b);
+}
+
+static void test_create_free(void) {
+  for (int i = 0; i < 3; i++) {
+    trilog_t *t = boot();
+    CHECK(t != NULL);
+    collected c = {0};
+    CHECK(trilog_query(t, "assertz(k(1)), k(X)", collect, &c) == TRILOG_TRUE);
+    trilog_free(t);
+  }
+  trilog_free(NULL);
+}
+
 int main(void) {
   trilog_t *t = trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl"});
   if (!t) {
     fprintf(stderr, "trilog_new failed\n");
     return 1;
   }
-  CHECK(trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl"}) == NULL);
 
   test_solutions(t);
   test_terms(t);
   test_errors(t);
   test_directives(t);
+  test_two_interpreters();
+  test_create_free();
 
   trilog_usage_t u;
   trilog_usage(t, &u);

@@ -23,18 +23,23 @@ _build/embedded.c: $(EMBED_FILES) tools/embed_libs.sh
 
 .PHONY: release
 release: format $(SRCS) $(PLATFORM_SRC) _build/embedded.c $(HDRS)
-	$(CC) $(CFLAGS) -DTRILOG_EMBEDDED -o _build/trilog $(SRCS) $(PLATFORM_SRC) _build/embedded.c -lm
+	$(CC) $(CFLAGS) -flto=auto -DTRILOG_EMBEDDED -o _build/trilog $(SRCS) $(PLATFORM_SRC) _build/embedded.c -lm
 
 _build/api_test: test/api_test.c $(LIB_SRCS) $(PLATFORM_SRC) src/kernel/embedded_none.c $(HDRS)
 	@mkdir -p _build
 	$(CC) $(CFLAGS) -o $@ test/api_test.c $(LIB_SRCS) $(PLATFORM_SRC) src/kernel/embedded_none.c -lm
 
+_build/api_threads_test: test/api_threads_test.c $(LIB_SRCS) src/platform/posix.c src/kernel/embedded_none.c $(HDRS)
+	@mkdir -p _build
+	$(CC) $(CFLAGS) -pthread -o $@ test/api_threads_test.c $(LIB_SRCS) src/platform/posix.c src/kernel/embedded_none.c -lm
+
 .PHONY: test test-api test-upstream clean format format-check
 test: trilog test-api
 	bats test/
 
-test-api: _build/api_test
+test-api: _build/api_test _build/api_threads_test
 	_build/api_test
+	_build/api_threads_test
 
 test-upstream: trilog
 	@tmp=$$(mktemp); \
@@ -85,10 +90,10 @@ quad-junit: trilog
 	@echo "JUnit reports written to _build/test-results/"
 
 clean:
-	rm -f trilog _build/trilog _build/embedded.c _build/api_test
+	rm -f trilog _build/trilog _build/embedded.c _build/api_test _build/api_threads_test
 
 format:
-	clang-format -i $(SRCS) test/api_test.c src/kernel/embedded_none.c src/platform/*.c $(HDRS)
+	clang-format -i $(SRCS) test/api_test.c test/api_threads_test.c src/kernel/embedded_none.c src/platform/*.c $(HDRS)
 
 format-check:
-	clang-format --dry-run --Werror $(SRCS) test/api_test.c src/kernel/embedded_none.c src/platform/*.c $(HDRS)
+	clang-format --dry-run --Werror $(SRCS) test/api_test.c test/api_threads_test.c src/kernel/embedded_none.c src/platform/*.c $(HDRS)

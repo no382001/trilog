@@ -1,9 +1,8 @@
 #pragma once
 // The trilog embedding API. Hosts include only this header.
 //
-// Not yet thread-safe: the engine still keeps its state in globals,
-// so only one interpreter may exist per process,
-// and trilog_new returns NULL for a second one.
+// Interpreters share no state: any number may exist,
+// and each may be used by one thread at a time.
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

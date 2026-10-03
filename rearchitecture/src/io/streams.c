@@ -1,32 +1,31 @@
 #include "streams.h"
+#include "ctx.h"
 #include "io.h"
 #include <stddef.h>
 
-static void *open_streams[MAX_OPEN_STREAMS];
-
-int stream_open(const char *path, const char *mode) {
-  void *h = io_file_open(path, mode);
+int stream_open(trilog_t *T, const char *path, const char *mode) {
+  void *h = io_file_open(T, path, mode);
   if (!h)
     return -1;
   for (int i = 0; i < MAX_OPEN_STREAMS; i++) {
-    if (!open_streams[i]) {
-      open_streams[i] = h;
+    if (!T->open_streams[i]) {
+      T->open_streams[i] = h;
       return i;
     }
   }
-  io_file_close(h);
+  io_file_close(T, h);
   return -1;
 }
 
-void stream_close(int id) {
-  if (id < 0 || id >= MAX_OPEN_STREAMS || !open_streams[id])
+void stream_close(trilog_t *T, int id) {
+  if (id < 0 || id >= MAX_OPEN_STREAMS || !T->open_streams[id])
     return;
-  io_file_close(open_streams[id]);
-  open_streams[id] = NULL;
+  io_file_close(T, T->open_streams[id]);
+  T->open_streams[id] = NULL;
 }
 
-void *stream_handle(int id) {
+void *stream_handle(trilog_t *T, int id) {
   if (id < 0 || id >= MAX_OPEN_STREAMS)
     return NULL;
-  return open_streams[id];
+  return T->open_streams[id];
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include "term.h"
+#include "trilog.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -38,25 +39,44 @@ typedef struct {
   size_t outer_active_catch;
 } catch_frame_t;
 
-catch_frame_t *catch_stack_array(void);
-size_t catch_stack_size(void);
-void catch_stack_set_size(size_t n);
+#define PRED_HASH_SIZE 1024
+typedef struct pred_bucket {
+  int32_t pred_id, pred_arity;
+  int32_t *indices;
+  int32_t count, cap;
+  int dynamic;
+  struct pred_bucket *next;
+} pred_bucket_t;
 
-void solve_init(void);
+typedef struct {
+  int32_t pred_id;
+  int32_t pred_arity;
+} pred_decl_t;
 
-void db_add(tterm_t *head, tterm_t **body, int32_t nbody, int32_t nvars,
-            int mark_static);
+typedef struct {
+  int32_t pred_id;
+  int32_t pred_arity;
+} dyn_decl_t;
+
+catch_frame_t *catch_stack_array(trilog_t *T);
+size_t catch_stack_size(trilog_t *T);
+void catch_stack_set_size(trilog_t *T, size_t n);
+
+void db_add(trilog_t *T, tterm_t *head, tterm_t **body, int32_t nbody,
+            int32_t nvars, int mark_static);
 
 typedef enum { QUERY_FALSE, QUERY_TRUE, QUERY_ERROR } query_result_t;
 
 typedef int (*solution_fn)(void *ud, int has_more);
 
-query_result_t run_query(tterm_t **goals, int32_t ngoals, int32_t nvars,
-                         solution_fn on_solution, void *ud);
+query_result_t run_query(trilog_t *T, tterm_t **goals, int32_t ngoals,
+                         int32_t nvars, solution_fn on_solution, void *ud);
 
-size_t query_binding(int32_t i);
+size_t query_binding(trilog_t *T, int32_t i);
 
-size_t query_error_ball(void);
+size_t query_error_ball(trilog_t *T);
 
-int op_lookup_infix(int32_t name_atom_id, int *pri, int *assoc_code);
-int op_lookup_prefix(int32_t name_atom_id, int *pri, int *assoc_code);
+int op_lookup_infix(trilog_t *T, int32_t name_atom_id, int *pri,
+                    int *assoc_code);
+int op_lookup_prefix(trilog_t *T, int32_t name_atom_id, int *pri,
+                     int *assoc_code);

@@ -1,4 +1,5 @@
 #pragma once
+#include "trilog.h"
 #include <stdbool.h>
 
 typedef struct {
@@ -16,20 +17,16 @@ typedef struct {
   void *userdata;
 } io_hooks_t;
 
-void io_hooks_init_default(void);
+void io_hooks_init_default(trilog_t *T);
 
-io_hooks_t io_hooks_get(void);
-void io_hooks_replace(io_hooks_t hooks);
-void io_hooks_restore(io_hooks_t saved);
-
-void io_write_str(const char *str);
-void io_write_err(const char *str);
-void io_flush(void);
-int io_read_char(void);
-char *io_read_line(char *buf, int size);
-void *io_file_open(const char *path, const char *mode);
-void io_file_close(void *handle);
-char *io_file_read_line(void *handle, char *buf, int size);
-bool io_file_write(void *handle, const char *str);
-bool io_file_exists(const char *path);
-long long io_file_mtime(const char *path);
+void io_write_str(trilog_t *T, const char *str);
+void io_write_err(trilog_t *T, const char *str);
+void io_flush(trilog_t *T);
+int io_read_char(trilog_t *T);
+char *io_read_line(trilog_t *T, char *buf, int size);
+void *io_file_open(trilog_t *T, const char *path, const char *mode);
+void io_file_close(trilog_t *T, void *handle);
+char *io_file_read_line(trilog_t *T, void *handle, char *buf, int size);
+bool io_file_write(trilog_t *T, void *handle, const char *str);
+bool io_file_exists(trilog_t *T, const char *path);
+long long io_file_mtime(trilog_t *T, const char *path);

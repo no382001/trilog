@@ -1551,3 +1551,14 @@ PLEOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"yes:"* ]]
 }
+
+@test "the engine keeps no writable global state" {
+  root="$BATS_TEST_DIRNAME/.."
+  for f in "$root"/src/kernel/*.c "$root"/src/io/*.c "$root"/src/trilog.c "$root"/src/platform/*.c; do
+    gcc -std=c11 -O2 -I"$root/include" -I"$root/src/kernel" -I"$root/src/io" -I"$root/src/platform" \
+      -c "$f" -o "$BATS_TEST_TMPDIR/obj.o"
+    run bash -c "size -A '$BATS_TEST_TMPDIR/obj.o' | awk '\$1 ~ /^\\.(data|bss|data\\.rel|data\\.rel\\.local)\$/ && \$2 > 0'"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ] || { echo "$f: $output"; false; }
+  done
+}

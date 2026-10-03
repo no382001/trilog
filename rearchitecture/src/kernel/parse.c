@@ -1,5 +1,7 @@
 #include "parse.h"
 #include "arena.h"
+#include "atoms.h"
+#include "ctx.h"
 #include "embedded.h"
 #include "heap.h"
 #include "io.h"
@@ -14,14 +16,6 @@
 
 #define MAX_ARITY 255
 #define MAX_TOKEN 4096
-
-static int32_t atom_comma_op, atom_ruleop, atom_qmark_dash;
-
-void parse_init(void) {
-  atom_comma_op = atom_intern(",");
-  atom_ruleop = atom_intern(":-");
-  atom_qmark_dash = atom_intern("?-");
-}
 
 typedef enum { XFX, XFY, YFX, FX, FY } assoc_t;
 typedef struct {
@@ -47,7 +41,7 @@ static const op_t OPS[] = {
 };
 #define NOPS (int)(sizeof(OPS) / sizeof(OPS[0]))
 
-static int find_infix(const char *name, op_t *out) {
+static int find_infix(trilog_t *T, const char *name, op_t *out) {
   for (int i = 0; i < NOPS; i++)
     if ((OPS[i].assoc == XFX || OPS[i].assoc == XFY || OPS[i].assoc == YFX) &&
         !strcmp(OPS[i].name, name)) {
@@ -55,9 +49,9 @@ static int find_infix(const char *name, op_t *out) {
       return 1;
     }
   int pri, assoc_code;
-  int32_t id = atom_intern(name);
-  if (op_lookup_infix(id, &pri, &assoc_code)) {
-    out->name = atom_name(id); // permanent atom-table storage, not `name`
+  int32_t id = atom_intern(T, name);
+  if (op_lookup_infix(T, id, &pri, &assoc_code)) {
+    out->name = atom_name(T, id); // permanent atom-table storage, not `name`
     out->pri = pri;
     out->assoc = (assoc_t)assoc_code;
     return 1;
@@ -65,7 +59,7 @@ static int find_infix(const char *name, op_t *out) {
   return 0;
 }
 
-static int find_prefix(const char *name, op_t *out) {
+static int find_prefix(trilog_t *T, const char *name, op_t *out) {
   for (int i = 0; i < NOPS; i++)
     if ((OPS[i].assoc == FX || OPS[i].assoc == FY) &&
         !strcmp(OPS[i].name, name)) {
@@ -73,9 +67,9 @@ static int find_prefix(const char *name, op_t *out) {
       return 1;
     }
   int pri, assoc_code;
-  int32_t id = atom_intern(name);
-  if (op_lookup_prefix(id, &pri, &assoc_code)) {
-    out->name = atom_name(id);
+  int32_t id = atom_intern(T, name);
+  if (op_lookup_prefix(T, id, &pri, &assoc_code)) {
+    out->name = atom_name(T, id);
     out->pri = pri;
     out->assoc = (assoc_t)assoc_code;
     return 1;
@@ -84,102 +78,95 @@ static int find_prefix(const char *name, op_t *out) {
 }
 
 // ---- input cursor and error handling ----
-static const char *P;
-static jmp_buf err_jmp;
-static char err_msg[256];
 
-static void perr(const char *msg) {
-  snprintf(err_msg, sizeof(err_msg), "%s near \"%.20s\"", msg, P);
-  longjmp(err_jmp, 1);
+static void perr(trilog_t *T, const char *msg) {
+  snprintf(T->err_msg, sizeof(T->err_msg), "%s near \"%.20s\"", msg, T->P);
+  longjmp(T->err_jmp, 1);
 }
 
 static int is_symbol_char(int c) {
   return c != '\0' && strchr("+-*/\\^<>=~:.?@#&$", c) != NULL;
 }
 
-static void skip_ws(void) {
+static void skip_ws(trilog_t *T) {
   for (;;) {
-    while (isspace((unsigned char)*P))
-      P++;
-    if (P[0] == '%') {
-      while (*P && *P != '\n')
-        P++;
-    } else if (P[0] == '/' && P[1] == '*') {
-      P += 2;
-      while (*P && !(P[0] == '*' && P[1] == '/'))
-        P++;
-      if (*P)
-        P += 2;
+    while (isspace((unsigned char)*T->P))
+      T->P++;
+    if (T->P[0] == '%') {
+      while (*T->P && *T->P != '\n')
+        T->P++;
+    } else if (T->P[0] == '/' && T->P[1] == '*') {
+      T->P += 2;
+      while (*T->P && !(T->P[0] == '*' && T->P[1] == '/'))
+        T->P++;
+      if (*T->P)
+        T->P += 2;
     } else
       break;
   }
 }
 
 // true if a '.' at P ends a clause (period followed by layout/EOF/%)
-static int at_clause_end(void) {
-  return P[0] == '.' &&
-         (P[1] == '\0' || isspace((unsigned char)P[1]) || P[1] == '%');
+static int at_clause_end(trilog_t *T) {
+  return T->P[0] == '.' &&
+         (T->P[1] == '\0' || isspace((unsigned char)T->P[1]) || T->P[1] == '%');
 }
 
 // ---- per-clause variable table: reset before each clause/query
-#define MAX_CVARS 512
-#define MAX_VARNAME 256
-static char var_names[MAX_CVARS][MAX_VARNAME];
-static int32_t var_count;
 
-static void vartab_reset(void) { var_count = 0; }
+static void vartab_reset(trilog_t *T) { T->var_count = 0; }
 
-static int32_t vartab_slot(const char *name) {
+static int32_t vartab_slot(trilog_t *T, const char *name) {
   if (strcmp(name, "_") != 0) {
-    for (int32_t i = 0; i < var_count; i++)
-      if (!strcmp(var_names[i], name))
+    for (int32_t i = 0; i < T->var_count; i++)
+      if (!strcmp(T->var_names[i], name))
         return i;
   }
-  if (var_count >= MAX_CVARS)
-    perr("too many distinct variables in one clause");
+  if (T->var_count >= MAX_CVARS)
+    perr(T, "too many distinct variables in one clause");
   if (strlen(name) >= MAX_VARNAME)
-    perr("variable name too long");
-  strcpy(var_names[var_count], name);
-  return var_count++;
+    perr(T, "variable name too long");
+  strcpy(T->var_names[T->var_count], name);
+  return T->var_count++;
 }
 
 // ---- tokens ----
 
-static void read_while(char *buf, int (*pred)(int)) {
+static void read_while(trilog_t *T, char *buf, int (*pred)(int)) {
   size_t n = 0;
-  while (pred((unsigned char)*P)) {
+  while (pred((unsigned char)*T->P)) {
     if (n + 1 >= MAX_TOKEN)
-      perr("token too long");
-    buf[n++] = *P++;
+      perr(T, "token too long");
+    buf[n++] = *T->P++;
   }
   buf[n] = '\0';
 }
 
 static int is_ident_char(int c) { return isalnum(c) || c == '_'; }
 
-static void read_quoted(char quote, char *buf) {
-  P++; // opening quote
+static void read_quoted(trilog_t *T, char quote, char *buf) {
+  T->P++; // opening quote
   size_t n = 0;
   for (;;) {
-    if (*P == '\0')
-      perr("unterminated quoted token");
-    if (*P == quote) {
-      if (P[1] == quote) {
+    if (*T->P == '\0')
+      perr(T, "unterminated quoted token");
+    if (*T->P == quote) {
+      if (T->P[1] == quote) {
         if (n + 1 >= MAX_TOKEN)
-          perr("token too long");
+          perr(T, "token too long");
         buf[n++] = quote;
-        P += 2;
+        T->P += 2;
         continue;
       }
-      P++;
+      T->P++;
       break;
     }
-    char v = *P;
-    if (*P == '\\') {
-      P++;
-      if (*P == '\0')
-        perr("unterminated quoted token");
-      char c = *P++;
+    char v = *T->P;
+    if (*T->P == '\\') {
+      T->P++;
+      if (*T->P == '\0')
+        perr(T, "unterminated quoted token");
+      char c = *T->P++;
       switch (c) {
       case 'n':
         v = '\n';
@@ -195,95 +182,95 @@ static void read_quoted(char quote, char *buf) {
         break;
       }
     } else
-      P++;
+      T->P++;
     if (n + 1 >= MAX_TOKEN)
-      perr("token too long");
+      perr(T, "token too long");
     buf[n++] = v;
   }
   buf[n] = '\0';
 }
 
-static tterm_t *parse_expr(int max_prec);
-static tterm_t *parse_arg(void) {
-  return parse_expr(999);
+static tterm_t *parse_expr(trilog_t *T, int max_prec);
+static tterm_t *parse_arg(trilog_t *T) {
+  return parse_expr(T, 999);
 } // args stop below ','
 
 // parses comma-separated args into caller-owned scratch
-static int32_t parse_arglist(tterm_t **scratch) {
+static int32_t parse_arglist(trilog_t *T, tterm_t **scratch) {
   int32_t n = 0;
-  scratch[n++] = parse_arg();
-  skip_ws();
-  while (*P == ',') {
-    P++;
-    skip_ws();
+  scratch[n++] = parse_arg(T);
+  skip_ws(T);
+  while (*T->P == ',') {
+    T->P++;
+    skip_ws(T);
     if (n >= MAX_ARITY)
-      perr("too many arguments");
-    scratch[n++] = parse_arg();
-    skip_ws();
+      perr(T, "too many arguments");
+    scratch[n++] = parse_arg(T);
+    skip_ws(T);
   }
   return n;
 }
 
-static tterm_t *parse_list(void) {
-  P++; // '['
-  skip_ws();
-  if (*P == ']') {
-    P++;
-    return tt_atom("[]");
+static tterm_t *parse_list(trilog_t *T) {
+  T->P++; // '['
+  skip_ws(T);
+  if (*T->P == ']') {
+    T->P++;
+    return tt_atom(T, "[]");
   }
   tterm_t *elems[MAX_ARITY];
   int n = 0;
-  elems[n++] = parse_arg();
-  skip_ws();
-  tterm_t *tail = tt_atom("[]");
-  while (*P == ',') {
-    P++;
-    skip_ws();
+  elems[n++] = parse_arg(T);
+  skip_ws(T);
+  tterm_t *tail = tt_atom(T, "[]");
+  while (*T->P == ',') {
+    T->P++;
+    skip_ws(T);
     if (n >= MAX_ARITY)
-      perr("list literal too long");
-    elems[n++] = parse_arg();
-    skip_ws();
+      perr(T, "list literal too long");
+    elems[n++] = parse_arg(T);
+    skip_ws(T);
   }
-  if (*P == '|') {
-    P++;
-    skip_ws();
-    tail = parse_arg();
-    skip_ws();
+  if (*T->P == '|') {
+    T->P++;
+    skip_ws(T);
+    tail = parse_arg(T);
+    skip_ws(T);
   }
-  if (*P != ']')
-    perr("expected ']'");
-  P++;
+  if (*T->P != ']')
+    perr(T, "expected ']'");
+  T->P++;
   tterm_t *acc = tail;
   for (int i = n - 1; i >= 0; i--) {
     tterm_t *cons[2] = {elems[i], acc};
-    acc = tt_struct(".", 2, cons);
+    acc = tt_struct(T, ".", 2, cons);
   }
   return acc;
 }
 
-static tterm_t *parse_string(void) {
+static tterm_t *parse_string(trilog_t *T) {
   char buf[MAX_TOKEN];
-  read_quoted('"', buf);
-  tterm_t *acc = tt_atom("[]");
+  read_quoted(T, '"', buf);
+  tterm_t *acc = tt_atom(T, "[]");
   size_t n = strlen(buf);
   for (size_t i = n; i-- > 0;) {
     char c[2] = {buf[i], '\0'};
-    tterm_t *cons[2] = {tt_atom(c), acc};
-    acc = tt_struct(".", 2, cons);
+    tterm_t *cons[2] = {tt_atom(T, c), acc};
+    acc = tt_struct(T, ".", 2, cons);
   }
   return acc;
 }
 
 // 0'c: the character code of c. A doubled quote (0''') is a literal
 // quote, matching how a quoted atom escapes one; not a quoted-atom opener.
-static tterm_t *parse_char_code(void) {
-  P += 2; // "0'"
+static tterm_t *parse_char_code(trilog_t *T) {
+  T->P += 2; // "0'"
   int code;
-  if (*P == '\0' || (*P == '\\' && P[1] == '\0'))
-    perr("unexpected end of input in 0' character code");
-  if (*P == '\\') {
-    P++;
-    char c = *P++;
+  if (*T->P == '\0' || (*T->P == '\\' && T->P[1] == '\0'))
+    perr(T, "unexpected end of input in 0' character code");
+  if (*T->P == '\\') {
+    T->P++;
+    char c = *T->P++;
     switch (c) {
     case 'n':
       code = '\n';
@@ -310,201 +297,203 @@ static tterm_t *parse_char_code(void) {
       code = (unsigned char)c;
       break;
     }
-  } else if (P[0] == '\'' && P[1] == '\'') {
+  } else if (T->P[0] == '\'' && T->P[1] == '\'') {
     code = '\'';
-    P += 2;
+    T->P += 2;
   } else {
-    code = (unsigned char)*P++;
+    code = (unsigned char)*T->P++;
   }
-  return tt_int(code);
+  return tt_int(T, code);
 }
 
-static tterm_t *parse_number(void) {
-  if (P[0] == '0' && P[1] == '\'')
-    return parse_char_code();
-  const char *start = P;
-  if (*P == '-')
-    P++;
-  while (isdigit((unsigned char)*P))
-    P++;
+static tterm_t *parse_number(trilog_t *T) {
+  if (T->P[0] == '0' && T->P[1] == '\'')
+    return parse_char_code(T);
+  const char *start = T->P;
+  if (*T->P == '-')
+    T->P++;
+  while (isdigit((unsigned char)*T->P))
+    T->P++;
   int is_float = 0;
-  if (P[0] == '.' && isdigit((unsigned char)P[1])) {
+  if (T->P[0] == '.' && isdigit((unsigned char)T->P[1])) {
     is_float = 1;
-    P++;
-    while (isdigit((unsigned char)*P))
-      P++;
+    T->P++;
+    while (isdigit((unsigned char)*T->P))
+      T->P++;
   }
-  if (*P == 'e' || *P == 'E') {
+  if (*T->P == 'e' || *T->P == 'E') {
     is_float = 1;
-    P++;
-    if (*P == '+' || *P == '-')
-      P++;
-    while (isdigit((unsigned char)*P))
-      P++;
+    T->P++;
+    if (*T->P == '+' || *T->P == '-')
+      T->P++;
+    while (isdigit((unsigned char)*T->P))
+      T->P++;
   }
-  size_t n = (size_t)(P - start);
+  size_t n = (size_t)(T->P - start);
   char buf[64];
   if (n >= sizeof(buf))
-    perr("number literal too long");
+    perr(T, "number literal too long");
   memcpy(buf, start, n);
   buf[n] = '\0';
   if (is_float)
-    return tt_flt(strtod(buf, NULL));
+    return tt_flt(T, strtod(buf, NULL));
   errno = 0;
   long long v = strtoll(buf, NULL, 10);
   if (errno == ERANGE)
-    perr("integer literal out of range");
-  return tt_int(v);
+    perr(T, "integer literal out of range");
+  return tt_int(T, v);
 }
 
-static tterm_t *parse_primary(void) {
-  skip_ws();
-  if (*P == '\0')
-    perr("unexpected end of input");
+static tterm_t *parse_primary(trilog_t *T) {
+  skip_ws(T);
+  if (*T->P == '\0')
+    perr(T, "unexpected end of input");
   char name[MAX_TOKEN];
 
-  if (*P == '(') {
-    P++;
-    skip_ws();
-    tterm_t *t = parse_expr(1200);
-    skip_ws();
-    if (*P != ')')
-      perr("expected ')'");
-    P++;
+  if (*T->P == '(') {
+    T->P++;
+    skip_ws(T);
+    tterm_t *t = parse_expr(T, 1200);
+    skip_ws(T);
+    if (*T->P != ')')
+      perr(T, "expected ')'");
+    T->P++;
     return t;
   }
-  if (*P == '[')
-    return parse_list();
-  if (*P == '{') {
-    P++;
-    skip_ws();
-    if (*P == '}') {
-      P++;
-      return tt_atom("{}");
+  if (*T->P == '[')
+    return parse_list(T);
+  if (*T->P == '{') {
+    T->P++;
+    skip_ws(T);
+    if (*T->P == '}') {
+      T->P++;
+      return tt_atom(T, "{}");
     }
-    tterm_t *t = parse_expr(1200);
-    skip_ws();
-    if (*P != '}')
-      perr("expected '}'");
-    P++;
+    tterm_t *t = parse_expr(T, 1200);
+    skip_ws(T);
+    if (*T->P != '}')
+      perr(T, "expected '}'");
+    T->P++;
     tterm_t *args[1] = {t};
-    return tt_struct("{}", 1, args);
+    return tt_struct(T, "{}", 1, args);
   }
-  if (*P == '"')
-    return parse_string();
-  if (*P == '!') {
-    P++;
-    return tt_atom("!");
+  if (*T->P == '"')
+    return parse_string(T);
+  if (*T->P == '!') {
+    T->P++;
+    return tt_atom(T, "!");
   }
-  if (*P == ';') {
-    P++;
-    return tt_atom(";");
+  if (*T->P == ';') {
+    T->P++;
+    return tt_atom(T, ";");
   }
-  if (*P == '\'') {
-    read_quoted('\'', name);
-    skip_ws();
-    if (*P == '(') {
-      P++;
-      skip_ws();
+  if (*T->P == '\'') {
+    read_quoted(T, '\'', name);
+    skip_ws(T);
+    if (*T->P == '(') {
+      T->P++;
+      skip_ws(T);
       tterm_t *args[MAX_ARITY];
-      int32_t n = parse_arglist(args);
-      skip_ws();
-      if (*P != ')')
-        perr("expected ')'");
-      P++;
-      return tt_struct(name, n, args);
+      int32_t n = parse_arglist(T, args);
+      skip_ws(T);
+      if (*T->P != ')')
+        perr(T, "expected ')'");
+      T->P++;
+      return tt_struct(T, name, n, args);
     }
-    return tt_atom(name);
+    return tt_atom(T, name);
   }
-  if (*P == '_' || isupper((unsigned char)*P)) {
-    read_while(name, is_ident_char);
-    return tt_var(vartab_slot(name));
+  if (*T->P == '_' || isupper((unsigned char)*T->P)) {
+    read_while(T, name, is_ident_char);
+    return tt_var(T, vartab_slot(T, name));
   }
-  if (isdigit((unsigned char)*P))
-    return parse_number();
-  if (*P == '-' && isdigit((unsigned char)P[1]))
-    return parse_number();
+  if (isdigit((unsigned char)*T->P))
+    return parse_number(T);
+  if (*T->P == '-' && isdigit((unsigned char)T->P[1]))
+    return parse_number(T);
 
-  if (islower((unsigned char)*P)) {
-    read_while(name, is_ident_char);
-    if (*P == '(') {
-      P++;
-      skip_ws();
+  if (islower((unsigned char)*T->P)) {
+    read_while(T, name, is_ident_char);
+    if (*T->P == '(') {
+      T->P++;
+      skip_ws(T);
       tterm_t *args[MAX_ARITY];
-      int32_t n = parse_arglist(args);
-      skip_ws();
-      if (*P != ')')
-        perr("expected ')'");
-      P++;
-      return tt_struct(name, n, args);
+      int32_t n = parse_arglist(T, args);
+      skip_ws(T);
+      if (*T->P != ')')
+        perr(T, "expected ')'");
+      T->P++;
+      return tt_struct(T, name, n, args);
     }
     op_t pre, dummy;
-    int have_pre = find_prefix(name, &pre);
-    if (have_pre && *P != '\0' && !at_clause_end() && *P != ')' && *P != ',' &&
-        *P != ']' && *P != '|' && !find_infix(name, &dummy)) {
-      tterm_t *arg = parse_expr(pre.assoc == FY ? pre.pri : pre.pri - 1);
-      return tt_struct(name, 1, &arg);
+    int have_pre = find_prefix(T, name, &pre);
+    if (have_pre && *T->P != '\0' && !at_clause_end(T) && *T->P != ')' &&
+        *T->P != ',' && *T->P != ']' && *T->P != '|' &&
+        !find_infix(T, name, &dummy)) {
+      tterm_t *arg = parse_expr(T, pre.assoc == FY ? pre.pri : pre.pri - 1);
+      return tt_struct(T, name, 1, &arg);
     }
-    return tt_atom(name);
+    return tt_atom(T, name);
   }
-  if (is_symbol_char((unsigned char)*P)) {
-    read_while(name, is_symbol_char);
-    if (*P == '(') {
-      P++;
-      skip_ws();
+  if (is_symbol_char((unsigned char)*T->P)) {
+    read_while(T, name, is_symbol_char);
+    if (*T->P == '(') {
+      T->P++;
+      skip_ws(T);
       tterm_t *args[MAX_ARITY];
-      int32_t n = parse_arglist(args);
-      skip_ws();
-      if (*P != ')')
-        perr("expected ')'");
-      P++;
-      return tt_struct(name, n, args);
+      int32_t n = parse_arglist(T, args);
+      skip_ws(T);
+      if (*T->P != ')')
+        perr(T, "expected ')'");
+      T->P++;
+      return tt_struct(T, name, n, args);
     }
     op_t pre;
-    int have_pre = find_prefix(name, &pre);
-    if (have_pre && *P != '\0' && !at_clause_end() && *P != ')' && *P != ',' &&
-        *P != ']' && *P != '|') {
-      tterm_t *arg = parse_expr(pre.assoc == FY ? pre.pri : pre.pri - 1);
-      return tt_struct(name, 1, &arg);
+    int have_pre = find_prefix(T, name, &pre);
+    if (have_pre && *T->P != '\0' && !at_clause_end(T) && *T->P != ')' &&
+        *T->P != ',' && *T->P != ']' && *T->P != '|') {
+      tterm_t *arg = parse_expr(T, pre.assoc == FY ? pre.pri : pre.pri - 1);
+      return tt_struct(T, name, 1, &arg);
     }
-    return tt_atom(name);
+    return tt_atom(T, name);
   }
-  perr("unexpected character");
+  perr(T, "unexpected character");
   return NULL; // unreachable
 }
 
 // tries to read an infix operator name at the current position without
 // consuming it if it doesn't turn out to be one; returns 0 if none.
-static int peek_infix_op(size_t *len_out, op_t *out) {
-  skip_ws();
-  if (*P == '\0' || *P == ')' || *P == ']' || *P == '|' || at_clause_end())
+static int peek_infix_op(trilog_t *T, size_t *len_out, op_t *out) {
+  skip_ws(T);
+  if (*T->P == '\0' || *T->P == ')' || *T->P == ']' || *T->P == '|' ||
+      at_clause_end(T))
     return 0;
-  if (*P == ',') {
+  if (*T->P == ',') {
     *len_out = 1;
-    return find_infix(",", out);
+    return find_infix(T, ",", out);
   }
-  if (*P == ';') {
+  if (*T->P == ';') {
     *len_out = 1;
-    return find_infix(";", out);
+    return find_infix(T, ";", out);
   }
-  if (is_symbol_char((unsigned char)*P)) {
-    const char *save = P;
+  if (is_symbol_char((unsigned char)*T->P)) {
+    const char *save = T->P;
     char name[MAX_TOKEN];
-    read_while(name, is_symbol_char);
-    int found = find_infix(name, out);
+    read_while(T, name, is_symbol_char);
+    int found = find_infix(T, name, out);
     size_t len = strlen(name);
-    P = save;
+    T->P = save;
     if (found)
       *len_out = len;
     return found;
   }
-  if (islower((unsigned char)*P)) {
-    const char *save = P;
+  if (islower((unsigned char)*T->P)) {
+    const char *save = T->P;
     char name[MAX_TOKEN];
-    read_while(name, is_ident_char);
-    int found = find_infix(name, out);
+    read_while(T, name, is_ident_char);
+    int found = find_infix(T, name, out);
     size_t len = strlen(name);
-    P = save;
+    T->P = save;
     if (found)
       *len_out = len;
     return found;
@@ -512,19 +501,19 @@ static int peek_infix_op(size_t *len_out, op_t *out) {
   return 0;
 }
 
-static tterm_t *parse_expr(int max_prec) {
-  tterm_t *left = parse_primary();
+static tterm_t *parse_expr(trilog_t *T, int max_prec) {
+  tterm_t *left = parse_primary(T);
   for (;;) {
     size_t len;
     op_t op;
-    if (!peek_infix_op(&len, &op) || op.pri > max_prec)
+    if (!peek_infix_op(T, &len, &op) || op.pri > max_prec)
       break;
     int right_max = (op.assoc == XFY) ? op.pri : op.pri - 1;
-    P += len;
-    skip_ws();
-    tterm_t *right = parse_expr(right_max);
+    T->P += len;
+    skip_ws(T);
+    tterm_t *right = parse_expr(T, right_max);
     tterm_t *args[2] = {left, right};
-    left = tt_struct(op.name, 2, args);
+    left = tt_struct(T, op.name, 2, args);
   }
   return left;
 }
@@ -532,20 +521,20 @@ static tterm_t *parse_expr(int max_prec) {
 // ---- clause assembly ----
 
 // flattens a right-nested ','/2 chain into an array of goals
-static tterm_t **flatten_conj(tterm_t *t, int32_t *n_out) {
+static tterm_t **flatten_conj(trilog_t *T, tterm_t *t, int32_t *n_out) {
   tterm_t *scratch[MAX_ARITY];
   int32_t n = 0;
   while (t->tag == T_STR && t->as.str.arity == 2 &&
-         t->as.str.atom_id == atom_comma_op) {
+         t->as.str.atom_id == atom_comma) {
     if (n >= MAX_ARITY)
-      perr("clause body too long");
+      perr(T, "clause body too long");
     scratch[n++] = t->as.str.args[0];
     t = t->as.str.args[1];
   }
   if (n >= MAX_ARITY)
-    perr("clause body too long");
+    perr(T, "clause body too long");
   scratch[n++] = t;
-  tterm_t **out = arena_alloc((size_t)n * sizeof(tterm_t *));
+  tterm_t **out = arena_alloc(T, (size_t)n * sizeof(tterm_t *));
   memcpy(out, scratch, (size_t)n * sizeof(tterm_t *));
   *n_out = n;
   return out;
@@ -557,34 +546,32 @@ static int all_solutions(void *ud, int has_more) {
   return 1;
 }
 
-static void run_directive(tterm_t *goal, int32_t nvars) {
+static void run_directive(trilog_t *T, tterm_t *goal, int32_t nvars) {
   int32_t n;
-  tterm_t **goals = flatten_conj(goal, &n);
-  if (run_query(goals, n, nvars, all_solutions, NULL) == QUERY_ERROR) {
-    io_write_err("uncaught exception: ");
-    print_term_via(query_error_ball(), 0, io_write_err);
-    io_write_err("\n");
+  tterm_t **goals = flatten_conj(T, goal, &n);
+  if (run_query(T, goals, n, nvars, all_solutions, NULL) == QUERY_ERROR) {
+    io_write_err(T, "uncaught exception: ");
+    print_term_via(T, query_error_ball(T), 0, io_write_err);
+    io_write_err(T, "\n");
   }
 }
 
-static void assemble_clause(tterm_t *t, int32_t nvars) {
+static void assemble_clause(trilog_t *T, tterm_t *t, int32_t nvars) {
   if (t->tag == T_STR && t->as.str.arity == 2 &&
       t->as.str.atom_id == atom_ruleop) {
     int32_t nbody;
-    tterm_t **body = flatten_conj(t->as.str.args[1], &nbody);
-    db_add(t->as.str.args[0], body, nbody, nvars, 1);
+    tterm_t **body = flatten_conj(T, t->as.str.args[1], &nbody);
+    db_add(T, t->as.str.args[0], body, nbody, nvars, 1);
     return;
   }
   if (t->tag == T_STR && t->as.str.arity == 1 &&
       (t->as.str.atom_id == atom_ruleop ||
        t->as.str.atom_id == atom_qmark_dash)) {
-    run_directive(t->as.str.args[0], nvars);
+    run_directive(T, t->as.str.args[0], nvars);
     return;
   }
-  db_add(t, NULL, 0, nvars, 1); // a fact - neither a rule nor a directive
+  db_add(T, t, NULL, 0, nvars, 1); // a fact - neither a rule nor a directive
 }
-
-static const char *consulting = NULL; // path of the file being consulted
 
 // library files baked into a release build are consulted as "embedded:PATH".
 #define EMBED_PREFIX "embedded:"
@@ -626,11 +613,12 @@ static const char *find_embedded(const char *path, char *resolved, size_t cap) {
   return NULL;
 }
 
-static char *read_whole_file(FILE *f) {
+static char *read_whole_file(trilog_t *T, FILE *f) {
   fseek(f, 0, SEEK_END);
   long sz = ftell(f);
   fseek(f, 0, SEEK_SET);
-  char *buf = arena_alloc((size_t)(sz > 0 ? sz : 0) + 1); // FIXME: never freed
+  char *buf =
+      arena_alloc(T, (size_t)(sz > 0 ? sz : 0) + 1); // FIXME: never freed
   size_t got = fread(buf, 1, (size_t)(sz > 0 ? sz : 0), f);
   buf[got] = '\0';
   fclose(f);
@@ -639,13 +627,14 @@ static char *read_whole_file(FILE *f) {
 
 // A relative path consulted from inside a file resolves against that file's
 // directory first, then the current directory, then the embedded libraries.
-static const char *consult_text(const char *path, char *resolved, size_t cap) {
+static const char *consult_text(trilog_t *T, const char *path, char *resolved,
+                                size_t cap) {
   if (!strncmp(path, EMBED_PREFIX, EMBED_PREFIX_LEN))
     return find_embedded(path + EMBED_PREFIX_LEN, resolved, cap);
-  const char *slash = consulting ? strrchr(consulting, '/') : NULL;
+  const char *slash = T->consulting ? strrchr(T->consulting, '/') : NULL;
   if (path[0] != '/' && slash) {
-    snprintf(resolved, cap, "%.*s/%s", (int)(slash - consulting), consulting,
-             path);
+    snprintf(resolved, cap, "%.*s/%s", (int)(slash - T->consulting),
+             T->consulting, path);
     if (!strncmp(resolved, EMBED_PREFIX, EMBED_PREFIX_LEN)) {
       char rel[4096];
       snprintf(rel, sizeof rel, "%s", resolved + EMBED_PREFIX_LEN);
@@ -655,122 +644,123 @@ static const char *consult_text(const char *path, char *resolved, size_t cap) {
     } else {
       FILE *f = fopen(resolved, "rb");
       if (f)
-        return read_whole_file(f);
+        return read_whole_file(T, f);
     }
   }
   snprintf(resolved, cap, "%s", path);
   FILE *f = fopen(resolved, "rb");
   if (f)
-    return read_whole_file(f);
+    return read_whole_file(T, f);
   return path[0] != '/' ? find_embedded(path, resolved, cap) : NULL;
 }
 
-static bool consult_source(const char *text, const char *path);
+static bool consult_source(trilog_t *T, const char *text, const char *path);
 
 // Re-entrant: a consult/1 directive inside the file saves and restores the
 // outer file's parse state.
-static bool consult_nested(const char *text, const char *file,
+static bool consult_nested(trilog_t *T, const char *text, const char *file,
                            const char *name) {
-  const char *saved_P = P, *saved_consulting = consulting;
+  const char *saved_P = T->P, *saved_consulting = T->consulting;
   jmp_buf saved_jmp;
-  memcpy(saved_jmp, err_jmp, sizeof(jmp_buf));
-  consulting = file;
-  bool ok = consult_source(text, name);
-  consulting = saved_consulting;
-  P = saved_P;
-  memcpy(err_jmp, saved_jmp, sizeof(jmp_buf));
+  memcpy(saved_jmp, T->err_jmp, sizeof(jmp_buf));
+  T->consulting = file;
+  bool ok = consult_source(T, text, name);
+  T->consulting = saved_consulting;
+  T->P = saved_P;
+  memcpy(T->err_jmp, saved_jmp, sizeof(jmp_buf));
   return ok;
 }
 
-bool consult_file(const char *path) {
+bool consult_file(trilog_t *T, const char *path) {
   char resolved[4096];
-  const char *text = consult_text(path, resolved, sizeof resolved);
+  const char *text = consult_text(T, path, resolved, sizeof resolved);
   if (!text) {
     char msg[300];
     snprintf(msg, sizeof msg, "cannot open %s\n", path);
-    io_write_err(msg);
+    io_write_err(T, msg);
     return false;
   }
-  return consult_nested(text, resolved, resolved);
+  return consult_nested(T, text, resolved, resolved);
 }
 
-bool consult_string(const char *text) {
-  return consult_nested(text, NULL, "<string>");
+bool consult_string(trilog_t *T, const char *text) {
+  return consult_nested(T, text, NULL, "<string>");
 }
 
-static bool consult_source(const char *text, const char *path) {
-  P = text;
-  if (setjmp(err_jmp)) {
-    char msg[300 + sizeof err_msg];
-    snprintf(msg, sizeof msg, "parse error in %s: %s\n", path, err_msg);
-    io_write_err(msg);
+static bool consult_source(trilog_t *T, const char *text, const char *path) {
+  T->P = text;
+  if (setjmp(T->err_jmp)) {
+    char msg[300 + sizeof T->err_msg];
+    snprintf(msg, sizeof msg, "parse error in %s: %s\n", path, T->err_msg);
+    io_write_err(T, msg);
     return false;
   }
   for (;;) {
-    skip_ws();
-    if (*P == '\0')
+    skip_ws(T);
+    if (*T->P == '\0')
       break;
-    vartab_reset();
-    tterm_t *t = parse_expr(1200);
-    skip_ws();
-    if (!at_clause_end())
-      perr("expected '.' to end clause");
-    P++;
-    assemble_clause(t, var_count);
+    vartab_reset(T);
+    tterm_t *t = parse_expr(T, 1200);
+    skip_ws(T);
+    if (!at_clause_end(T))
+      perr(T, "expected '.' to end clause");
+    T->P++;
+    assemble_clause(T, t, T->var_count);
   }
   return true;
 }
 
-bool parse_query(const char *src, tterm_t ***goals_out, int32_t *ngoals_out,
-                 int32_t *nvars_out, const char ***varnames_out) {
-  P = src;
-  if (setjmp(err_jmp)) {
-    char msg[32 + sizeof err_msg];
-    snprintf(msg, sizeof msg, "parse error: %s\n", err_msg);
-    io_write_err(msg);
+bool parse_query(trilog_t *T, const char *src, tterm_t ***goals_out,
+                 int32_t *ngoals_out, int32_t *nvars_out,
+                 const char ***varnames_out) {
+  T->P = src;
+  if (setjmp(T->err_jmp)) {
+    char msg[32 + sizeof T->err_msg];
+    snprintf(msg, sizeof msg, "parse error: %s\n", T->err_msg);
+    io_write_err(T, msg);
     return false;
   }
-  vartab_reset();
-  tterm_t *t = parse_expr(1200);
-  skip_ws();
-  if (*P != '\0' && !at_clause_end())
-    perr("unexpected trailing input");
-  if (at_clause_end())
-    P++;
+  vartab_reset(T);
+  tterm_t *t = parse_expr(T, 1200);
+  skip_ws(T);
+  if (*T->P != '\0' && !at_clause_end(T))
+    perr(T, "unexpected trailing input");
+  if (at_clause_end(T))
+    T->P++;
 
-  *goals_out = flatten_conj(t, ngoals_out);
-  *nvars_out = var_count;
-  const char **names =
-      arena_alloc((size_t)(var_count > 0 ? var_count : 1) * sizeof(char *));
-  for (int32_t i = 0; i < var_count; i++)
-    names[i] = arena_strdup(var_names[i]);
+  *goals_out = flatten_conj(T, t, ngoals_out);
+  *nvars_out = T->var_count;
+  const char **names = arena_alloc(
+      T, (size_t)(T->var_count > 0 ? T->var_count : 1) * sizeof(char *));
+  for (int32_t i = 0; i < T->var_count; i++)
+    names[i] = arena_strdup(T, T->var_names[i]);
   *varnames_out = names;
   return true;
 }
 
-bool parse_term_from_string(const char *src, tterm_t **term_out,
+bool parse_term_from_string(trilog_t *T, const char *src, tterm_t **term_out,
                             int32_t *nvars_out, const char ***varnames_out) {
-  P = src;
-  if (setjmp(err_jmp)) {
-    char msg[32 + sizeof err_msg];
-    snprintf(msg, sizeof msg, "parse error: %s\n", err_msg);
-    io_write_err(msg);
+  T->P = src;
+  if (setjmp(T->err_jmp)) {
+    char msg[32 + sizeof T->err_msg];
+    snprintf(msg, sizeof msg, "parse error: %s\n", T->err_msg);
+    io_write_err(T, msg);
     return false;
   }
-  vartab_reset();
-  tterm_t *t = parse_expr(1200);
-  skip_ws();
-  if (*P != '\0' && !at_clause_end())
-    perr("unexpected trailing input");
-  if (at_clause_end())
-    P++;
+  vartab_reset(T);
+  tterm_t *t = parse_expr(T, 1200);
+  skip_ws(T);
+  if (*T->P != '\0' && !at_clause_end(T))
+    perr(T, "unexpected trailing input");
+  if (at_clause_end(T))
+    T->P++;
 
   *term_out = t;
-  *nvars_out = var_count;
-  const char **names =
-      arena_alloc((size_t)(var_count > 0 ? var_count : 1) * sizeof(char *));
-  for (int32_t i = 0; i < var_count; i++)
-    names[i] = arena_strdup(var_names[i]);
+  *nvars_out = T->var_count;
+  const char **names = arena_alloc(
+      T, (size_t)(T->var_count > 0 ? T->var_count : 1) * sizeof(char *));
+  for (int32_t i = 0; i < T->var_count; i++)
+    names[i] = arena_strdup(T, T->var_names[i]);
   *varnames_out = names;
   return true;
 }

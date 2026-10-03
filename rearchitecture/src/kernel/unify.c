@@ -1,4 +1,5 @@
 #include "unify.h"
+#include "ctx.h"
 #include "heap.h"
 #include "io.h"
 #include <stdint.h>
@@ -21,11 +22,11 @@ static size_t pair_slot(size_t fa, size_t fb, size_t cap) {
   return (size_t)(h ^ (h >> 32)) & (cap - 1);
 }
 
-static void pair_visits_grow(pair_visits *v) {
+static void pair_visits_grow(trilog_t *T, pair_visits *v) {
   size_t cap = v->cap ? v->cap * 2 : 1024;
   size_t *na = malloc(cap * sizeof *na), *nb = malloc(cap * sizeof *nb);
   if (!na || !nb) {
-    io_write_err("out of memory\n");
+    io_write_err(T, "out of memory\n");
     exit(1);
   }
   for (size_t i = 0; i < cap; i++)
@@ -46,11 +47,16 @@ static void pair_visits_grow(pair_visits *v) {
   v->cap = cap;
 }
 
-int pair_visits_seen(pair_visits *v, size_t fa, size_t fb) {
+void pair_visits_free(pair_visits *v) {
+  free(v->a);
+  free(v->b);
+}
+
+int pair_visits_seen(trilog_t *T, pair_visits *v, size_t fa, size_t fb) {
   if (++v->steps <= PAIR_VISITS_THRESHOLD)
     return 0;
   if (2 * (v->len + 1) > v->cap)
-    pair_visits_grow(v);
+    pair_visits_grow(T, v);
   size_t i = pair_slot(fa, fb, v->cap);
   for (; v->a[i] != SIZE_MAX; i = (i + 1) & (v->cap - 1))
     if (v->a[i] == fa && v->b[i] == fb)
@@ -61,140 +67,135 @@ int pair_visits_seen(pair_visits *v, size_t fa, size_t fb) {
   return 0;
 }
 
-static pair_visits unify_visits, occurs_check_visits;
-
-static size_t *occurs_marks = NULL;
-static size_t occurs_len = 0, occurs_cap = 0;
-
-static void occurs_mark(size_t f) {
-  if (occurs_len == occurs_cap) {
-    size_t cap = occurs_cap ? occurs_cap * 2 : 64;
-    size_t *grown = realloc(occurs_marks, cap * sizeof *grown);
+static void occurs_mark(trilog_t *T, size_t f) {
+  if (T->occurs_len == T->occurs_cap) {
+    size_t cap = T->occurs_cap ? T->occurs_cap * 2 : 64;
+    size_t *grown = realloc(T->occurs_marks, cap * sizeof *grown);
     if (!grown) {
-      io_write_err("out of memory\n");
+      io_write_err(T, "out of memory\n");
       exit(1);
     }
-    occurs_marks = grown;
-    occurs_cap = cap;
+    T->occurs_marks = grown;
+    T->occurs_cap = cap;
   }
-  heap[f].as.func.arity = -1 - heap[f].as.func.arity;
-  occurs_marks[occurs_len++] = f;
+  T->heap[f].as.func.arity = -1 - T->heap[f].as.func.arity;
+  T->occurs_marks[T->occurs_len++] = f;
 }
 
 // Same arity-flip path marking as heap_to_template, so a cyclic t terminates.
-static int occurs(size_t v, size_t t) {
-  size_t base = occurs_len;
+static int occurs(trilog_t *T, size_t v, size_t t) {
+  size_t base = T->occurs_len;
   int found = 0;
   for (;;) {
-    t = heap_deref(t);
+    t = heap_deref(T, t);
     if (t == v) {
       found = 1;
       break;
     }
-    if (heap[t].tag != TAG_STR)
+    if (T->heap[t].tag != TAG_STR)
       break;
-    size_t f = heap[t].as.ptr;
-    int32_t arity = heap[f].as.func.arity;
+    size_t f = T->heap[t].as.ptr;
+    int32_t arity = T->heap[f].as.func.arity;
     if (arity < 0)
       break; // already on the path: a cycle
-    occurs_mark(f);
+    occurs_mark(T, f);
     for (int32_t i = 0; i < arity - 1 && !found; i++)
-      found = occurs(v, f + 1 + (size_t)i);
+      found = occurs(T, v, f + 1 + (size_t)i);
     if (found)
       break;
     t = f + (size_t)arity;
   }
-  while (occurs_len > base) {
-    size_t f = occurs_marks[--occurs_len];
-    heap[f].as.func.arity = -1 - heap[f].as.func.arity;
+  while (T->occurs_len > base) {
+    size_t f = T->occurs_marks[--T->occurs_len];
+    T->heap[f].as.func.arity = -1 - T->heap[f].as.func.arity;
   }
   return found;
 }
 
-static int unify_oc_rec(size_t a, size_t b) {
+static int unify_oc_rec(trilog_t *T, size_t a, size_t b) {
   for (;;) {
-    a = heap_deref(a);
-    b = heap_deref(b);
+    a = heap_deref(T, a);
+    b = heap_deref(T, b);
     if (a == b)
       return 1;
-    if (heap[a].tag == TAG_REF) {
-      if (occurs(a, b))
+    if (T->heap[a].tag == TAG_REF) {
+      if (occurs(T, a, b))
         return 0;
-      heap_bind(a, b);
+      heap_bind(T, a, b);
       return 1;
     }
-    if (heap[b].tag == TAG_REF) {
-      if (occurs(b, a))
+    if (T->heap[b].tag == TAG_REF) {
+      if (occurs(T, b, a))
         return 0;
-      heap_bind(b, a);
+      heap_bind(T, b, a);
       return 1;
     }
-    if (heap[a].tag != TAG_STR || heap[b].tag != TAG_STR)
-      return unify(a, b);
-    size_t fa = heap[a].as.ptr, fb = heap[b].as.ptr;
-    int32_t arity = heap[fa].as.func.arity;
-    if (heap[fa].as.func.atom_id != heap[fb].as.func.atom_id ||
-        arity != heap[fb].as.func.arity)
+    if (T->heap[a].tag != TAG_STR || T->heap[b].tag != TAG_STR)
+      return unify(T, a, b);
+    size_t fa = T->heap[a].as.ptr, fb = T->heap[b].as.ptr;
+    int32_t arity = T->heap[fa].as.func.arity;
+    if (T->heap[fa].as.func.atom_id != T->heap[fb].as.func.atom_id ||
+        arity != T->heap[fb].as.func.arity)
       return 0;
-    if (pair_visits_seen(&occurs_check_visits, fa, fb))
+    if (pair_visits_seen(T, &T->occurs_check_visits, fa, fb))
       return 1;
     for (int32_t i = 0; i < arity - 1; i++)
-      if (!unify_oc_rec(fa + 1 + (size_t)i, fb + 1 + (size_t)i))
+      if (!unify_oc_rec(T, fa + 1 + (size_t)i, fb + 1 + (size_t)i))
         return 0;
     a = fa + (size_t)arity; // loop on the last argument, as unify() does
     b = fb + (size_t)arity;
   }
 }
 
-static int unify_rec(size_t a, size_t b) {
+static int unify_rec(trilog_t *T, size_t a, size_t b) {
   for (;;) {
-    a = heap_deref(a);
-    b = heap_deref(b);
+    a = heap_deref(T, a);
+    b = heap_deref(T, b);
     if (a == b)
       return 1;
-    if (heap[a].tag == TAG_REF) {
-      heap_bind(a, b);
+    if (T->heap[a].tag == TAG_REF) {
+      heap_bind(T, a, b);
       return 1;
     }
-    if (heap[b].tag == TAG_REF) {
-      heap_bind(b, a);
+    if (T->heap[b].tag == TAG_REF) {
+      heap_bind(T, b, a);
       return 1;
     }
-    if (heap[a].tag != heap[b].tag)
+    if (T->heap[a].tag != T->heap[b].tag)
       return 0;
-    switch (heap[a].tag) {
+    switch (T->heap[a].tag) {
     case TAG_ATOM:
-      return heap[a].as.atom_id == heap[b].as.atom_id;
+      return T->heap[a].as.atom_id == T->heap[b].as.atom_id;
     case TAG_INT:
-      return heap[a].as.ival == heap[b].as.ival;
+      return T->heap[a].as.ival == T->heap[b].as.ival;
     case TAG_FLT:
-      return heap[a].as.fval == heap[b].as.fval;
+      return T->heap[a].as.fval == T->heap[b].as.fval;
     case TAG_STR:
       break;
     default:
       return 0; // FUNCTOR cells are never unified directly
     }
-    size_t fa = heap[a].as.ptr, fb = heap[b].as.ptr;
-    int32_t arity = heap[fa].as.func.arity;
-    if (heap[fa].as.func.atom_id != heap[fb].as.func.atom_id ||
-        arity != heap[fb].as.func.arity)
+    size_t fa = T->heap[a].as.ptr, fb = T->heap[b].as.ptr;
+    int32_t arity = T->heap[fa].as.func.arity;
+    if (T->heap[fa].as.func.atom_id != T->heap[fb].as.func.atom_id ||
+        arity != T->heap[fb].as.func.arity)
       return 0;
-    if (pair_visits_seen(&unify_visits, fa, fb))
+    if (pair_visits_seen(T, &T->unify_visits, fa, fb))
       return 1;
     for (int32_t i = 0; i < arity - 1; i++)
-      if (!unify_rec(fa + 1 + (size_t)i, fb + 1 + (size_t)i))
+      if (!unify_rec(T, fa + 1 + (size_t)i, fb + 1 + (size_t)i))
         return 0;
     a = fa + (size_t)arity;
     b = fb + (size_t)arity;
   }
 }
 
-int unify(size_t a, size_t b) {
-  pair_visits_reset(&unify_visits);
-  return unify_rec(a, b);
+int unify(trilog_t *T, size_t a, size_t b) {
+  pair_visits_reset(&T->unify_visits);
+  return unify_rec(T, a, b);
 }
 
-int unify_with_occurs_check(size_t a, size_t b) {
-  pair_visits_reset(&occurs_check_visits);
-  return unify_oc_rec(a, b);
+int unify_with_occurs_check(trilog_t *T, size_t a, size_t b) {
+  pair_visits_reset(&T->occurs_check_visits);
+  return unify_oc_rec(T, a, b);
 }
