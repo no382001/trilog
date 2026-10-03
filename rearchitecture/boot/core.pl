@@ -89,56 +89,12 @@ plus(A, B, C) :- integer(B), integer(C), A is C - B.
 % ==, \==, @<, @>, @=<, @>=, <, >, =<, >=, =:=, =\= are native
 
 %!  compare(-Order, @A, @B) is det.
-%   '$$var_addr'/2 gives two unbound variables their own heap cell index.
 compare(O, A, B) :-
-    '$term_rank'(A, RA),
-    '$term_rank'(B, RB),
-    ( RA \== RB ->
-        ( RA < RB -> O = < ; O = > )
-    ; '$compare_same_rank'(RA, A, B, O)
-    ).
-
-'$term_rank'(X, 0) :- var(X), !.
-'$term_rank'(X, 1) :- number(X), !.
-'$term_rank'(X, 2) :- atom(X), !.
-'$term_rank'(_, 3).
-
-'$compare_same_rank'(0, A, B, O) :-
-    !,
-    '$$var_addr'(A, AA),
-    '$$var_addr'(B, BA),
-    ( AA < BA -> O = < ; AA > BA -> O = > ; O = = ).
-'$compare_same_rank'(1, A, B, O) :-
-    !,
-    ( A < B -> O = < ; A > B -> O = > ; O = = ).
-'$compare_same_rank'(2, A, B, O) :-
-    !,
-    ( A == B ->
-        O = =
-    ; atom_codes(A, CA), atom_codes(B, CB), '$codes_compare'(CA, CB, O)
-    ).
-'$compare_same_rank'(3, A, B, O) :-
-    functor(A, NA, AA),
-    functor(B, NB, BA),
-    ( AA \== BA ->
-        ( AA < BA -> O = < ; O = > )
-    ; NA \== NB ->
-        atom_codes(NA, CNA), atom_codes(NB, CNB), '$codes_compare'(CNA, CNB, O)
-    ; '$args_compare'(1, AA, A, B, O)
-    ).
-
-'$codes_compare'([], [], =) :- !.
-'$codes_compare'([], [_ | _], <) :- !.
-'$codes_compare'([_ | _], [], >) :- !.
-'$codes_compare'([X | Xs], [Y | Ys], O) :-
-    ( X < Y -> O = < ; X > Y -> O = > ; '$codes_compare'(Xs, Ys, O) ).
-
-'$args_compare'(I, N, _, _, =) :- I > N, !.
-'$args_compare'(I, N, A, B, O) :-
-    arg(I, A, AI),
-    arg(I, B, BI),
-    compare(OI, AI, BI),
-    ( OI \== = -> O = OI ; I1 is I + 1, '$args_compare'(I1, N, A, B, O) ).
+    (   var(O) -> true
+    ;   atom(O) -> ( memberchk(O, [<, =, >]) -> true ; throw(error(domain_error(order, O), _)) )
+    ;   throw(error(type_error(atom, O), _))
+    ),
+    ( A == B -> O = (=) ; A @< B -> O = (<) ; O = (>) ).
 
 %!  \=(@A, @B) is semidet.
 '\\='(X, Y) :- \+ X = Y.

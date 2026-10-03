@@ -290,6 +290,35 @@ TRILOG="./trilog"
   [[ "$output" == *"r(representation_error(max_integer), representation_error(min_integer))"* ]]
 }
 
+@test "=.. raises the ISO errors instead of truncating or ignoring a bad tail (regression)" {
+  # regression: more than 255 arguments were silently dropped, and [f, a | foo] built f(a).
+  run "$TRILOG" -e "
+    E = error(X, _),
+    findall(X, ( member(L, [[foo|bar], 4, [], [3,1], [a(b),1], [f(a)]]), catch(_ =.. L, E, true) ), Xs),
+    length(Args, 300), catch(_ =.. [f|Args], error(R, _), true),
+    write(Xs), nl, write(R), nl.
+  "
+  [[ "$output" == *"[type_error(list, [foo|bar]), type_error(list, 4), domain_error(non_empty_list, []), type_error(atom, 3), type_error(atom, a(b)), type_error(atomic, f(a))]"* ]]
+  [[ "$output" == *"representation_error(max_arity)"* ]]
+}
+
+@test "functor/3 raises the ISO errors instead of failing silently (regression)" {
+  run "$TRILOG" -e "
+    E = error(X, _),
+    findall(X, ( member(N-A, [foo-a, 1.5-1, foo(a)-1, foo-(-1), foo-256]), catch(functor(_, N, A), E, true) ), Xs),
+    write(Xs), nl.
+  "
+  [[ "$output" == *"[type_error(integer, a), type_error(atom, 1.5), type_error(atomic, foo(a)), domain_error(not_less_than_zero, -1), representation_error(max_arity)]"* ]]
+}
+
+@test "startup under a tiny memory cap reports out of memory instead of crashing (regression)" {
+  # regression: the arena's malloc was unchecked, so a failed allocation segfaulted.
+  for kb in 3500 3750 4000 4250 4500 4750 5000 5500 6000; do
+    run bash -c "ulimit -v $kb; $TRILOG -e 'true.'"
+    [ "$status" -ne 139 ]
+  done
+}
+
 @test "input ending inside 0' or a quoted escape stops at the end (regression)" {
   # regression: the parser stepped over the terminating NUL and read on into the environment.
   for q in "X = 0'" "X = 0'\\" "X = 'ab\\" 'X = "ab\'; do
@@ -947,6 +976,21 @@ TRILOG="./trilog"
 }
 
 # --- term copying: variable sharing, cyclic terms, occurs check ---
+
+@test "a 300000-element list survives unify, compare, copy, findall and assert (regression)" {
+  # regression: each of these recursed in C once per list cell and overflowed the C stack.
+  run "$TRILOG" -e "
+    numlist(1, 300000, L), numlist(1, 300000, M),
+    L = M, L == M, compare(O, L, M), unify_with_occurs_check(L, M),
+    copy_term(L, C), length(C, N1),
+    findall(L, true, [F]), length(F, N2),
+    assertz(big(L)), big(B), length(B, N3),
+    length(V, 300000), copy_term(V, W), V = W,
+    write(r(O, N1, N2, N3)), nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"r(=, 300000, 300000, 300000)"* ]]
+}
 
 @test "copy_term/2 keeps more than 64 variables distinct (regression)" {
   # regression: a fixed 64-slot table aliased every variable past the 63rd.

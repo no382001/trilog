@@ -206,6 +206,15 @@ static size_t make_cyclic_term_error(void) {
       heap_new_struct(atom_intern("representation_error"), 1, args));
 }
 
+static size_t make_domain_error(const char *domain, size_t culprit) {
+  size_t args[2] = {heap_new_atom(atom_intern(domain)), culprit};
+  return make_error(heap_new_struct(atom_intern("domain_error"), 2, args));
+}
+static size_t make_representation_error(const char *what) {
+  size_t args[1] = {heap_new_atom(atom_intern(what))};
+  return make_error(
+      heap_new_struct(atom_intern("representation_error"), 1, args));
+}
 static size_t make_resource_error(const char *what) {
   size_t args[1] = {heap_new_atom(atom_intern(what))};
   return make_error(heap_new_struct(atom_intern("resource_error"), 1, args));
@@ -731,7 +740,7 @@ static size_t arith_int_overflow(int *ok) {
   return 0;
 }
 
-// a >> b for b >= 0, arithmetic (rounds towards -infinity) on every target.
+// Shifts a right by b >= 0 bits, rounding towards -infinity on every target.
 static int64_t arith_shift_right(int64_t a, int64_t b) {
   if (b >= 63)
     return a < 0 ? -1 : 0;
@@ -977,61 +986,68 @@ static int cstr_from_codes(size_t list, char *buf, size_t bufcap,
   return 1;
 }
 
+// Recurses into every argument but the last and loops on that one.
 static int term_compare(size_t a, size_t b) {
-  a = heap_deref(a);
-  b = heap_deref(b);
-  if (a == b)
-    return 0;
-  int ra = heap[a].tag == TAG_REF                               ? 0
-           : (heap[a].tag == TAG_INT || heap[a].tag == TAG_FLT) ? 1
-           : heap[a].tag == TAG_ATOM                            ? 2
-                                                                : 3;
-  int rb = heap[b].tag == TAG_REF                               ? 0
-           : (heap[b].tag == TAG_INT || heap[b].tag == TAG_FLT) ? 1
-           : heap[b].tag == TAG_ATOM                            ? 2
-                                                                : 3;
-  if (ra != rb)
-    return ra < rb ? -1 : 1;
-  switch (ra) {
-  case 0:
-    return a < b ? -1 : 1;
-  case 1: {
-    double av =
-        heap[a].tag == TAG_INT ? (double)heap[a].as.ival : heap[a].as.fval;
-    double bv =
-        heap[b].tag == TAG_INT ? (double)heap[b].as.ival : heap[b].as.fval;
-    if (av != bv)
-      return av < bv ? -1 : 1;
-    // standard order of terms: same-valued numbers compare by type,
-    // Float before Int (1.0 @< 1).
-    if (heap[a].tag == heap[b].tag)
+  for (;;) {
+    a = heap_deref(a);
+    b = heap_deref(b);
+    if (a == b)
       return 0;
-    return heap[a].tag == TAG_FLT ? -1 : 1;
-  }
-  case 2: {
-    if (heap[a].as.atom_id == heap[b].as.atom_id)
-      return 0;
-    int c =
-        strcmp(atom_name(heap[a].as.atom_id), atom_name(heap[b].as.atom_id));
-    return c < 0 ? -1 : 1;
-  }
-  default: {
-    size_t af = heap[a].as.ptr, bf = heap[b].as.ptr;
-    int32_t aa = heap[af].as.func.arity, ba = heap[bf].as.func.arity;
-    if (aa != ba)
-      return aa < ba ? -1 : 1;
-    int32_t af_id = heap[af].as.func.atom_id, bf_id = heap[bf].as.func.atom_id;
-    if (af_id != bf_id) {
-      int nc = strcmp(atom_name(af_id), atom_name(bf_id));
-      return nc < 0 ? -1 : 1;
+    int ra = heap[a].tag == TAG_REF                               ? 0
+             : (heap[a].tag == TAG_INT || heap[a].tag == TAG_FLT) ? 1
+             : heap[a].tag == TAG_ATOM                            ? 2
+                                                                  : 3;
+    int rb = heap[b].tag == TAG_REF                               ? 0
+             : (heap[b].tag == TAG_INT || heap[b].tag == TAG_FLT) ? 1
+             : heap[b].tag == TAG_ATOM                            ? 2
+                                                                  : 3;
+    if (ra != rb)
+      return ra < rb ? -1 : 1;
+    switch (ra) {
+    case 0:
+      return a < b ? -1 : 1;
+    case 1: {
+      double av =
+          heap[a].tag == TAG_INT ? (double)heap[a].as.ival : heap[a].as.fval;
+      double bv =
+          heap[b].tag == TAG_INT ? (double)heap[b].as.ival : heap[b].as.fval;
+      if (av != bv)
+        return av < bv ? -1 : 1;
+      // standard order of terms: same-valued numbers compare by type,
+      // Float before Int (1.0 @< 1).
+      if (heap[a].tag == heap[b].tag)
+        return 0;
+      return heap[a].tag == TAG_FLT ? -1 : 1;
     }
-    for (int32_t i = 1; i <= aa; i++) {
-      int c = term_compare(af + i, bf + i);
-      if (c != 0)
-        return c;
+    case 2: {
+      if (heap[a].as.atom_id == heap[b].as.atom_id)
+        return 0;
+      int c =
+          strcmp(atom_name(heap[a].as.atom_id), atom_name(heap[b].as.atom_id));
+      return c < 0 ? -1 : 1;
     }
-    return 0;
-  }
+    default: {
+      size_t af = heap[a].as.ptr, bf = heap[b].as.ptr;
+      int32_t aa = heap[af].as.func.arity, ba = heap[bf].as.func.arity;
+      if (aa != ba)
+        return aa < ba ? -1 : 1;
+      int32_t af_id = heap[af].as.func.atom_id,
+              bf_id = heap[bf].as.func.atom_id;
+      if (af_id != bf_id) {
+        int nc = strcmp(atom_name(af_id), atom_name(bf_id));
+        return nc < 0 ? -1 : 1;
+      }
+      for (int32_t i = 1; i < aa; i++) {
+        int c = term_compare(af + (size_t)i, bf + (size_t)i);
+        if (c != 0)
+          return c;
+      }
+      // Loop on the last argument, so a list's spine costs no C stack.
+      a = af + (size_t)aa;
+      b = bf + (size_t)aa;
+      continue;
+    }
+    }
   }
 }
 
@@ -1586,20 +1602,26 @@ static int dispatch_builtin(size_t goal, int *ok) {
       *ok = 0;
       return 1;
     }
-    if (heap[arity_d].tag != TAG_INT) {
+    int64_t ar = heap[arity_d].tag == TAG_INT ? heap[arity_d].as.ival : -1;
+    if (heap[arity_d].tag != TAG_INT)
+      pending_error_ball = make_type_error("integer", arity_d);
+    else if (ar < 0)
+      pending_error_ball = make_domain_error("not_less_than_zero", arity_d);
+    else if (heap[name_d].tag == TAG_STR)
+      pending_error_ball = make_type_error("atomic", name_d);
+    else if (ar > 0 && heap[name_d].tag != TAG_ATOM)
+      pending_error_ball = make_type_error("atom", name_d);
+    else if (ar > MAX_ARITY)
+      pending_error_ball = make_representation_error("max_arity");
+    if (pending_error_ball != (size_t)-1) {
       *ok = 0;
       return 1;
     }
-    int64_t ar = heap[arity_d].as.ival;
     if (ar == 0) {
       *ok = unify(term, name_d);
       return 1;
     }
-    if (ar < 1 || ar > MAX_ARITY || heap[name_d].tag != TAG_ATOM) {
-      *ok = 0;
-      return 1;
-    }
-    size_t args[ar];
+    size_t args[MAX_ARITY]; // ar <= MAX_ARITY, checked above
     for (int64_t i = 0; i < ar; i++)
       args[i] = heap_new_var();
     *ok = unify(term,
@@ -1648,46 +1670,47 @@ static int dispatch_builtin(size_t goal, int *ok) {
       return 1;
     }
     size_t d = heap_deref(f + 2);
+    *ok = 0;
     if (heap[d].tag == TAG_REF) {
       pending_error_ball = make_instantiation_error();
-      *ok = 0;
       return 1;
     }
-    if (heap[d].tag != TAG_STR) {
-      *ok = 0;
+    if (heap[d].tag == TAG_ATOM && heap[d].as.atom_id == atom_nil) {
+      pending_error_ball = make_domain_error("non_empty_list", d);
       return 1;
     }
-    size_t df = heap[d].as.ptr;
-    if (heap[df].as.func.atom_id != atom_dot || heap[df].as.func.arity != 2) {
-      *ok = 0;
+    if (heap[d].tag != TAG_STR ||
+        heap[heap[d].as.ptr].as.func.atom_id != atom_dot ||
+        heap[heap[d].as.ptr].as.func.arity != 2) {
+      pending_error_ball = make_type_error("list", d);
       return 1;
     }
-    size_t head = heap_deref(df + 1);
-    if (heap[head].tag == TAG_REF) {
-      pending_error_ball = make_instantiation_error();
-      *ok = 0;
-      return 1;
-    }
-    size_t cur = heap_deref(df + 2);
+    size_t head = heap_deref(heap[d].as.ptr + 1);
+    size_t cur = heap_deref(heap[d].as.ptr + 2);
     size_t elems[MAX_ARITY];
     int32_t ne = 0;
-    while (heap[cur].tag == TAG_STR) {
-      size_t cf = heap[cur].as.ptr;
-      if (heap[cf].as.func.atom_id != atom_dot || heap[cf].as.func.arity != 2 ||
-          ne >= MAX_ARITY)
-        break;
-      elems[ne++] = heap_deref(cf + 1);
-      cur = heap_deref(cf + 2);
+    while (heap[cur].tag == TAG_STR &&
+           heap[heap[cur].as.ptr].as.func.atom_id == atom_dot &&
+           heap[heap[cur].as.ptr].as.func.arity == 2) {
+      if (ne == MAX_ARITY) {
+        pending_error_ball = make_representation_error("max_arity");
+        return 1;
+      }
+      elems[ne++] = heap_deref(heap[cur].as.ptr + 1);
+      cur = heap_deref(heap[cur].as.ptr + 2);
     }
-    size_t built;
-    if (ne == 0)
-      built = head;
-    else if (heap[head].tag == TAG_ATOM)
-      built = heap_new_struct(heap[head].as.atom_id, ne, elems);
-    else {
-      *ok = 0;
+    if (heap[cur].tag == TAG_REF || heap[head].tag == TAG_REF)
+      pending_error_ball = make_instantiation_error();
+    else if (heap[cur].tag != TAG_ATOM || heap[cur].as.atom_id != atom_nil)
+      pending_error_ball = make_type_error("list", d);
+    else if (ne == 0 && heap[head].tag == TAG_STR)
+      pending_error_ball = make_type_error("atomic", head);
+    else if (ne > 0 && heap[head].tag != TAG_ATOM)
+      pending_error_ball = make_type_error("atom", head);
+    if (pending_error_ball != (size_t)-1)
       return 1;
-    }
+    size_t built =
+        ne == 0 ? head : heap_new_struct(heap[head].as.atom_id, ne, elems);
     *ok = unify(term, built);
     return 1;
   }

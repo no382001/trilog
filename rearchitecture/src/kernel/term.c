@@ -4,6 +4,7 @@
 #include "io.h"
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 // Interned once here, not per call site - atom_intern is a linear scan.
@@ -64,27 +65,47 @@ tterm_t *tt_struct(const char *name, int32_t arity, tterm_t **args) {
   return t;
 }
 
+// copies every argument but the last recursively and loops on that one
 size_t heap_copy(tterm_t *t, size_t *rename, size_t cut_barrier) {
-  switch (t->tag) {
-  case T_VAR:
-    if (rename[t->as.slot] == (size_t)-1)
-      rename[t->as.slot] = heap_new_var();
-    return rename[t->as.slot];
-  case T_ATOM:
-    return heap_new_atom(t->as.atom_id);
-  case T_INT:
-    return heap_new_int(t->as.ival);
-  case T_FLT:
-    return heap_new_flt(t->as.fval);
-  case T_STR: {
-    int32_t arity = t->as.str.arity;
-    size_t args[arity];
-    for (int32_t i = 0; i < arity; i++)
-      args[i] = heap_copy(t->as.str.args[i], rename, cut_barrier);
-    return heap_new_struct(t->as.str.atom_id, arity, args);
+  size_t first = (size_t)-1, hole = (size_t)-1;
+  for (;;) {
+    size_t r;
+    tterm_t *last = NULL;
+    switch (t->tag) {
+    case T_VAR:
+      if (rename[t->as.slot] == (size_t)-1)
+        rename[t->as.slot] = heap_new_var();
+      r = rename[t->as.slot];
+      break;
+    case T_ATOM:
+      r = heap_new_atom(t->as.atom_id);
+      break;
+    case T_INT:
+      r = heap_new_int(t->as.ival);
+      break;
+    case T_FLT:
+      r = heap_new_flt(t->as.fval);
+      break;
+    default: {
+      int32_t arity = t->as.str.arity;
+      size_t args[arity];
+      for (int32_t i = 0; i < arity - 1; i++)
+        args[i] = heap_copy(t->as.str.args[i], rename, cut_barrier);
+      args[arity - 1] = 0; // patched on the next iteration
+      r = heap_new_struct(t->as.str.atom_id, arity, args);
+      last = t->as.str.args[arity - 1];
+      break;
+    }
+    }
+    if (hole == (size_t)-1)
+      first = r;
+    else
+      heap[hole].as.ref = r;
+    if (!last)
+      return first;
+    hole = heap[r].as.ptr + (size_t)t->as.str.arity;
+    t = last;
   }
-  }
-  return (size_t)-1; // unreachable
 }
 
 size_t heap_copy_goal(tterm_t *t, size_t *rename, size_t cut_barrier) {
@@ -322,41 +343,83 @@ void print_term_via(size_t r, int quoted, emit_fn emit) {
 
 static int template_cyclic = 0;
 
-static tterm_t *heap_to_template_rec(size_t r, int32_t *nseen) {
-  r = heap_deref(r);
-  switch (heap[r].tag) {
-  case TAG_REF: {
-    size_t m = heap_alloc(1);
-    heap[m].tag = TAG_FUNCTOR;
-    heap[m].as.func.atom_id = -1;
-    heap[m].as.func.arity = *nseen;
-    heap_bind(r, m);
-    return tt_var((*nseen)++);
-  }
-  case TAG_FUNCTOR:
-    return tt_var(heap[r].as.func.arity);
-  case TAG_ATOM:
-    return tt_atom(atom_name(heap[r].as.atom_id));
-  case TAG_INT:
-    return tt_int(heap[r].as.ival);
-  case TAG_FLT:
-    return tt_flt(heap[r].as.fval);
-  case TAG_STR: {
-    size_t f = heap[r].as.ptr;
-    int32_t arity = heap[f].as.func.arity;
-    if (arity < 0 || template_cyclic) {
-      template_cyclic = 1;
-      return tt_atom("[]");
+static size_t *template_marks = NULL;
+static size_t template_marks_len = 0, template_marks_cap = 0;
+
+static void template_mark(size_t f) {
+  if (template_marks_len == template_marks_cap) {
+    size_t cap = template_marks_cap ? template_marks_cap * 2 : 64;
+    size_t *grown = realloc(template_marks, cap * sizeof *grown);
+    if (!grown) {
+      io_write_err("out of memory\n");
+      exit(1);
     }
-    tterm_t *args[arity > 0 ? arity : 1];
-    heap[f].as.func.arity = -1 - arity;
-    for (int32_t i = 0; i < arity; i++)
-      args[i] = heap_to_template_rec(f + 1 + i, nseen);
-    heap[f].as.func.arity = arity;
-    return tt_struct(atom_name(heap[f].as.func.atom_id), arity, args);
+    template_marks = grown;
+    template_marks_cap = cap;
   }
+  heap[f].as.func.arity = -1 - heap[f].as.func.arity;
+  template_marks[template_marks_len++] = f;
+}
+
+static tterm_t *heap_to_template_rec(size_t r, int32_t *nseen) {
+  size_t base = template_marks_len;
+  tterm_t *first = NULL, **hole = &first;
+  for (;;) {
+    r = heap_deref(r);
+    tterm_t *t = NULL;
+    size_t next = (size_t)-1;
+    int32_t arity = 0;
+    switch (heap[r].tag) {
+    case TAG_REF: {
+      size_t m = heap_alloc(1);
+      heap[m].tag = TAG_FUNCTOR;
+      heap[m].as.func.atom_id = -1;
+      heap[m].as.func.arity = *nseen;
+      heap_bind(r, m);
+      t = tt_var((*nseen)++);
+      break;
+    }
+    case TAG_FUNCTOR:
+      t = tt_var(heap[r].as.func.arity);
+      break;
+    case TAG_ATOM:
+      t = tt_atom(atom_name(heap[r].as.atom_id));
+      break;
+    case TAG_INT:
+      t = tt_int(heap[r].as.ival);
+      break;
+    case TAG_FLT:
+      t = tt_flt(heap[r].as.fval);
+      break;
+    case TAG_STR: {
+      size_t f = heap[r].as.ptr;
+      arity = heap[f].as.func.arity;
+      if (arity < 0 || template_cyclic) {
+        template_cyclic = 1;
+        t = tt_atom("[]");
+        break;
+      }
+      tterm_t *args[arity];
+      template_mark(f);
+      for (int32_t i = 0; i < arity - 1; i++)
+        args[i] = heap_to_template_rec(f + 1 + (size_t)i, nseen);
+      args[arity - 1] = NULL; // filled in on the next iteration
+      t = tt_struct(atom_name(heap[f].as.func.atom_id), arity, args);
+      next = f + (size_t)arity;
+      break;
+    }
+    }
+    *hole = t;
+    if (next == (size_t)-1)
+      break;
+    hole = &t->as.str.args[arity - 1];
+    r = next;
   }
-  return NULL;
+  while (template_marks_len > base) {
+    size_t f = template_marks[--template_marks_len];
+    heap[f].as.func.arity = -1 - heap[f].as.func.arity;
+  }
+  return first;
 }
 
 // 0 if any of terms is cyclic.

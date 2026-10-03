@@ -25,15 +25,15 @@ static int32_t atom_count = 0, atom_cap = 0;
 
 void heap_init(void) {
   heap_cap = 1024;
-  heap = malloc(heap_cap * sizeof(cell_t));
+  heap = heap_realloc_or_die(NULL, heap_cap * sizeof(cell_t));
   heap_top = 0;
 
   trail_cap = 256;
-  trail = malloc(trail_cap * sizeof(size_t));
+  trail = heap_realloc_or_die(NULL, trail_cap * sizeof(size_t));
   trail_top = 0;
 
   atom_cap = 64;
-  atoms = malloc(atom_cap * sizeof(char *));
+  atoms = heap_realloc_or_die(NULL, atom_cap * sizeof(char *));
   atom_count = 0;
 }
 

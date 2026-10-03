@@ -1,5 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "arena.h"
+#include "io.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -15,7 +17,12 @@ static chunk_t *current = NULL;
 
 static chunk_t *new_chunk(size_t at_least) {
   size_t cap = at_least > CHUNK_SIZE ? at_least : CHUNK_SIZE;
-  chunk_t *c = malloc(sizeof(chunk_t) + cap);
+  chunk_t *c =
+      cap <= SIZE_MAX - sizeof(chunk_t) ? malloc(sizeof(chunk_t) + cap) : NULL;
+  if (!c) {
+    io_write_err("out of memory\n");
+    exit(1);
+  }
   c->next = current;
   c->used = 0;
   c->cap = cap;
