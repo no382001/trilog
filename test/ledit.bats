@@ -115,14 +115,20 @@ teardown() {
 
 @test "ledit/2 runs a script of commands on a file" {
   printf "keep\nTODO one\nTODO two\n" > /tmp/trilog_ledit_script.txt
-  run "$TRILOG" -f -e "consult('lib/ledit.pl'), ledit('/tmp/trilog_ledit_script.txt', ['l /TODO/', 'c /TODO/DONE/ 2', 'w', a, 'new line', '.', 's /tmp/trilog_ledit_script.txt'])."
+  run "$TRILOG" -f -e "
+    consult('lib/ledit.pl'),
+    ledit('/tmp/trilog_ledit_script.txt', ['l /TODO/', 'c /TODO/DONE/ 2', 'w', a, 'new line', '.', 's /tmp/trilog_ledit_script.txt']).
+  "
   [ "$status" -eq 0 ]
   [ "$(cat /tmp/trilog_ledit_script.txt)" = "$(printf 'keep\nDONE one\nDONE two\nnew line')" ]
 }
 
 @test "ledit/2 accepts char lists and changes nothing without save" {
   printf "a\nb\n" > /tmp/trilog_ledit_script.txt
-  run "$TRILOG" -f -e "consult('lib/ledit.pl'), ledit('/tmp/trilog_ledit_script.txt', [\"f\", \"d\", \"r\", \"p\"])."
+  run "$TRILOG" -f -e "
+    consult('lib/ledit.pl'),
+    ledit('/tmp/trilog_ledit_script.txt', [\"f\", \"d\", \"r\", \"p\"]).
+  "
   [[ "$output" == *"b"* ]]
   [ "$(cat /tmp/trilog_ledit_script.txt)" = "$(printf 'a\nb')" ]
 }

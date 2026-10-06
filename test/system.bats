@@ -483,7 +483,11 @@ answers() {
 }
 
 @test "atom_to_term/3 populates NameVars, sharing repeated vars, skipping bare _" {
-  run "$TRILOG" -e "atom_to_term('foo(X,Y,X,_)', T, NV), write(T-NV), nl."
+  run "$TRILOG" -e "
+    atom_to_term('foo(X,Y,X,_)', T, NV),
+    write(T-NV),
+    nl.
+  "
   [ "$status" -eq 0 ]
   [[ "$output" == *"foo(_G"* ]]
   [[ "$output" == *"=(X, _G"* ]]
@@ -535,7 +539,10 @@ answers() {
   [[ "$output" == *"Y = ==(a, b)"* ]]
   [[ "$output" == *"Z = -5"* ]]
 
-  run "$TRILOG" -e "X = 3, Y is -X."
+  run "$TRILOG" -e "
+    X = 3,
+    Y is -X.
+  "
   [[ "$output" == *"Y = -3"* ]]
 }
 
@@ -742,7 +749,11 @@ answers() {
   # a bare integer as a goal used to corrupt the heap: key_of_goal's
   # "not callable" sentinel (pred_id = -1) fed straight into
   # make_existence_error, which built an atom cell from that -1.
-  run "$TRILOG" -e "catch(call(42), error(type_error(callable, 42), _), true), write(ok), nl."
+  run "$TRILOG" -e "
+    catch(call(42), error(type_error(callable, 42), _), true),
+    write(ok),
+    nl.
+  "
   [ "$status" -eq 0 ]
   [[ "$output" == *"ok"* ]]
 }
@@ -751,7 +762,11 @@ answers() {
   # '$bagof_strip' used to unify an unbound Goal0 with V^G0 itself,
   # recursing on the fresh var forever, instead of throwing
   # instantiation_error.
-  run "$TRILOG" -e "catch(bagof(_X,_Y^_Z,_L), error(instantiation_error, _), true), write(ok), nl."
+  run "$TRILOG" -e "
+    catch(bagof(_X,_Y^_Z,_L), error(instantiation_error, _), true),
+    write(ok),
+    nl.
+  "
   [ "$status" -eq 0 ]
   [[ "$output" == *"ok"* ]]
 }
@@ -1046,7 +1061,12 @@ answers() {
 }
 
 @test "copy_term/2 preserves variable sharing" {
-  run "$TRILOG" -e "copy_term(f(X,Y,X,g(Y)), f(A,B,C,g(D))), A == C, B == D, A \\== B."
+  run "$TRILOG" -e "
+    copy_term(f(X,Y,X,g(Y)), f(A,B,C,g(D))),
+    A == C,
+    B == D,
+    A \\== B.
+  "
   succeeded
 }
 
@@ -1058,26 +1078,39 @@ answers() {
 
 @test "printing a tail-cyclic list terminates (regression)" {
   # regression: the list printer walked the spine with no limit, looping forever on L = [a|L].
-  run timeout 10 "$TRILOG" -e "L = [a|L], write(done), nl."
+  run timeout 10 "$TRILOG" -e "
+    L = [a|L],
+    write(done),
+    nl.
+  "
   [ "$status" -eq 0 ]
   [[ "$output" == *"done"* ]]
   [[ "$output" == *"|...]"* ]]
 }
 
 @test "copy_term/2 throws on a cyclic term instead of crashing (regression)" {
-  run "$TRILOG" -e "X = f(X), catch(copy_term(X, _), error(E, _), (write(caught(E)), nl))."
+  run "$TRILOG" -e "
+    X = f(X),
+    catch(copy_term(X, _), error(E, _), (write(caught(E)), nl)).
+  "
   [ "$status" -eq 0 ]
   [[ "$output" == *"caught(representation_error(cyclic_term))"* ]]
 }
 
 @test "findall/3 throws on a cyclic solution instead of crashing (regression)" {
-  run "$TRILOG" -e "X = [X|_], catch(findall(X, true, _), error(E, _), (write(caught(E)), nl))."
+  run "$TRILOG" -e "
+    X = [X|_],
+    catch(findall(X, true, _), error(E, _), (write(caught(E)), nl)).
+  "
   [ "$status" -eq 0 ]
   [[ "$output" == *"caught(representation_error(cyclic_term))"* ]]
 }
 
 @test "assertz/1 throws on a cyclic term instead of crashing (regression)" {
-  run "$TRILOG" -e "X = f(X), catch(assertz(p(X)), error(E, _), (write(caught(E)), nl))."
+  run "$TRILOG" -e "
+    X = f(X),
+    catch(assertz(p(X)), error(E, _), (write(caught(E)), nl)).
+  "
   [ "$status" -eq 0 ]
   [[ "$output" == *"caught(representation_error(cyclic_term))"* ]]
 }
@@ -1092,12 +1125,21 @@ answers() {
 }
 
 @test "unify_with_occurs_check/2 unifies like =/2 otherwise" {
-  run "$TRILOG" -e "unify_with_occurs_check(f(X,a,[H|T]), f(b,Y,[1,2])), write(X-Y-H-T), nl."
+  run "$TRILOG" -e "
+    unify_with_occurs_check(f(X,a,[H|T]), f(b,Y,[1,2])),
+    write(X-Y-H-T),
+    nl.
+  "
   [[ "$output" == *"-(-(-(b, a), 1), [2])"* ]]
 }
 
 @test "unify_with_occurs_check/2 terminates on an already-cyclic term" {
-  run timeout 5 "$TRILOG" -e "X = f(X), unify_with_occurs_check(Y, g(X)), write(ok), nl."
+  run timeout 5 "$TRILOG" -e "
+    X = f(X),
+    unify_with_occurs_check(Y, g(X)),
+    write(ok),
+    nl.
+  "
   [ "$status" -eq 0 ]
   [[ "$output" == *"ok"* ]]
 }
@@ -1464,7 +1506,10 @@ PLEOF
   mkdir -p /tmp/mi_nest_test/sub
   printf "a(1).\n:- consult('sub/b.pl').\na(2).\n" > /tmp/mi_nest_test/a.pl
   printf "b(1).\n" > /tmp/mi_nest_test/sub/b.pl
-  run "$TRILOG" /tmp/mi_nest_test/a.pl -e "findall(X, a(X), A), findall(Y, b(Y), B)."
+  run "$TRILOG" /tmp/mi_nest_test/a.pl -e "
+    findall(X, a(X), A),
+    findall(Y, b(Y), B).
+  "
   [[ "$output" == *"A = [1, 2]"* ]]
   [[ "$output" == *"B = [1]"* ]]
   rm -rf /tmp/mi_nest_test
@@ -1475,7 +1520,10 @@ PLEOF
   mkdir -p /tmp/mi_gcnest_test
   printf ":- consult('inner.pl').\nafter(1).\n" > /tmp/mi_gcnest_test/outer.pl
   printf ":- op(700, xfx, '==>').\n:- X = f(a).\ninner_fact(1).\n" > /tmp/mi_gcnest_test/inner.pl
-  TRILOG_GC_THRESHOLD=2000 run "$TRILOG" -f /tmp/mi_gcnest_test/outer.pl -e "after(X), inner_fact(Y)."
+  TRILOG_GC_THRESHOLD=2000 run "$TRILOG" -f /tmp/mi_gcnest_test/outer.pl -e "
+    after(X),
+    inner_fact(Y).
+  "
   [[ "$output" != *"uncaught exception"* ]]
   [[ "$output" == *"X = 1"* ]]
   [[ "$output" == *"Y = 1"* ]]
@@ -1616,19 +1664,34 @@ PLEOF
 
 @test "reconsulting a file replaces its clauses instead of appending" {
   printf ":- dynamic(p/1).\np(1).\np(2).\n" > "$BATS_TEST_TMPDIR/r.pl"
-  run "$TRILOG" -f -e "consult('$BATS_TEST_TMPDIR/r.pl'), assertz(p(99)), consult('$BATS_TEST_TMPDIR/r.pl'), findall(X, p(X), L)."
+  run "$TRILOG" -f -e "
+    consult('$BATS_TEST_TMPDIR/r.pl'),
+    assertz(p(99)),
+    consult('$BATS_TEST_TMPDIR/r.pl'),
+    findall(X, p(X), L).
+  "
   [[ "$output" == *"L = [99, 1, 2]"* ]]
 }
 
 @test "unconsult/1 removes only the file's clauses and fails when not loaded" {
   printf ":- dynamic(p/1).\np(1).\n" > "$BATS_TEST_TMPDIR/u.pl"
-  run "$TRILOG" -f -e "consult('$BATS_TEST_TMPDIR/u.pl'), assertz(p(2)), unconsult('$BATS_TEST_TMPDIR/u.pl'), findall(X, p(X), L), ( unconsult('$BATS_TEST_TMPDIR/u.pl') -> A = loaded ; A = not_loaded )."
+  run "$TRILOG" -f -e "
+    consult('$BATS_TEST_TMPDIR/u.pl'),
+    assertz(p(2)),
+    unconsult('$BATS_TEST_TMPDIR/u.pl'),
+    findall(X, p(X), L),
+    ( unconsult('$BATS_TEST_TMPDIR/u.pl') -> A = loaded ; A = not_loaded ).
+  "
   [[ "$output" == *"L = [2], A = not_loaded"* ]]
 }
 
 @test "consulted/1 lists loaded files, including ones from the command line" {
   printf "q(1).\n" > "$BATS_TEST_TMPDIR/c.pl"
-  run "$TRILOG" -f "$BATS_TEST_TMPDIR/c.pl" -e "consulted(L), member(F, L), atom_concat(_, 'c.pl', F)."
+  run "$TRILOG" -f "$BATS_TEST_TMPDIR/c.pl" -e "
+    consulted(L),
+    member(F, L),
+    atom_concat(_, 'c.pl', F).
+  "
   succeeded
   [ "$(answers)" -eq 1 ]
 }
@@ -1636,7 +1699,14 @@ PLEOF
 @test "make/0 reconsults files that changed since they were loaded" {
   printf "v(old).\n" > "$BATS_TEST_TMPDIR/m.pl"
   touch -t 202001010000 "$BATS_TEST_TMPDIR/m.pl"
-  run "$TRILOG" -f "$BATS_TEST_TMPDIR/m.pl" -e "open('$BATS_TEST_TMPDIR/m.pl', write, S), write(S, 'v(new).'), nl(S), close(S), make, findall(X, v(X), L)."
+  run "$TRILOG" -f "$BATS_TEST_TMPDIR/m.pl" -e "
+    open('$BATS_TEST_TMPDIR/m.pl', write, S),
+    write(S, 'v(new).'),
+    nl(S),
+    close(S),
+    make,
+    findall(X, v(X), L).
+  "
   [[ "$output" == *"L = [new]"* ]]
 }
 
@@ -1648,12 +1718,23 @@ PLEOF
 }
 
 @test "answers are printed quoted, so atoms read back as atoms (#14, #16)" {
-  run "$TRILOG" -f -e "\"1\" = [Ch], X = '1', Y = 'hello world', Z = abc."
+  run "$TRILOG" -f -e "
+    \"1\" = [Ch],
+    X = '1',
+    Y = 'hello world',
+    Z = abc.
+  "
   [[ "$output" == *"Ch = '1', X = '1', Y = 'hello world', Z = abc"* ]]
 }
 
 @test "current_prolog_flag/2 enumerates every ISO flag, unknown included (#13)" {
-  run "$TRILOG" -f -e "current_prolog_flag(unknown, U), current_prolog_flag(char_conversion, C), current_prolog_flag(debug, D), findall(F, current_prolog_flag(F, _), Fs), length(Fs, N)."
+  run "$TRILOG" -f -e "
+    current_prolog_flag(unknown, U),
+    current_prolog_flag(char_conversion, C),
+    current_prolog_flag(debug, D),
+    findall(F, current_prolog_flag(F, _), Fs),
+    length(Fs, N).
+  "
   [[ "$output" == *"U = error, C = off, D = off"* ]]
   [[ "$output" == *"N = 9"* ]]
   run "$TRILOG" -f -e "catch(current_prolog_flag(1, _), error(E, _), true)."
@@ -1671,7 +1752,13 @@ PLEOF
 }
 
 @test "errors name the predicate that raised them in their context (#4)" {
-  run "$TRILOG" -f -e "catch(X is Y, error(_, C1), true), catch(functor(_, _, _), error(_, C2), true), catch(sort(a, _), error(_, C3), true), catch(assertz(_), error(_, C4), true), catch(compare(foo, a, b), error(_, C5), true)."
+  run "$TRILOG" -f -e "
+    catch(X is Y, error(_, C1), true),
+    catch(functor(_, _, _), error(_, C2), true),
+    catch(sort(a, _), error(_, C3), true),
+    catch(assertz(_), error(_, C4), true),
+    catch(compare(foo, a, b), error(_, C5), true).
+  "
   [[ "$output" == *"C1 = /(is, 2)"* ]]
   [[ "$output" == *"C2 = /(functor, 3)"* ]]
   [[ "$output" == *"C3 = /(sort, 2)"* ]]

@@ -183,7 +183,11 @@ print('setof(X, ddup(X), S), length(S, N), write(N).')
 # --- exhausting resources fails the query, doesn't crash the process ---
 
 @test "stress: length(L, 200000) fails cleanly, does not crash" {
-  run timeout 15 "$TRILOG" -e "length(L, 200000), write(done), nl."
+  run timeout 15 "$TRILOG" -e "
+    length(L, 200000),
+    write(done),
+    nl.
+  "
   [ "$status" -eq 0 ]
   [[ "$output" != *"AddressSanitizer"* ]]
   [[ "$output" != *"Segmentation"* ]]
@@ -194,7 +198,13 @@ print('setof(X, ddup(X), S), length(S, N), write(N).')
 count([], 0).
 count([_|T], N) :- count(T, N0), N is N0 + 1.
 EOF
-  run timeout 15 "$TRILOG" -e "consult('/tmp/trilog_stress_nontail.pl'), length(L, 10000), count(L, N), write(N), nl."
+  run timeout 15 "$TRILOG" -e "
+    consult('/tmp/trilog_stress_nontail.pl'),
+    length(L, 10000),
+    count(L, N),
+    write(N),
+    nl.
+  "
   [ "$status" -eq 0 ]
   [[ "$output" != *"AddressSanitizer"* ]]
   [[ "$output" != *"Segmentation"* ]]
