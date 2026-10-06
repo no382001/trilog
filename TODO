@@ -19,7 +19,6 @@ missing requirements:
 - is_list([a|_]) succeeds, should fail
 - length(L, -1) fails and length(L, a) raises type_error(evaluable, a/0); want domain_error(not_less_than_zero, -1) and type_error(integer, a)
 - number_chars_quad runs out of memory, 12/71 pass (#7)
-- toplevel: key a shows all answers; stopping early prints ;  ... . instead of . (#28)
 - quad.pl: chars and dcgs instead of codes and atom_concat chains (#27)
 - unbounded max_arity, 255 for now with representation_error(max_arity) (#26)
 - fix main-specific test expectations: 32-bit max_integer, last/2 arg order, sub_atom/5 single answer, answer printing (unhandled exception, X = Y)

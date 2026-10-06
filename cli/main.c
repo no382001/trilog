@@ -34,6 +34,7 @@ typedef struct {
   bool interactive;
   bool any_found;
   bool closed;
+  bool all; // `a` was pressed: print every remaining answer
 } toplevel_state;
 
 static bool toplevel_solution(trilog_t *t, void *ud, bool has_more) {
@@ -48,10 +49,17 @@ static bool toplevel_solution(trilog_t *t, void *ud, bool has_more) {
   if (n == 0)
     fputs("true", stdout);
   if (has_more) {
+    if (st->all)
+      return true;
     fflush(stdout);
     int key = st->interactive ? terminal_read_key() : ';';
-    if (key == ';' || key == ' ')
+    if (key == 'a')
+      st->all = true;
+    if (key == ';' || key == ' ' || key == 'a')
       return true;
+    fputs("\n;  ... .\n", stdout);
+    st->closed = true;
+    return false;
   }
   fputs(".\n", stdout);
   st->closed = true;

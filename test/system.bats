@@ -1659,3 +1659,13 @@ PLEOF
   run "$TRILOG" -f -e "catch(current_prolog_flag(1, _), error(E, _), true)."
   [[ "$output" == *"E = type_error(atom, 1)"* ]]
 }
+
+@test "key a prints all answers; stopping early prints ; ... . (#28)" {
+  command -v script >/dev/null || skip "no script(1)"
+  repl() { { echo 'member(X, [1,2,3]).'; sleep 0.3; printf '%s' "$1"; sleep 0.3; printf '\004'; } \
+    | timeout 5 script -qc "$TRILOG -f" /dev/null 2>&1 | tr -d '\r'; }
+  run repl a
+  [[ "$output" == *"X = 1"$'\n'";  X = 2"$'\n'";  X = 3."* ]]
+  run repl x
+  [[ "$output" == *"X = 1"$'\n'";  ... ."* ]]
+}
