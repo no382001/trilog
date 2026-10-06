@@ -98,6 +98,7 @@ struct trilog {
   catch_frame_t *catch_stack;
   size_t catch_sp, catch_cap;
   size_t pending_error_ball;
+  int32_t error_pi_name, error_pi_arity;
   size_t uncaught_ball;
   size_t *solution_rename;
   size_t query_sp_base;

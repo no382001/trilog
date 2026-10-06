@@ -126,8 +126,8 @@ plus(A, B, C) :- integer(B), integer(C), A is C - B.
 %!  compare(-Order, @A, @B) is det.
 compare(O, A, B) :-
     (   var(O) -> true
-    ;   atom(O) -> ( memberchk(O, [<, =, >]) -> true ; throw(error(domain_error(order, O), _)) )
-    ;   throw(error(type_error(atom, O), _))
+    ;   atom(O) -> ( memberchk(O, [<, =, >]) -> true ; throw(error(domain_error(order, O), compare/3)) )
+    ;   throw(error(type_error(atom, O), compare/3))
     ),
     ( A == B -> O = (=) ; A @< B -> O = (<) ; O = (>) ).
 
@@ -197,11 +197,25 @@ can_be(Type, _) :-
 can_be(_, Term) :- var(Term), !.
 can_be(Type, Term) :- must_be(Type, Term).
 
+% --- errors ---
+
+%!  '$with_context'(:Goal, +PI) is nondet.
+%   An error Goal raises without a context gets PI as its context.
+'$with_context'(Goal, PI) :-
+    catch(Goal, error(Formal, Context), '$rethrow'(Formal, Context, PI)).
+
+'$rethrow'(Formal, Context, PI) :-
+    ( var(Context) -> Context = PI ; true ),
+    throw(error(Formal, Context)).
+
 % --- sorting ---
 
 %!  msort(+List, -Sorted) is det.
 %   Stable merge sort: O(n log n)
 msort(L, Sorted) :-
+    '$with_context'('$msort'(L, Sorted), msort/2).
+
+'$msort'(L, Sorted) :-
     '$sort_length'(L, L, 0, N),
     '$msort'(N, L, Sorted, _).
 
@@ -229,7 +243,7 @@ msort(L, Sorted) :-
     ).
 
 %!  sort(+List, -Sorted) is det.
-sort(L, Sorted) :- msort(L, M), '$dedup'(M, Sorted).
+sort(L, Sorted) :- '$with_context'('$msort'(L, M), sort/2), '$dedup'(M, Sorted).
 '$dedup'([], []).
 '$dedup'([X], [X]) :- !.
 '$dedup'([X,Y|T], R) :- X == Y, !, '$dedup'([Y|T], R).
@@ -241,10 +255,10 @@ sort(L, Sorted) :- msort(L, M), '$dedup'(M, Sorted).
 %   Refuses static (consulted) predicates with permission_error unless declared dynamic/1;
 %   asserting makes the predicate dynamic, so it still exists (and fails) once
 %   its last clause is retracted.
-assertz(Clause) :- '$check_clause'(Clause), '$check_static'(Clause), '$make_dynamic'(Clause), '$$assertz'(Clause).
-assert(Clause) :- '$check_clause'(Clause), '$check_static'(Clause), '$make_dynamic'(Clause), '$$assert'(Clause).
-asserta(Clause) :- '$check_clause'(Clause), '$check_static'(Clause), '$make_dynamic'(Clause), '$$asserta'(Clause).
-retract(Clause) :- '$check_head'(Clause), '$check_static'(Clause), '$$retract'(Clause).
+assertz(Clause) :- '$with_context'(('$check_clause'(Clause), '$check_static'(Clause)), assertz/1), '$make_dynamic'(Clause), '$$assertz'(Clause).
+assert(Clause) :- '$with_context'(('$check_clause'(Clause), '$check_static'(Clause)), assert/1), '$make_dynamic'(Clause), '$$assert'(Clause).
+asserta(Clause) :- '$with_context'(('$check_clause'(Clause), '$check_static'(Clause)), asserta/1), '$make_dynamic'(Clause), '$$asserta'(Clause).
+retract(Clause) :- '$with_context'(('$check_head'(Clause), '$check_static'(Clause)), retract/1), '$$retract'(Clause).
 
 '$check_static'(Clause) :-
     '$clause_head'(Clause, Head),
@@ -384,14 +398,14 @@ with_output_to(codes(Cs), Goal) :- with_output_to(atom(A), Goal), atom_codes(A, 
 %   TODO: no operator-aware output.
 write(T) :- '$$write_raw'(0, T, 0).
 write(S, T) :-
-    '$resolve_stream'(S, N),
+    '$with_context'('$resolve_stream'(S, N), write/2),
     ( '$$write_raw'(N, T, 0) -> true ; throw(error(existence_error(stream, S), write/2)) ).
 
 %!  writeq(@Term) is det.
 %!  writeq(+Stream, @Term) is det.
 writeq(T) :- '$$write_raw'(0, T, 1).
 writeq(S, T) :-
-    '$resolve_stream'(S, N),
+    '$with_context'('$resolve_stream'(S, N), writeq/2),
     ( '$$write_raw'(N, T, 1) -> true ; throw(error(existence_error(stream, S), writeq/2)) ).
 
 %!  nl is det.
@@ -481,7 +495,7 @@ number_chars(N, Chars) :-
 %!  retractall(+Head) is det.
 %   an unknown predicate is created as dynamic.
 retractall(Head) :-
-    '$check_static'(Head),
+    '$with_context'('$check_static'(Head), retractall/1),
     '$make_dynamic'(Head),
     '$retractall'(Head).
 
@@ -491,14 +505,14 @@ retractall(Head) :-
 %!  abolish(+Name/Arity) is det.
 %   the predicate stops existing
 abolish(PI) :-
-    ( var(PI) -> throw(error(instantiation_error, _)) ; true ),
-    ( PI = Name/Arity -> true ; throw(error(type_error(predicate_indicator, PI), _)) ),
-    ( ( var(Name) ; var(Arity) ) -> throw(error(instantiation_error, _)) ; true ),
-    ( atom(Name) -> true ; throw(error(type_error(atom, Name), _)) ),
-    ( integer(Arity) -> true ; throw(error(type_error(integer, Arity), _)) ),
-    ( Arity >= 0 -> true ; throw(error(domain_error(not_less_than_zero, Arity), _)) ),
+    ( var(PI) -> throw(error(instantiation_error, abolish/1)) ; true ),
+    ( PI = Name/Arity -> true ; throw(error(type_error(predicate_indicator, PI), abolish/1)) ),
+    ( ( var(Name) ; var(Arity) ) -> throw(error(instantiation_error, abolish/1)) ; true ),
+    ( atom(Name) -> true ; throw(error(type_error(atom, Name), abolish/1)) ),
+    ( integer(Arity) -> true ; throw(error(type_error(integer, Arity), abolish/1)) ),
+    ( Arity >= 0 -> true ; throw(error(domain_error(not_less_than_zero, Arity), abolish/1)) ),
     current_prolog_flag(max_arity, MaxArity),
-    ( Arity =< MaxArity -> true ; throw(error(representation_error(max_arity), _)) ),
+    ( Arity =< MaxArity -> true ; throw(error(representation_error(max_arity), abolish/1)) ),
     functor(Head, Name, Arity),
     retractall(Head),
     '$$undynamic'(Name, Arity).
@@ -514,11 +528,11 @@ abolish(PI) :-
 %   adding one - `-` can be both a 500 yfx and a 200 fy at once.
 op(Priority, Type, Name) :-
     ( integer(Priority) -> true
-    ; var(Priority) -> throw(error(instantiation_error, _))
-    ; throw(error(type_error(integer, Priority), _))
+    ; var(Priority) -> throw(error(instantiation_error, op/3))
+    ; throw(error(type_error(integer, Priority), op/3))
     ),
     ( Priority >= 0, Priority =< 1200 -> true
-    ; throw(error(domain_error(operator_priority, Priority), _))
+    ; throw(error(domain_error(operator_priority, Priority), op/3))
     ),
     '$op_class'(Type, Class),
     ( Name = [_|_] -> Names = Name ; Names = [Name] ),
@@ -533,7 +547,7 @@ op(Priority, Type, Name) :-
 '$op_class'(yf, postfix).
 '$op_class'(Type, _) :-
     \+ '$op_class_known'(Type),
-    throw(error(domain_error(operator_specifier, Type), _)).
+    throw(error(domain_error(operator_specifier, Type), op/3)).
 
 '$op_class_known'(xfx). '$op_class_known'(xfy). '$op_class_known'(yfx).
 '$op_class_known'(fy).  '$op_class_known'(fx).
@@ -542,7 +556,7 @@ op(Priority, Type, Name) :-
 '$op_one'(_, _, _, Name) :-
     ( Name == [] ; Name == {} ),
     !,
-    throw(error(permission_error(create, operator, Name), _)).
+    throw(error(permission_error(create, operator, Name), op/3)).
 '$op_one'(Priority, Type, Class, Name) :-
     '$op_unset'(Class, Name),
     ( Priority =:= 0 -> true ; '$$assertz'('$$op'(Priority, Type, Name)) ).

@@ -118,7 +118,15 @@ static size_t catch_stack_push(trilog_t *T, catch_frame_t f) {
 }
 
 static size_t make_error(trilog_t *T, size_t formal) {
-  size_t args[2] = {formal, heap_new_var(T)};
+  size_t context;
+  if (T->error_pi_name >= 0) {
+    size_t pi[2] = {heap_new_atom(T, T->error_pi_name),
+                    heap_new_int(T, T->error_pi_arity)};
+    context = heap_new_struct(T, atom_slash, 2, pi);
+  } else {
+    context = heap_new_var(T);
+  }
+  size_t args[2] = {formal, context};
   return heap_new_struct(T, atom_error, 2, args);
 }
 static size_t make_instantiation_error(trilog_t *T) {
@@ -1092,7 +1100,31 @@ static int call_foreign(trilog_t *T, const foreign_t *f, size_t goal,
   return 1;
 }
 
+static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok);
+
+// Errors raised while a builtin runs name it as their context, unless it is
+// one of the engine's own $-primitives.
 static int dispatch_builtin(trilog_t *T, size_t goal, int *ok) {
+  int32_t saved_name = T->error_pi_name, saved_arity = T->error_pi_arity;
+  size_t g = heap_deref(T, goal);
+  int32_t name = -1, arity = 0;
+  if (T->heap[g].tag == TAG_ATOM) {
+    name = T->heap[g].as.atom_id;
+  } else if (T->heap[g].tag == TAG_STR) {
+    name = T->heap[T->heap[g].as.ptr].as.func.atom_id;
+    arity = T->heap[T->heap[g].as.ptr].as.func.arity;
+  }
+  if (name >= 0 && atom_name(T, name)[0] == '$')
+    name = -1;
+  T->error_pi_name = name;
+  T->error_pi_arity = arity;
+  int r = dispatch_builtin_(T, goal, ok);
+  T->error_pi_name = saved_name;
+  T->error_pi_arity = saved_arity;
+  return r;
+}
+
+static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
   size_t g = heap_deref(T, goal);
   size_t f = 0;
   int32_t arity;

@@ -1,6 +1,5 @@
 regressions:
 - read_from_chars/2, read_term_from_chars/3, write_term_to_chars/3 are missing (#20)
-- error context is left unbound, tests expect the culprit pi like error(_, is/2) (#4)
 
 correctness:
 - the printer never uses operator syntax: (a,b) prints as ','(a, b), foo/0 as /(foo, 0) (#15 shows /(ex_nihilo, 0))
@@ -17,6 +16,7 @@ missing requirements:
 - missing iso evaluables: rem, **, ^, sqrt, sin, cos, atan, atan2, exp, log, pi, float_integer_part, float_fractional_part
 - port wokwi/ to trilog.h (is it still possible? it should be w/o the libs)
 - is_list([a|_]) succeeds, should fail
+- arg(a, f(x), _) fails, iso: type_error(integer, a)
 - length(L, -1) fails and length(L, a) raises type_error(evaluable, a/0); want domain_error(not_less_than_zero, -1) and type_error(integer, a)
 - number_chars_quad runs out of memory, 12/71 pass (#7)
 - quad.pl: chars and dcgs instead of codes and atom_concat chains (#27)

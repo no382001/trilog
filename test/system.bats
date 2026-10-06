@@ -1669,3 +1669,12 @@ PLEOF
   run repl x
   [[ "$output" == *"X = 1"$'\n'";  ... ."* ]]
 }
+
+@test "errors name the predicate that raised them in their context (#4)" {
+  run "$TRILOG" -f -e "catch(X is Y, error(_, C1), true), catch(functor(_, _, _), error(_, C2), true), catch(sort(a, _), error(_, C3), true), catch(assertz(_), error(_, C4), true), catch(compare(foo, a, b), error(_, C5), true)."
+  [[ "$output" == *"C1 = /(is, 2)"* ]]
+  [[ "$output" == *"C2 = /(functor, 3)"* ]]
+  [[ "$output" == *"C3 = /(sort, 2)"* ]]
+  [[ "$output" == *"C4 = /(assertz, 1)"* ]]
+  [[ "$output" == *"C5 = /(compare, 3)"* ]]
+}
