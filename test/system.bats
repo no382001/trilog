@@ -501,8 +501,8 @@ answers() {
     close(S).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"L1 = line one"* ]]
-  [[ "$output" == *"L2 = line two"* ]]
+  [[ "$output" == *"L1 = 'line one'"* ]]
+  [[ "$output" == *"L2 = 'line two'"* ]]
   [[ "$output" == *"L3 = end_of_file"* ]]
 }
 
@@ -689,7 +689,7 @@ answers() {
   [[ "$output" == *"Chars = \"hi\""* ]]
   [[ "$output" == *"A1 = hi"* ]]
   [[ "$output" == *"N1 = 42"* ]]
-  [[ "$output" == *"A2 = 42"* ]]
+  [[ "$output" == *"A2 = '42'"* ]]
   [[ "$output" == *'NC = "42"'* ]]
   [[ "$output" == *"N2 = 42"* ]]
   succeeded
@@ -1645,4 +1645,17 @@ PLEOF
   printf "a(1).\n:- atom_to_term('foo(X, Y)', _, _).\na(2).\na(3).\n" > "$BATS_TEST_TMPDIR/att.pl"
   run "$TRILOG" -f "$BATS_TEST_TMPDIR/att.pl" -e "findall(X, a(X), L)."
   [[ "$output" == *"L = [1, 2, 3]"* ]]
+}
+
+@test "answers are printed quoted, so atoms read back as atoms (#14, #16)" {
+  run "$TRILOG" -f -e "\"1\" = [Ch], X = '1', Y = 'hello world', Z = abc."
+  [[ "$output" == *"Ch = '1', X = '1', Y = 'hello world', Z = abc"* ]]
+}
+
+@test "current_prolog_flag/2 enumerates every ISO flag, unknown included (#13)" {
+  run "$TRILOG" -f -e "current_prolog_flag(unknown, U), current_prolog_flag(char_conversion, C), current_prolog_flag(debug, D), findall(F, current_prolog_flag(F, _), Fs), length(Fs, N)."
+  [[ "$output" == *"U = error, C = off, D = off"* ]]
+  [[ "$output" == *"N = 9"* ]]
+  run "$TRILOG" -f -e "catch(current_prolog_flag(1, _), error(E, _), true)."
+  [[ "$output" == *"E = type_error(atom, 1)"* ]]
 }

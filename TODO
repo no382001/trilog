@@ -1,6 +1,4 @@
 regressions:
-- toplevel prints answers unquoted: '1' as 1, 'hello world' as hello world (#14, #16)
-- unknown flag missing: current_prolog_flag(unknown, V) raises domain_error, iso says V = error (#13)
 - read_from_chars/2, read_term_from_chars/3, write_term_to_chars/3 are missing (#20)
 - error context is left unbound, tests expect the culprit pi like error(_, is/2) (#4)
 

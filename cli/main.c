@@ -9,7 +9,7 @@ static trilog_t *T;
 
 static void print_term(FILE *out, trilog_term_t term) {
   char small[256];
-  size_t n = trilog_format(T, term, 0, small, sizeof small);
+  size_t n = trilog_format(T, term, TRILOG_FORMAT_QUOTED, small, sizeof small);
   if (n < sizeof small) {
     fputs(small, out);
     return;
@@ -19,7 +19,7 @@ static void print_term(FILE *out, trilog_term_t term) {
     fputs("...", out);
     return;
   }
-  trilog_format(T, term, 0, big, n + 1);
+  trilog_format(T, term, TRILOG_FORMAT_QUOTED, big, n + 1);
   fputs(big, out);
   free(big);
 }

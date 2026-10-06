@@ -69,7 +69,7 @@
   X(atom_unload, "$$unload")                                                   \
   X(atom_is_static_pred, "$$is_static")                                        \
   X(atom_undynamic, "$$undynamic")                                             \
-  X(atom_prolog_flag_value, "$$prolog_flag_value")                             \
+  X(atom_prolog_flags, "$$prolog_flags")                                       \
   X(atom_flag_bounded, "bounded")                                              \
   X(atom_flag_max_integer, "max_integer")                                      \
   X(atom_flag_min_integer, "min_integer")                                      \

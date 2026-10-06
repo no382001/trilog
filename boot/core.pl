@@ -603,19 +603,15 @@ current_op(P, T, N) :- '$$op'(P, T, N).
 %!  current_prolog_flag(?Flag, ?Value) is nondet.
 %   no set_prolog_flag/2 currently
 current_prolog_flag(Flag, Value) :-
-    '$prolog_flag_name'(Flag),
-    '$$prolog_flag_value'(Flag, Value).
-current_prolog_flag(Flag, _) :-
-    nonvar(Flag),
-    \+ '$prolog_flag_name'(Flag),
-    throw(error(domain_error(prolog_flag, Flag), _)).
-
-'$prolog_flag_name'(bounded).
-'$prolog_flag_name'(max_integer).
-'$prolog_flag_name'(min_integer).
-'$prolog_flag_name'(integer_rounding_function).
-'$prolog_flag_name'(max_arity).
-'$prolog_flag_name'(double_quotes).
+    '$$prolog_flags'(Flags),
+    (   var(Flag)
+    ->  member(Flag-Value, Flags)
+    ;   memberchk(Flag-V, Flags)
+    ->  Value = V
+    ;   atom(Flag)
+    ->  throw(error(domain_error(prolog_flag, Flag), current_prolog_flag/2))
+    ;   throw(error(type_error(atom, Flag), current_prolog_flag/2))
+    ).
 
 % --- DCG ---
 

@@ -1360,33 +1360,32 @@ static int dispatch_builtin(trilog_t *T, size_t goal, int *ok) {
     *ok = was_consulted(T, pid, par);
     return 1;
   }
-  if (arity == 2 && id == atom_prolog_flag_value) {
+  if (arity == 1 && id == atom_prolog_flags) {
     // real values - this engine's actual int64_t arithmetic and
     // MAX_ARITY, not borrowed numbers.
-    size_t name_d = heap_deref(T, f + 1);
-    if (T->heap[name_d].tag != TAG_ATOM) {
-      *ok = 0;
-      return 1;
+    size_t flags[][2] = {
+        {heap_new_atom(T, atom_flag_bounded), heap_new_atom(T, atom_true)},
+        {heap_new_atom(T, atom_flag_max_integer), heap_new_int(T, INT64_MAX)},
+        {heap_new_atom(T, atom_flag_min_integer), heap_new_int(T, INT64_MIN)},
+        {heap_new_atom(T, atom_flag_integer_rounding_function),
+         heap_new_atom(T, atom_toward_zero)},
+        {heap_new_atom(T, atom_flag_max_arity), heap_new_int(T, MAX_ARITY)},
+        {heap_new_atom(T, atom_flag_double_quotes),
+         heap_new_atom(T, atom_chars_kw)},
+        {heap_new_atom(T, atom_intern(T, "unknown")),
+         heap_new_atom(T, atom_error)},
+        {heap_new_atom(T, atom_intern(T, "char_conversion")),
+         heap_new_atom(T, atom_intern(T, "off"))},
+        {heap_new_atom(T, atom_intern(T, "debug")),
+         heap_new_atom(T, atom_intern(T, "off"))},
+    };
+    size_t list = heap_new_atom(T, atom_nil);
+    for (size_t i = sizeof flags / sizeof *flags; i-- > 0;) {
+      size_t pair = heap_new_struct(T, atom_minus, 2, flags[i]);
+      size_t cell[2] = {pair, list};
+      list = heap_new_struct(T, atom_dot, 2, cell);
     }
-    int32_t nid = T->heap[name_d].as.atom_id;
-    size_t val;
-    if (nid == atom_flag_bounded)
-      val = heap_new_atom(T, atom_true);
-    else if (nid == atom_flag_max_integer)
-      val = heap_new_int(T, INT64_MAX);
-    else if (nid == atom_flag_min_integer)
-      val = heap_new_int(T, INT64_MIN);
-    else if (nid == atom_flag_integer_rounding_function)
-      val = heap_new_atom(T, atom_toward_zero);
-    else if (nid == atom_flag_max_arity)
-      val = heap_new_int(T, MAX_ARITY);
-    else if (nid == atom_flag_double_quotes)
-      val = heap_new_atom(T, atom_chars_kw);
-    else {
-      *ok = 0;
-      return 1;
-    }
-    *ok = unify(T, f + 2, val);
+    *ok = unify(T, f + 1, list);
     return 1;
   }
   // with_output_to/2's C half. capture_buf is a stack arena: each nested

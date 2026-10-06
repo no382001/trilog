@@ -590,7 +590,7 @@ bcapply(G) :- call(G).
 
 % enumeration: all flags must be produced
 ?- findall(F, current_prolog_flag(F, _), Fs), length(Fs, N), N > 0.
-   Fs = [bounded, max_integer, min_integer, integer_rounding_function, max_arity, double_quotes], N = 6.
+   Fs = [bounded, max_integer, min_integer, integer_rounding_function, max_arity, double_quotes, unknown, char_conversion, debug], N = 9.
 
 % domain_error for unknown flag
 ?- current_prolog_flag(unknown_flag, _).
