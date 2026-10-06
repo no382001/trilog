@@ -678,17 +678,20 @@ static bool consult_source(trilog_t *T, const char *text, const char *path);
 static bool consult_nested(trilog_t *T, const char *text, const char *file,
                            const char *name) {
   const char *saved_P = T->P, *saved_consulting = T->consulting;
+  int32_t saved_atom = T->consulting_atom;
   jmp_buf saved_jmp;
   memcpy(saved_jmp, T->err_jmp, sizeof(jmp_buf));
   T->consulting = file;
+  T->consulting_atom = file ? atom_intern(T, file) : -1;
   bool ok = consult_source(T, text, name);
   T->consulting = saved_consulting;
+  T->consulting_atom = saved_atom;
   T->P = saved_P;
   memcpy(T->err_jmp, saved_jmp, sizeof(jmp_buf));
   return ok;
 }
 
-bool consult_file(trilog_t *T, const char *path) {
+bool consult_file(trilog_t *T, const char *path, int32_t *source) {
   char resolved[4096];
   const char *text = consult_text(T, path, resolved, sizeof resolved);
   if (!text) {
@@ -697,6 +700,10 @@ bool consult_file(trilog_t *T, const char *path) {
     io_write_err(T, msg);
     return false;
   }
+  int32_t atom = atom_intern(T, resolved);
+  db_unload(T, atom);
+  if (source)
+    *source = atom;
   return consult_nested(T, text, resolved, resolved);
 }
 

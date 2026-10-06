@@ -55,7 +55,7 @@
   X(atom_write_raw, "$$write_raw")                                             \
   X(atom_open, "open")                                                         \
   X(atom_close, "close")                                                       \
-  X(atom_consult, "consult")                                                   \
+  X(atom_consult, "$$consult")                                                 \
   X(atom_dynamic, "dynamic")                                                   \
   X(atom_capture_start, "$$capture_start")                                     \
   X(atom_capture_stop, "$$capture_stop")                                       \
@@ -66,6 +66,7 @@
   X(atom_read_line_to_atom, "read_line_to_atom")                               \
   X(atom_end_of_file, "end_of_file")                                           \
   X(atom_user_input, "user_input")                                             \
+  X(atom_unload, "$$unload")                                                   \
   X(atom_is_static_pred, "$$is_static")                                        \
   X(atom_undynamic, "$$undynamic")                                             \
   X(atom_prolog_flag_value, "$$prolog_flag_value")                             \

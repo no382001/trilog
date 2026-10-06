@@ -44,6 +44,7 @@ static trilog_status_t unwound(trilog_t *t) {
   t->uncaught_ball = (size_t)-1;
   t->P = NULL;
   t->consulting = NULL;
+  t->consulting_atom = -1;
   t->in_query = false;
   t->in_callback = false;
   t->error = invalid_term;
@@ -76,6 +77,7 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   t->error = invalid_term;
   t->pending_error_ball = (size_t)-1;
   t->uncaught_ball = (size_t)-1;
+  t->consulting_atom = -1;
   if (!io_set(t, c.io)) {
     c.free(c.alloc_ud, t);
     return NULL;
@@ -86,7 +88,8 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   }
   heap_init(t);
   platform_register(t);
-  if (!consult_file(t, c.boot_path ? c.boot_path : "embedded:boot/core.pl")) {
+  if (!consult_file(t, c.boot_path ? c.boot_path : "embedded:boot/core.pl",
+                    NULL)) {
     trilog_free(t);
     return NULL;
   }
@@ -128,13 +131,26 @@ void trilog_free(trilog_t *t) {
   t->alloc_free(t->alloc_ud, t);
 }
 
+static int first_solution(void *ud, int has_more) {
+  (void)ud;
+  (void)has_more;
+  return 0;
+}
+
 static trilog_status_t load(trilog_t *t, const char *path, const char *text) {
   if (t->in_query)
     return TRILOG_ERROR;
   t->in_query = true;
   if (setjmp(t->fatal_jmp))
     return unwound(t);
-  bool ok = path ? consult_file(t, path) : consult_string(t, text);
+  bool ok;
+  if (path) {
+    tterm_t *arg = tt_atom(t, path);
+    tterm_t *goal = tt_struct(t, "consult", 1, &arg);
+    ok = run_query(t, &goal, 1, 0, first_solution, NULL) == QUERY_TRUE;
+  } else {
+    ok = consult_string(t, text);
+  }
   t->in_query = false;
   return ok ? TRILOG_TRUE : TRILOG_ERROR;
 }

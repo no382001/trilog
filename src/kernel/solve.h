@@ -20,6 +20,7 @@ typedef struct {
   int32_t nbody;
   int32_t nvars;
   idx_key_t key;
+  int32_t source; // atom of the file it was consulted from, -1 if asserted
 } clause_t;
 
 typedef struct {
@@ -55,6 +56,8 @@ typedef struct {
   const char *types;
   int32_t nin, nout;
 } foreign_t;
+
+void db_unload(trilog_t *T, int32_t source);
 
 bool foreign_register(trilog_t *T, const char *name, const char *types,
                       int32_t nin, int32_t nout, trilog_fn fn, void *ud);

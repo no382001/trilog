@@ -55,6 +55,41 @@ forall(Cond, Action) :- \+ (Cond, \+ Action).
 %!  halt is det.
 halt :- halt(0).
 
+:- dynamic('$consulted'/2).
+
+%!  consult(+File) is semidet.
+%   Loading a file again replaces the clauses its previous load added.
+consult(File) :-
+    '$$consult'(File, Path),
+    '$file_time'(Path, Time),
+    ( '$$retract'('$consulted'(Path, _)) -> true ; true ),
+    '$$assertz'('$consulted'(Path, Time)).
+
+'$file_time'(Path, Time) :-
+    catch(file_mtime(Path, Time0), error(existence_error(procedure, _), _), fail),
+    !,
+    Time = Time0.
+'$file_time'(_, unknown).
+
+%!  consulted(-Files) is det.
+consulted(Files) :-
+    findall(Path, '$consulted'(Path, _), Files).
+
+%!  unconsult(+File) is semidet.
+%   Fails if File is not loaded.
+unconsult(File) :-
+    '$$retract'('$consulted'(File, _)),
+    '$$unload'(File).
+
+%!  make is det.
+%   Reconsults every loaded file whose modification time changed. Needs the
+%   platform's file_mtime/2; raises existence_error without it.
+make :-
+    forall(( '$consulted'(Path, Time0),
+             file_mtime(Path, Time),
+             Time \== Time0 ),
+           consult(Path)).
+
 %!  [], [+File|+Files] is det.
 [].
 [File|Files] :- consult(File), call(Files).

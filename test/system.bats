@@ -1542,11 +1542,12 @@ PLEOF
   [ "$status" -ne 0 ]
   dir=$(mktemp -d)
   cp "$bin" "$dir/"
-  run bash -c "cd '$dir' && ./trilog -f -e \"append(X, [bb], [aa,bb]), write(ok(X)), nl, catch(get_time_ms(_), error(E1, _), true).\""
+  run bash -c "cd '$dir' && ./trilog -f -e \"append(X, [bb], [aa,bb]), write(ok(X)), nl, catch(get_time_ms(_), error(E1, _), true), catch(make, error(E2, _), true).\""
   rm -rf "$dir"
   make -s -C "$BATS_TEST_DIRNAME/.." release
   [[ "$output" == *"ok([aa])"* ]]
   [[ "$output" == *"E1 = existence_error(procedure, /(get_time_ms, 1))"* ]]
+  [[ "$output" == *"E2 = existence_error(procedure, /(file_mtime, 2))"* ]]
 }
 
 @test "loading boot/core.pl and lib/ at startup produces no uncaught exceptions (regression)" {
@@ -1613,6 +1614,31 @@ PLEOF
 }
 
 
+@test "reconsulting a file replaces its clauses instead of appending" {
+  printf ":- dynamic(p/1).\np(1).\np(2).\n" > "$BATS_TEST_TMPDIR/r.pl"
+  run "$TRILOG" -f -e "consult('$BATS_TEST_TMPDIR/r.pl'), assertz(p(99)), consult('$BATS_TEST_TMPDIR/r.pl'), findall(X, p(X), L)."
+  [[ "$output" == *"L = [99, 1, 2]"* ]]
+}
+
+@test "unconsult/1 removes only the file's clauses and fails when not loaded" {
+  printf ":- dynamic(p/1).\np(1).\n" > "$BATS_TEST_TMPDIR/u.pl"
+  run "$TRILOG" -f -e "consult('$BATS_TEST_TMPDIR/u.pl'), assertz(p(2)), unconsult('$BATS_TEST_TMPDIR/u.pl'), findall(X, p(X), L), ( unconsult('$BATS_TEST_TMPDIR/u.pl') -> A = loaded ; A = not_loaded )."
+  [[ "$output" == *"L = [2], A = not_loaded"* ]]
+}
+
+@test "consulted/1 lists loaded files, including ones from the command line" {
+  printf "q(1).\n" > "$BATS_TEST_TMPDIR/c.pl"
+  run "$TRILOG" -f "$BATS_TEST_TMPDIR/c.pl" -e "consulted(L), member(F, L), atom_concat(_, 'c.pl', F)."
+  succeeded
+  [ "$(answers)" -eq 1 ]
+}
+
+@test "make/0 reconsults files that changed since they were loaded" {
+  printf "v(old).\n" > "$BATS_TEST_TMPDIR/m.pl"
+  touch -t 202001010000 "$BATS_TEST_TMPDIR/m.pl"
+  run "$TRILOG" -f "$BATS_TEST_TMPDIR/m.pl" -e "open('$BATS_TEST_TMPDIR/m.pl', write, S), write(S, 'v(new).'), nl(S), close(S), make, findall(X, v(X), L)."
+  [[ "$output" == *"L = [new]"* ]]
+}
 
 @test "atom_to_term/3 in a directive leaves the rest of the file loading (regression)" {
   # regression: run-time parsing overwrote the consult's parse position.

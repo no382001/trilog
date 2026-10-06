@@ -333,8 +333,12 @@ void db_add(trilog_t *T, tterm_t *head, tterm_t **body, int32_t nbody,
   if (mark_static)
     mark_consulted(T, key.pred_id, key.pred_arity);
   int32_t idx = T->db_count++;
-  T->db[idx] = (clause_t){
-      .head = head, .body = body, .nbody = nbody, .nvars = nvars, .key = key};
+  T->db[idx] = (clause_t){.head = head,
+                          .body = body,
+                          .nbody = nbody,
+                          .nvars = nvars,
+                          .key = key,
+                          .source = mark_static ? T->consulting_atom : -1};
   pred_bucket_add_index(T, key.pred_id, key.pred_arity, idx);
 }
 
@@ -352,8 +356,12 @@ static void db_add_front(trilog_t *T, tterm_t *head, tterm_t **body,
   db_ensure_cap(T);
   memmove(&T->db[1], &T->db[0], (size_t)T->db_count * sizeof(clause_t));
   T->db_count++;
-  T->db[0] = (clause_t){
-      .head = head, .body = body, .nbody = nbody, .nvars = nvars, .key = key};
+  T->db[0] = (clause_t){.head = head,
+                        .body = body,
+                        .nbody = nbody,
+                        .nvars = nvars,
+                        .key = key,
+                        .source = -1};
   db_fixup_choice_points_insert_at(T, 0);
   pred_index_fixup_insert_at(T, 0);
   pred_bucket_add_index_front(T, key.pred_id, key.pred_arity, 0);
@@ -387,12 +395,34 @@ static void db_compact(trilog_t *T) {
 // unlinks the clause from its bucket and leaves db[idx] as a dead slot, so no
 // shifting or fixups per removal; db_compact reclaims slots once dead ones
 // outnumber live ones.
-static void db_remove_at(trilog_t *T, int32_t idx) {
+static void db_kill(trilog_t *T, int32_t idx) {
   pred_bucket_remove_index(T, T->db[idx].key.pred_id, T->db[idx].key.pred_arity,
                            idx);
   T->db[idx].head = NULL;
-  if (++T->db_dead >= 64 && T->db_dead > T->db_count - T->db_dead)
+  T->db_dead++;
+}
+
+static void db_maybe_compact(trilog_t *T) {
+  if (T->db_dead >= 64 && T->db_dead > T->db_count - T->db_dead)
     db_compact(T);
+}
+
+static void db_remove_at(trilog_t *T, int32_t idx) {
+  db_kill(T, idx);
+  db_maybe_compact(T);
+}
+
+void db_unload(trilog_t *T, int32_t source) {
+  for (int32_t i = 0; i < T->db_count; i++) {
+    if (!T->db[i].head || T->db[i].source != source)
+      continue;
+    idx_key_t key = T->db[i].key;
+    db_kill(T, i);
+    pred_bucket_t *b = pred_bucket_find(T, key.pred_id, key.pred_arity);
+    if (!b || b->count == 0)
+      unmark_consulted(T, key.pred_id, key.pred_arity);
+  }
+  db_maybe_compact(T);
 }
 
 static void dynamic_declare(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
@@ -1236,13 +1266,22 @@ static int dispatch_builtin(trilog_t *T, size_t goal, int *ok) {
   }
   // Fragile: a directive in the consulted file runs via a nested
   // run_query while this one is still on the C stack, and sp is global.
-  if (arity == 1 && id == atom_consult) {
+  if (arity == 2 && id == atom_consult) {
     size_t path_d = heap_deref(T, f + 1);
-    if (T->heap[path_d].tag != TAG_ATOM) {
+    int32_t source;
+    if (T->heap[path_d].tag != TAG_ATOM ||
+        !consult_file(T, atom_name(T, T->heap[path_d].as.atom_id), &source)) {
       *ok = 0;
       return 1;
     }
-    *ok = consult_file(T, atom_name(T, T->heap[path_d].as.atom_id));
+    *ok = unify(T, f + 2, heap_new_atom(T, source));
+    return 1;
+  }
+  if (arity == 1 && id == atom_unload) {
+    size_t d = heap_deref(T, f + 1);
+    *ok = T->heap[d].tag == TAG_ATOM;
+    if (*ok)
+      db_unload(T, T->heap[d].as.atom_id);
     return 1;
   }
   if (arity == 1 && id == atom_dynamic) {

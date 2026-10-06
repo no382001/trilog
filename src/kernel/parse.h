@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-bool consult_file(trilog_t *T, const char *path);
+bool consult_file(trilog_t *T, const char *path, int32_t *source);
 bool consult_string(trilog_t *T, const char *text);
 
 bool parse_query(trilog_t *T, const char *src, tterm_t ***goals_out,

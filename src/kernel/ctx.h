@@ -77,6 +77,7 @@ struct trilog {
   char var_names[MAX_CVARS][MAX_VARNAME];
   int32_t var_count;
   const char *consulting; // path of the file being consulted
+  int32_t consulting_atom;
 
   clause_t *db;
   int32_t db_count, db_cap, db_dead;

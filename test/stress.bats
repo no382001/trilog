@@ -114,7 +114,7 @@ for i in range(500):
     | timeout 10 "$TRILOG" -s 2>"$STATS_FILE" | tail -1)
   [[ "$result" == *"500"* ]]
   # 500 consulted clauses: perm grows, clauses = baseline + 500
-  [ "$(stat_val clauses)" -eq $(( BASE_CLAUSES + 500 )) ]
+  [ "$(stat_val clauses)" -eq $(( BASE_CLAUSES + 501 )) ]
 }
 
 # --- repeated assert/retract churn ---
@@ -151,8 +151,8 @@ print('findall(X, churn(X), L), length(L, N), write(N).')
     | timeout 10 "$TRILOG" -s 2>"$STATS_FILE" | tail -1)
   # sum 1..500 = 125250
   [[ "$result" == *"125250"* ]]
-  # one extra clause (add/3)
-  [ "$(stat_val clauses)" -eq $(( BASE_CLAUSES + 1 )) ]
+  # add/3, plus the file's consult record
+  [ "$(stat_val clauses)" -eq $(( BASE_CLAUSES + 2 )) ]
 }
 
 # --- maplist over large list ---
@@ -162,8 +162,8 @@ print('findall(X, churn(X), L), length(L, N), write(N).')
   result=$(printf "consult('/tmp/trilog_stress_map.pl').\nfindall(X, between(1,200,X), L), maplist(inc, L, M), length(M, N), write(N).\n" \
     | timeout 10 "$TRILOG" -s 2>"$STATS_FILE" | tail -1)
   [[ "$result" == *"200"* ]]
-  # one extra clause (inc/2)
-  [ "$(stat_val clauses)" -eq $(( BASE_CLAUSES + 1 )) ]
+  # inc/2, plus the file's consult record
+  [ "$(stat_val clauses)" -eq $(( BASE_CLAUSES + 2 )) ]
 }
 
 # --- deep setof dedup ---
