@@ -54,8 +54,10 @@ typedef struct {
   trilog_fn fn;
   void *ud;
   const char *types;
-  int32_t nin, nout;
+  int32_t name, nin, nout;
 } foreign_t;
+
+size_t foreign_error_ball(trilog_t *T, const char *formal);
 
 void db_unload(trilog_t *T, int32_t source);
 

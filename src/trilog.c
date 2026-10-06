@@ -10,6 +10,8 @@
 #include "term.h"
 #include "version.h"
 #include <setjmp.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -45,6 +47,8 @@ static trilog_status_t unwound(trilog_t *t) {
   t->P = NULL;
   t->consulting = NULL;
   t->consulting_atom = -1;
+  t->foreign_current = NULL;
+  t->foreign_error = (size_t)-1;
   t->in_query = false;
   t->in_callback = false;
   t->error = invalid_term;
@@ -77,6 +81,7 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   t->error = invalid_term;
   t->pending_error_ball = (size_t)-1;
   t->uncaught_ball = (size_t)-1;
+  t->foreign_error = (size_t)-1;
   t->consulting_atom = -1;
   if (!io_set(t, c.io)) {
     c.free(c.alloc_ud, t);
@@ -209,6 +214,18 @@ bool trilog_register(trilog_t *t, const char *name, const char *sig,
 }
 
 bool trilog_set_io(trilog_t *t, const trilog_io_t *io) { return io_set(t, io); }
+
+bool trilog_error(trilog_t *t, const char *formal, ...) {
+  if (!t->foreign_current)
+    return false;
+  char text[1024];
+  va_list ap;
+  va_start(ap, formal);
+  vsnprintf(text, sizeof text, formal, ap);
+  va_end(ap);
+  t->foreign_error = foreign_error_ball(t, text);
+  return false;
+}
 
 void trilog_set_yield(trilog_t *t, trilog_yield_fn fn, unsigned every,
                       void *ud) {

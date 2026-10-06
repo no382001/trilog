@@ -91,6 +91,8 @@ struct trilog {
   int32_t dynamic_count, dynamic_cap;
   foreign_t *foreign;
   int32_t foreign_count, foreign_cap;
+  const foreign_t *foreign_current;
+  size_t foreign_error;
   frame_t *stack;
   size_t stack_cap, sp;
   catch_frame_t *catch_stack;

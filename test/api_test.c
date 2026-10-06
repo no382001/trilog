@@ -182,6 +182,27 @@ static bool ffi_greet(trilog_t *t, void *ud, const trilog_value_t *in,
   return streq(in[0].a, (const char *)ud);
 }
 
+static bool ffi_isqrt(trilog_t *t, void *ud, const trilog_value_t *in,
+                      trilog_value_t *out) {
+  (void)ud;
+  if (in[0].i < 0)
+    return trilog_error(t, "domain_error(not_less_than_zero, %lld)",
+                        (long long)in[0].i);
+  int64_t r = 0;
+  while ((r + 1) * (r + 1) <= in[0].i)
+    r++;
+  out[0].i = r;
+  return true;
+}
+
+static bool ffi_bad_error(trilog_t *t, void *ud, const trilog_value_t *in,
+                          trilog_value_t *out) {
+  (void)ud;
+  (void)in;
+  (void)out;
+  return trilog_error(t, "oops(");
+}
+
 static trilog_status_t error_text(trilog_t *t, const char *goal, char *buf,
                                   size_t cap) {
   collected c = {0};
@@ -228,6 +249,27 @@ static void test_foreign(trilog_t *t) {
                      "catch(c_add(x, 1, _), error(type_error(T, V), _), "
                      "true)",
                      collect, &h) == TRILOG_TRUE);
+
+  CHECK(!trilog_error(t, "domain_error(x, y)"));
+  CHECK(trilog_register(t, "c_isqrt", "i>i", ffi_isqrt, NULL));
+  CHECK(trilog_register(t, "c_bad_error", "", ffi_bad_error, NULL));
+  collected r = {0};
+  CHECK(trilog_query(t, "c_isqrt(17, R)", collect, &r) == TRILOG_TRUE);
+  CHECK(streq(r.text[0], "4"));
+  CHECK(error_text(t, "c_isqrt(-3, _)", buf, sizeof buf) == TRILOG_ERROR);
+  CHECK(
+      streq(buf, "error(domain_error(not_less_than_zero, -3), /(c_isqrt, 2))"));
+  collected k = {0};
+  CHECK(trilog_query(t,
+                     "catch(c_isqrt(-3, _), error(domain_error(D, V), C), "
+                     "true), D == not_less_than_zero, V == -3, C == c_isqrt/2",
+                     collect, &k) == TRILOG_TRUE);
+  CHECK(error_text(t, "c_bad_error", buf, sizeof buf) == TRILOG_ERROR);
+  CHECK(!strncmp(buf, "error(syntax_error(oops(), /(c_bad_error, 0))", 46));
+  CHECK(trilog_load_string(t, ":- catch(c_isqrt(-1, _), _, true).\n"
+                              "after_error(1).\n") == TRILOG_TRUE);
+  collected a = {0};
+  CHECK(trilog_query(t, "after_error(1)", collect, &a) == TRILOG_TRUE);
 
   CHECK(!trilog_register(t, "c_bad", "iq", ffi_add, NULL));
   CHECK(!trilog_register(t, "c_bad", "iiiiiiiii", ffi_add, NULL));

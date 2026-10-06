@@ -994,9 +994,29 @@ bool foreign_register(trilog_t *T, const char *name, const char *types,
   T->foreign[b->foreign - 1] = (foreign_t){.fn = fn,
                                            .ud = ud,
                                            .types = arena_strdup(T, types),
+                                           .name = id,
                                            .nin = nin,
                                            .nout = nout};
   return true;
+}
+
+size_t foreign_error_ball(trilog_t *T, const char *formal) {
+  const foreign_t *f = T->foreign_current;
+  tterm_t *tmpl;
+  int32_t nvars;
+  const char **names;
+  size_t term;
+  if (parse_term_from_string(T, formal, &tmpl, &nvars, &names)) {
+    size_t rn[nvars > 0 ? nvars : 1];
+    rename_init(rn, nvars);
+    term = heap_copy(T, tmpl, rn, 0);
+  } else {
+    size_t text[1] = {heap_new_atom(T, atom_intern(T, formal))};
+    term = heap_new_struct(T, atom_intern(T, "syntax_error"), 1, text);
+  }
+  size_t pi[2] = {heap_new_atom(T, f->name), heap_new_int(T, f->nin + f->nout)};
+  size_t args[2] = {term, heap_new_struct(T, atom_slash, 2, pi)};
+  return heap_new_struct(T, atom_error, 2, args);
 }
 
 static int call_foreign(trilog_t *T, const foreign_t *f, size_t goal,
@@ -1036,7 +1056,16 @@ static int call_foreign(trilog_t *T, const foreign_t *f, size_t goal,
     }
   }
   memset(out, 0, sizeof out);
-  if (!f->fn(T, f->ud, in, out))
+  T->foreign_current = f;
+  T->foreign_error = (size_t)-1;
+  bool ok = f->fn(T, f->ud, in, out);
+  T->foreign_current = NULL;
+  if (T->foreign_error != (size_t)-1) {
+    *ball = T->foreign_error;
+    T->foreign_error = (size_t)-1;
+    return -1;
+  }
+  if (!ok)
     return 0;
   for (int32_t j = 0; j < f->nout; j++) {
     size_t v;

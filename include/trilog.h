@@ -144,6 +144,8 @@ typedef bool (*trilog_fn)(trilog_t *t, void *ud, const trilog_value_t *in,
 bool trilog_register(trilog_t *t, const char *name, const char *sig,
                      trilog_fn fn, void *ud);
 
+bool trilog_error(trilog_t *t, const char *formal, ...);
+
 // Calls fn every `every` steps; returning false makes the running call
 // return TRILOG_ABORTED, which catch/3 cannot intercept. NULL disables it.
 // fn must not call trilog_query or trilog_load_* on t.
