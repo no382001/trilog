@@ -1542,10 +1542,11 @@ PLEOF
   [ "$status" -ne 0 ]
   dir=$(mktemp -d)
   cp "$bin" "$dir/"
-  run bash -c "cd '$dir' && ./trilog -f -e \"get_time_ms(T), integer(T), append(X, [bb], [aa,bb]), write(ok(X)), nl.\""
+  run bash -c "cd '$dir' && ./trilog -f -e \"append(X, [bb], [aa,bb]), write(ok(X)), nl, catch(get_time_ms(_), error(E1, _), true).\""
   rm -rf "$dir"
   make -s -C "$BATS_TEST_DIRNAME/.." release
   [[ "$output" == *"ok([aa])"* ]]
+  [[ "$output" == *"E1 = existence_error(procedure, /(get_time_ms, 1))"* ]]
 }
 
 @test "loading boot/core.pl and lib/ at startup produces no uncaught exceptions (regression)" {

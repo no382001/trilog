@@ -5,6 +5,7 @@
 #include "io.h"
 #include "mem.h"
 #include "parse.h"
+#include "platform.h"
 #include "solve.h"
 #include "term.h"
 #include "version.h"
@@ -75,7 +76,6 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   t->error = invalid_term;
   t->pending_error_ball = (size_t)-1;
   t->uncaught_ball = (size_t)-1;
-  t->epoch_ms = -1;
   if (!io_set(t, c.io)) {
     c.free(c.alloc_ud, t);
     return NULL;
@@ -85,6 +85,7 @@ trilog_t *trilog_new(const trilog_config_t *config) {
     return NULL;
   }
   heap_init(t);
+  platform_register(t);
   if (!consult_file(t, c.boot_path ? c.boot_path : "embedded:boot/core.pl")) {
     trilog_free(t);
     return NULL;
@@ -150,13 +151,24 @@ int trilog_halt_code(trilog_t *t) { return t->halt_code; }
 
 const char *trilog_version(void) { return TRILOG_BUILD_VERSION; }
 
-static bool register_parsed(trilog_t *t, const char *name, const char *types,
-                            int32_t nin, int32_t nout, trilog_fn fn, void *ud) {
+static bool register_armed(trilog_t *t, const char *name, const char *types,
+                           int32_t nin, int32_t nout, trilog_fn fn, void *ud) {
   if (setjmp(t->fatal_jmp)) {
     unwound(t);
     return false;
   }
   return foreign_register(t, name, types, nin, nout, fn, ud);
+}
+
+// trilog_new registers the platform's services while its own unwind point is
+// armed, so the caller's fatal_jmp has to survive this one.
+static bool register_parsed(trilog_t *t, const char *name, const char *types,
+                            int32_t nin, int32_t nout, trilog_fn fn, void *ud) {
+  jmp_buf saved;
+  memcpy(saved, t->fatal_jmp, sizeof saved);
+  bool ok = register_armed(t, name, types, nin, nout, fn, ud);
+  memcpy(t->fatal_jmp, saved, sizeof saved);
+  return ok;
 }
 
 bool trilog_register(trilog_t *t, const char *name, const char *sig,

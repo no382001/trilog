@@ -1075,14 +1075,6 @@ static int dispatch_builtin(trilog_t *T, size_t goal, int *ok) {
     return 1;
   }
 
-  if (arity == 1 && id == atom_get_time_ms) {
-    long long now_ms = platform_monotonic_ms();
-    if (T->epoch_ms < 0)
-      T->epoch_ms = now_ms;
-    *ok = unify(T, f + 1, heap_new_int(T, now_ms - T->epoch_ms));
-    return 1;
-  }
-
   if (arity == 2 && id == atom_is) {
     int aok = 1;
     size_t v = eval_arith(T, f + 2, &aok);

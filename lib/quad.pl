@@ -225,13 +225,17 @@ strip_query_prefix(Raw, Query) :-
     ),
     trim_leading(Rest, Query).
 
+% Timings read 0 on a platform without get_time_ms/1.
+quad_now(T) :-
+    catch(get_time_ms(T), error(existence_error(procedure, _), _), T = 0).
+
 run_one_test(QueryRaw, AnswerRaw, Pass) :-
     strip_query_prefix(QueryRaw, Query0),
     strip_terminating_dot(Query0, Query),
     parse_expected(AnswerRaw, Expected, Mode),
     quad_display(Query, Display),
     quad_ckpt_before(Display),
-    get_time_ms(T0),
+    quad_now(T0),
     ( atom_to_term(Query, QueryTerm, NameVars)
     -> ( catch(
              ( collect_solutions(QueryTerm, NameVars, 64, Got, Snaps), Error = none ),
@@ -243,7 +247,7 @@ run_one_test(QueryRaw, AnswerRaw, Pass) :-
        )
     ;  Got = [], Snaps = [], Error = quad_unparseable
     ),
-    get_time_ms(T1),
+    quad_now(T1),
     ElapsedMs is T1 - T0,
     quad_judge(Expected, Got, Snaps, Error, Mode, Pass, Reason),
     retract(quad_stat(TN0, P0, F0, TMs0)),

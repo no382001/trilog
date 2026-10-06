@@ -107,7 +107,6 @@ struct trilog {
   int capture_sp;
   char tta_buf[CAPTURE_BUF_SIZE];
   int tta_pos;
-  long long epoch_ms;
 
   bool in_query;
   bool in_callback;

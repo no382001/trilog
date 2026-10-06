@@ -63,7 +63,6 @@
   X(atom_false, "false")                                                       \
   X(atom_halt, "halt")                                                         \
   X(atom_flush_output, "flush_output")                                         \
-  X(atom_get_time_ms, "get_time_ms")                                           \
   X(atom_read_line_to_atom, "read_line_to_atom")                               \
   X(atom_end_of_file, "end_of_file")                                           \
   X(atom_user_input, "user_input")                                             \
