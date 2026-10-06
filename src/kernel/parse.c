@@ -754,8 +754,24 @@ bool parse_query(trilog_t *T, const char *src, tterm_t ***goals_out,
   return true;
 }
 
+static bool parse_term_from_string_(trilog_t *T, const char *src,
+                                    tterm_t **term_out, int32_t *nvars_out,
+                                    const char ***varnames_out);
+
 bool parse_term_from_string(trilog_t *T, const char *src, tterm_t **term_out,
                             int32_t *nvars_out, const char ***varnames_out) {
+  const char *saved_P = T->P;
+  jmp_buf saved_jmp;
+  memcpy(saved_jmp, T->err_jmp, sizeof(jmp_buf));
+  bool ok = parse_term_from_string_(T, src, term_out, nvars_out, varnames_out);
+  T->P = saved_P;
+  memcpy(T->err_jmp, saved_jmp, sizeof(jmp_buf));
+  return ok;
+}
+
+static bool parse_term_from_string_(trilog_t *T, const char *src,
+                                    tterm_t **term_out, int32_t *nvars_out,
+                                    const char ***varnames_out) {
   T->P = src;
   if (setjmp(T->err_jmp)) {
     char msg[32 + sizeof T->err_msg];

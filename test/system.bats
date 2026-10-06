@@ -1602,3 +1602,11 @@ PLEOF
   [ "$status" -eq 0 ]
 }
 
+
+
+@test "atom_to_term/3 in a directive leaves the rest of the file loading (regression)" {
+  # regression: run-time parsing overwrote the consult's parse position.
+  printf "a(1).\n:- atom_to_term('foo(X, Y)', _, _).\na(2).\na(3).\n" > "$BATS_TEST_TMPDIR/att.pl"
+  run "$TRILOG" -f "$BATS_TEST_TMPDIR/att.pl" -e "findall(X, a(X), L)."
+  [[ "$output" == *"L = [1, 2, 3]"* ]]
+}
