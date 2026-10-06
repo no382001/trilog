@@ -1225,7 +1225,7 @@ static int dispatch_builtin(trilog_t *T, size_t goal, int *ok) {
         T->heap[sd].as.atom_id == atom_user_input) {
       got = io_read_line(T, buf, sizeof buf);
     } else if (resolve_stream_id(T, f + 1, &sid)) {
-      got = io_file_read_line(T, stream_handle(T, sid), buf, sizeof buf);
+      got = stream_read_line(T, sid, buf, sizeof buf);
     } else {
       *ok = 0;
       return 1;

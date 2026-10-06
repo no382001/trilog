@@ -39,7 +39,7 @@ struct trilog {
   int32_t atom_count, atom_cap;
 
   trilog_io_t hooks;
-  void *open_streams[MAX_OPEN_STREAMS];
+  io_reader_t streams[MAX_OPEN_STREAMS];
 
   pair_visits unify_visits, occurs_check_visits;
   size_t *occurs_marks;

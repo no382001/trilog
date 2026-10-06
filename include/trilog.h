@@ -38,17 +38,12 @@ typedef enum {
 } trilog_type_t;
 
 typedef struct {
-  void (*write_str)(void *ud, const char *str);
-  void (*write_err)(void *ud, const char *str);
-  void (*flush)(void *ud);
-  int (*read_char)(void *ud);
-  char *(*read_line)(void *ud, char *buf, int size);
-  void *(*file_open)(void *ud, const char *path, const char *mode);
-  void (*file_close)(void *ud, void *handle);
-  char *(*file_read_line)(void *ud, void *handle, char *buf, int size);
-  bool (*file_write)(void *ud, void *handle, const char *str);
-  bool (*file_exists)(void *ud, const char *path);
-  long long (*file_mtime)(void *ud, const char *path); // -1 when unknown
+  void *(*open)(void *ud, const char *path, const char *mode); // NULL: failed
+  long (*read)(void *ud, void *handle, char *buf, size_t n); // 0 at end of file
+  long (*write)(void *ud, void *handle, const char *buf, size_t n);
+  void (*close)(void *ud, void *handle);
+  void (*flush)(void *ud, void *handle); // optional
+  void *in, *out, *err;
   void *userdata;
 } trilog_io_t;
 
@@ -74,8 +69,8 @@ typedef struct {
   size_t arena_bytes; // clauses, atom names and parsed source
 } trilog_usage_t;
 
-// Accepts a NULL config. Returns NULL if booting fails,
-// or if only one of the allocator hooks is set.
+// Accepts a NULL config. Returns NULL if booting fails, if only one of the
+// allocator hooks is set, or if the I/O hooks are an incomplete set.
 trilog_t *trilog_new(const trilog_config_t *config);
 void trilog_free(trilog_t *t);
 
@@ -126,8 +121,8 @@ size_t trilog_format(trilog_t *t, trilog_term_t term, int flags, char *buf,
 
 void trilog_usage(trilog_t *t, trilog_usage_t *out);
 
-// Replaces the I/O hooks; NULL restores stdio.
-void trilog_set_io(trilog_t *t, const trilog_io_t *io);
+// Replaces the I/O hooks; NULL restores stdio. False for an incomplete set.
+bool trilog_set_io(trilog_t *t, const trilog_io_t *io);
 
 #define TRILOG_MAX_FOREIGN_ARGS 8
 

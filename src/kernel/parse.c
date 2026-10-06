@@ -618,13 +618,14 @@ static size_t read_file_pass(trilog_t *T, const char *path, char *out,
   void *h = io_file_open(T, path, "rb");
   if (!h)
     return (size_t)-1;
-  char line[4096];
+  char chunk[4096];
   size_t len = 0;
-  while (io_file_read_line(T, h, line, sizeof line)) {
-    size_t n = strlen(line);
+  long got;
+  while ((got = io_file_read(T, h, chunk, sizeof chunk)) > 0) {
+    size_t n = (size_t)got;
     size_t room = len < cap ? cap - len : 0;
     if (out)
-      memcpy(out + len, line, n < room ? n : room);
+      memcpy(out + len, chunk, n < room ? n : room);
     len += n;
   }
   io_file_close(T, h);

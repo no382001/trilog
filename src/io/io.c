@@ -1,84 +1,47 @@
 #include "io.h"
 #include "ctx.h"
-#include "platform.h"
 #include <stdio.h>
 #include <string.h>
 
-static void default_write_str(void *ud, const char *str) {
-  (void)ud;
-  fputs(str, stdout);
-}
-static void default_write_err(void *ud, const char *str) {
-  (void)ud;
-  fputs(str, stderr);
-}
-static void default_flush(void *ud) {
-  (void)ud;
-  fflush(stdout);
-}
-static int default_read_char(void *ud) {
-  (void)ud;
-  return getchar();
-}
-static char *default_read_line(void *ud, char *buf, int size) {
-  (void)ud;
-  return fgets(buf, size, stdin);
-}
-static void *default_file_open(void *ud, const char *path, const char *mode) {
+static void *default_open(void *ud, const char *path, const char *mode) {
   (void)ud;
   return fopen(path, mode);
 }
-static void default_file_close(void *ud, void *handle) {
+static long default_read(void *ud, void *handle, char *buf, size_t n) {
   (void)ud;
-  if (handle)
-    fclose(handle);
+  return (long)fread(buf, 1, n, handle);
 }
-static char *default_file_read_line(void *ud, void *handle, char *buf,
-                                    int size) {
+static long default_write(void *ud, void *handle, const char *buf, size_t n) {
   (void)ud;
-  return fgets(buf, size, handle);
+  return (long)fwrite(buf, 1, n, handle);
 }
-static bool default_file_write(void *ud, void *handle, const char *str) {
+static void default_close(void *ud, void *handle) {
   (void)ud;
-  return fputs(str, handle) >= 0;
+  fclose(handle);
 }
-static bool default_file_exists(void *ud, const char *path) {
+static void default_flush(void *ud, void *handle) {
   (void)ud;
-  FILE *f = fopen(path, "rb");
-  if (f)
-    fclose(f);
-  return f != NULL;
-}
-static long long default_file_mtime(void *ud, const char *path) {
-  (void)ud;
-  return platform_file_mtime(path);
+  fflush(handle);
 }
 
-void io_set(trilog_t *T, const trilog_io_t *io) {
+bool io_set(trilog_t *T, const trilog_io_t *io) {
   trilog_io_t h = io ? *io : (trilog_io_t){0};
-  if (!h.write_str)
-    h.write_str = default_write_str;
-  if (!h.write_err)
-    h.write_err = default_write_err;
-  if (!h.flush)
-    h.flush = default_flush;
-  if (!h.read_char)
-    h.read_char = default_read_char;
-  if (!h.read_line)
-    h.read_line = default_read_line;
-  if (!h.file_open)
-    h.file_open = default_file_open;
-  if (!h.file_close)
-    h.file_close = default_file_close;
-  if (!h.file_read_line)
-    h.file_read_line = default_file_read_line;
-  if (!h.file_write)
-    h.file_write = default_file_write;
-  if (!h.file_exists)
-    h.file_exists = default_file_exists;
-  if (!h.file_mtime)
-    h.file_mtime = default_file_mtime;
+  int given = !!h.open + !!h.read + !!h.write + !!h.close;
+  if (given == 0) {
+    h.open = default_open;
+    h.read = default_read;
+    h.write = default_write;
+    h.close = default_close;
+    h.in = stdin;
+    h.out = stdout;
+    h.err = stderr;
+    if (!h.flush)
+      h.flush = default_flush;
+  } else if (given != 4) {
+    return false;
+  }
   T->hooks = h;
+  return true;
 }
 
 static void capture_append(trilog_t *T, const char *str) {
@@ -93,40 +56,82 @@ static void capture_append(trilog_t *T, const char *str) {
   }
 }
 
+static void io_write(trilog_t *T, void *handle, const char *str) {
+  size_t n = strlen(str);
+  if (n > 0)
+    T->hooks.write(T->hooks.userdata, handle, str, n);
+}
+
 void io_write_str(trilog_t *T, const char *str) {
   if (T->capture_sp > 0) {
     capture_append(T, str);
     return;
   }
-  T->hooks.write_str(T->hooks.userdata, str);
+  io_write(T, T->hooks.out, str);
 }
 void io_write_err(trilog_t *T, const char *str) {
-  T->hooks.write_err(T->hooks.userdata, str);
+  io_write(T, T->hooks.err, str);
 }
 void io_flush(trilog_t *T) {
-  if (T->capture_sp > 0)
+  if (T->capture_sp > 0 || !T->hooks.flush)
     return;
-  T->hooks.flush(T->hooks.userdata);
+  T->hooks.flush(T->hooks.userdata, T->hooks.out);
 }
-int io_read_char(trilog_t *T) { return T->hooks.read_char(T->hooks.userdata); }
+
+// One byte at a time, so input meant for the host is never read ahead.
+int io_read_char(trilog_t *T) {
+  char c;
+  return T->hooks.read(T->hooks.userdata, T->hooks.in, &c, 1) == 1
+             ? (unsigned char)c
+             : -1;
+}
+
 char *io_read_line(trilog_t *T, char *buf, int size) {
-  return T->hooks.read_line(T->hooks.userdata, buf, size);
+  int n = 0;
+  while (n < size - 1) {
+    int c = io_read_char(T);
+    if (c < 0)
+      break;
+    buf[n++] = (char)c;
+    if (c == '\n')
+      break;
+  }
+  buf[n] = '\0';
+  return n > 0 ? buf : NULL;
 }
+
 void *io_file_open(trilog_t *T, const char *path, const char *mode) {
-  return T->hooks.file_open(T->hooks.userdata, path, mode);
+  return T->hooks.open(T->hooks.userdata, path, mode);
 }
 void io_file_close(trilog_t *T, void *handle) {
-  T->hooks.file_close(T->hooks.userdata, handle);
-}
-char *io_file_read_line(trilog_t *T, void *handle, char *buf, int size) {
-  return T->hooks.file_read_line(T->hooks.userdata, handle, buf, size);
+  if (handle)
+    T->hooks.close(T->hooks.userdata, handle);
 }
 bool io_file_write(trilog_t *T, void *handle, const char *str) {
-  return T->hooks.file_write(T->hooks.userdata, handle, str);
+  size_t n = strlen(str);
+  return T->hooks.write(T->hooks.userdata, handle, str, n) == (long)n;
 }
-bool io_file_exists(trilog_t *T, const char *path) {
-  return T->hooks.file_exists(T->hooks.userdata, path);
+
+long io_file_read(trilog_t *T, void *handle, char *buf, size_t n) {
+  return T->hooks.read(T->hooks.userdata, handle, buf, n);
 }
-long long io_file_mtime(trilog_t *T, const char *path) {
-  return T->hooks.file_mtime(T->hooks.userdata, path);
+
+char *io_reader_line(trilog_t *T, io_reader_t *r, char *buf, int size) {
+  int n = 0;
+  while (n < size - 1) {
+    if (r->pos == r->len) {
+      long got =
+          T->hooks.read(T->hooks.userdata, r->handle, r->buf, sizeof r->buf);
+      if (got <= 0)
+        break;
+      r->pos = 0;
+      r->len = (size_t)got;
+    }
+    char c = r->buf[r->pos++];
+    buf[n++] = c;
+    if (c == '\n')
+      break;
+  }
+  buf[n] = '\0';
+  return n > 0 ? buf : NULL;
 }

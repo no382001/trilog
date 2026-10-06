@@ -76,7 +76,10 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   t->pending_error_ball = (size_t)-1;
   t->uncaught_ball = (size_t)-1;
   t->epoch_ms = -1;
-  io_set(t, c.io);
+  if (!io_set(t, c.io)) {
+    c.free(c.alloc_ud, t);
+    return NULL;
+  }
   if (setjmp(t->fatal_jmp)) {
     trilog_free(t);
     return NULL;
@@ -177,7 +180,7 @@ bool trilog_register(trilog_t *t, const char *name, const char *sig,
   return register_parsed(t, name, types, nin, n - nin, fn, ud);
 }
 
-void trilog_set_io(trilog_t *t, const trilog_io_t *io) { io_set(t, io); }
+bool trilog_set_io(trilog_t *t, const trilog_io_t *io) { return io_set(t, io); }
 
 void trilog_set_yield(trilog_t *t, trilog_yield_fn fn, unsigned every,
                       void *ud) {

@@ -259,41 +259,48 @@ typedef struct {
   size_t len;
 } sink;
 
-static void sink_write(void *ud, const char *s) {
-  sink *k = ud;
-  size_t n = strlen(s);
-  if (k->len + n < sizeof k->out) {
-    memcpy(k->out + k->len, s, n + 1);
-    k->len += n;
-  }
-}
+typedef struct {
+  const char *text;
+  size_t pos;
+} vfs_file;
+
+typedef struct {
+  sink out, err;
+  vfs_file file;
+} host;
 
 static const char *const vfs_text = "v(1).\nv(2).\n";
 
 static void *vfs_open(void *ud, const char *path, const char *mode) {
-  (void)ud;
-  (void)mode;
-  if (!streq(path, "mem/v.pl"))
+  host *h = ud;
+  if (!streq(path, "mem/v.pl") || mode[0] != 'r')
     return NULL;
-  static const char *cursor;
-  cursor = vfs_text;
-  return &cursor;
+  h->file = (vfs_file){.text = vfs_text};
+  return &h->file;
 }
 
-static char *vfs_read_line(void *ud, void *handle, char *buf, int size) {
-  (void)ud;
-  const char **cursor = handle;
-  if (!**cursor)
-    return NULL;
-  int n = 0;
-  while ((*cursor)[n] && (*cursor)[n] != '\n' && n < size - 2)
-    n++;
-  if ((*cursor)[n] == '\n')
-    n++;
-  memcpy(buf, *cursor, (size_t)n);
-  buf[n] = '\0';
-  *cursor += n;
-  return buf;
+static long vfs_read(void *ud, void *handle, char *buf, size_t n) {
+  host *h = ud;
+  if (handle != &h->file)
+    return 0;
+  size_t left = strlen(h->file.text) - h->file.pos;
+  size_t k = n < 3 ? n : 3;
+  if (k > left)
+    k = left;
+  memcpy(buf, h->file.text + h->file.pos, k);
+  h->file.pos += k;
+  return (long)k;
+}
+
+static long vfs_write(void *ud, void *handle, const char *buf, size_t n) {
+  host *h = ud;
+  sink *k = handle == &h->out ? &h->out : handle == &h->err ? &h->err : NULL;
+  if (!k || k->len + n >= sizeof k->out)
+    return -1;
+  memcpy(k->out + k->len, buf, n);
+  k->len += n;
+  k->out[k->len] = '\0';
+  return (long)n;
 }
 
 static void vfs_close(void *ud, void *handle) {
@@ -302,19 +309,37 @@ static void vfs_close(void *ud, void *handle) {
 }
 
 static void test_io(trilog_t *t) {
-  sink k = {0};
-  trilog_set_io(t, &(trilog_io_t){.write_str = sink_write,
-                                  .file_open = vfs_open,
-                                  .file_read_line = vfs_read_line,
-                                  .file_close = vfs_close,
-                                  .userdata = &k});
+  host h = {0};
+  trilog_io_t io = {.open = vfs_open,
+                    .read = vfs_read,
+                    .write = vfs_write,
+                    .close = vfs_close,
+                    .out = &h.out,
+                    .err = &h.err,
+                    .userdata = &h};
+  CHECK(trilog_set_io(t, &io));
   collected c = {0};
   CHECK(trilog_query(t, "write(hello(1)), nl", collect, &c) == TRILOG_TRUE);
-  CHECK(streq(k.out, "hello(1)\n"));
+  CHECK(streq(h.out.out, "hello(1)\n"));
+  CHECK(trilog_load_string(t, "broken(") == TRILOG_ERROR);
+  CHECK(strstr(h.err.out, "parse error") != NULL);
+  CHECK(strstr(h.out.out, "parse error") == NULL);
   CHECK(trilog_load_file(t, "mem/v.pl") == TRILOG_TRUE);
   collected d = {0};
   CHECK(trilog_query(t, "v(X)", collect, &d) == TRILOG_TRUE && d.count == 2);
-  trilog_set_io(t, NULL);
+  collected e = {0};
+  CHECK(trilog_query(t,
+                     "open('mem/v.pl', read, S), read_line_to_atom(S, A), "
+                     "read_line_to_atom(S, B), read_line_to_atom(S, C), "
+                     "close(S), A == 'v(1).', B == 'v(2).', C == end_of_file",
+                     collect, &e) == TRILOG_TRUE);
+  CHECK(trilog_query(t, "open('mem/nope.pl', read, _)", collect, &e) !=
+        TRILOG_TRUE);
+  CHECK(!trilog_set_io(t, &(trilog_io_t){.write = vfs_write}));
+  size_t before = h.out.len;
+  CHECK(trilog_query(t, "write(still)", collect, &e) == TRILOG_TRUE);
+  CHECK(h.out.len > before);
+  CHECK(trilog_set_io(t, NULL));
 }
 
 static void test_usage(trilog_t *t) {
