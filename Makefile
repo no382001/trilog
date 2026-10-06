@@ -14,8 +14,12 @@ CLI_SRCS = cli/main.c cli/terminal_$(PLATFORM).c
 SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c cli/main.c
 HDRS = include/trilog.h cli/terminal.h $(wildcard src/kernel/*.h) $(wildcard src/io/*.h) $(wildcard src/platform/*.h)
 
-DEV = _build/dev-$(PLATFORM)
-REL = _build/release-$(PLATFORM)
+# OPAQUE=0 exports every engine symbol instead of only the trilog_* API.
+OPAQUE ?= 1
+VARIANT = $(PLATFORM)$(if $(filter 0,$(OPAQUE)),-open)
+DEV = _build/dev-$(VARIANT)
+REL = _build/release-$(VARIANT)
+HIDE_INTERNALS = $(if $(filter 0,$(OPAQUE)),true,objcopy --wildcard --keep-global-symbol='trilog_*')
 DEV_LIB_OBJS = $(patsubst %.c,$(DEV)/%.o,$(LIB_SRCS) src/kernel/embedded_none.c)
 REL_LIB_OBJS = $(patsubst %.c,$(REL)/%.o,$(LIB_SRCS) _build/embedded.c)
 DEV_CLI_OBJS = $(patsubst %.c,$(DEV)/%.o,$(CLI_SRCS))
@@ -31,17 +35,17 @@ $(REL)/%.o: %.c | format
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) -DTRILOG_EMBEDDED $(CFLAGS) -flto=auto -c $< -o $@
 
-# internal names are not exported.
+# Unless OPAQUE=0, internal names are not exported.
 $(DEV)/libtrilog.a: $(DEV_LIB_OBJS)
 	@rm -f $@
 	$(CC) -r -nostdlib -o $(DEV)/libtrilog.o $^
-	objcopy --wildcard --keep-global-symbol='trilog_*' $(DEV)/libtrilog.o
+	$(HIDE_INTERNALS) $(DEV)/libtrilog.o
 	$(AR) rcs $@ $(DEV)/libtrilog.o
 
 $(REL)/libtrilog.a: $(REL_LIB_OBJS)
 	@rm -f $@
 	$(CC) -r -nostdlib -flto=auto -flinker-output=nolto-rel -o $(REL)/libtrilog.o $^
-	objcopy --wildcard --keep-global-symbol='trilog_*' $(REL)/libtrilog.o
+	$(HIDE_INTERNALS) $(REL)/libtrilog.o
 	$(AR) rcs $@ $(REL)/libtrilog.o
 
 GIT_DESCRIBE := $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)

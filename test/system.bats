@@ -1582,6 +1582,15 @@ PLEOF
   [ -z "$output" ]
 }
 
+@test "make OPAQUE=0 exports the engine's internal symbols too" {
+  run make -s -C "$BATS_TEST_DIRNAME/.." OPAQUE=0 lib
+  [ "$status" -eq 0 ]
+  run bash -c "nm -g --defined-only '$BATS_TEST_DIRNAME/../_build/dev-posix-open/libtrilog.a' | awk '\$2 ~ /T/ {print \$3}'"
+  [[ "$output" == *"unify"* ]]
+  [[ "$output" == *"heap_alloc"* ]]
+  [[ "$output" == *"trilog_new"* ]]
+}
+
 @test "trilog -V prints git describe and the branch" {
   root="$BATS_TEST_DIRNAME/.."
   expected="trilog $(git -C "$root" describe --tags --always --dirty) ($(git -C "$root" rev-parse --abbrev-ref HEAD))"
