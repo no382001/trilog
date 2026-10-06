@@ -1,349 +1,218 @@
 % ledit_quad.pl -- Tests for ledit.pl line editor
 %
-% Tests pure-logic and state-management predicates.
-% I/O-dependent predicates (add, get, save, main loop) are not tested here.
-%
-% NOTE: state mutations (l_set, assert, retract) run in directives, not
-% queries - solve_all backtracks into multiple solutions, and those
-% side effects aren't rolled back on backtrack.
 
 :- consult('lib/ledit.pl').
 
-% ===== Pure utilities =====
+% A buffer of three lines with "two" current.
+s0(ed(["two", "one"], ["three"], [], memo(none, none, none))).
 
-% --- l_reverse/3 ---
+% The buffer's lines after running Commands on an empty buffer.
+session_lines(Commands, Lines) :-
+    ed_new(S0),
+    ed_session(Commands, S0, S),
+    ed_lines(S, Lines).
 
-?- l_reverse([], [], L).
-   L = [].
+% ===== Command syntax =====
 
-?- l_reverse([1, 2, 3], [], L).
-   L = [3, 2, 1].
+?- once(phrase(ed_command(C), "f 3")).
+   C = forward(3).
 
-?- l_reverse([a, b], [c, d], L).
-   L = "bacd".
+?- once(phrase(ed_command(C), "forward 3")).
+   C = forward(3).
 
-?- l_reverse([x], [], L).
-   L = "x".
+?- once(phrase(ed_command(C), "f")).
+   C = forward(1).
 
-% --- member/2 (from core.pl) ---
+?- once(phrase(ed_command(C), "  b 2  ")).
+   C = backward(2).
 
-?- member(a, [a, b, c]).
-   true.
+?- once(phrase(ed_command(C), "p")).
+   C = print(1).
 
-?- member(b, [a, b, c]).
-   true.
+?- once(phrase(ed_command(C), "d 4")).
+   C = delete(4).
 
-?- member(c, [a, b, c]).
-   true.
+?- once(phrase(ed_command(C), "D")).
+   C = delete_all.
 
-?- member(d, [a, b, c]).
+?- once(phrase(ed_command(C), "Delete")).
+   C = delete_all.
+
+?- once(phrase(ed_command(C), "c /ab/cd/")).
+   C = change("ab", "cd", 0).
+
+?- once(phrase(ed_command(C), "c/ab/cd/ 3")).
+   C = change("ab", "cd", 3).
+
+?- once(phrase(ed_command(C), "c 2")).
+   C = change_again(2).
+
+?- once(phrase(ed_command(C), "c")).
+   C = change_again(0).
+
+?- once(phrase(ed_command(C), "l /x y/")).
+   C = look("x y").
+
+?- once(phrase(ed_command(C), "l /xy")).
+   C = look("xy").
+
+?- once(phrase(ed_command(C), "l")).
+   C = look_again.
+
+?- once(phrase(ed_command(C), "s out.txt")).
+   C = save('out.txt').
+
+?- once(phrase(ed_command(C), "g in.txt")).
+   C = get('in.txt').
+
+?- once(phrase(ed_command(C), "q")).
+   C = quit.
+
+?- phrase(ed_command(_), "zzz").
    false.
 
-?- member(x, []).
+?- phrase(ed_command(_), "f x").
    false.
 
-% --- l_skip_spaces/2 ---
+?- phrase(ed_command(_), "s").
+   false.
 
-?- l_skip_spaces([' ', ' ', a, b], R).
-   R = "ab".
+% ===== Repeating the previous command =====
 
-?- l_skip_spaces([a, b], R).
-   R = "ab".
+?- s0(S0), ed_parse_line("f 2", S0, C, S), ed_parse_line("", S, C2, _).
+   C = forward(2), C2 = forward(2), S0 = ed(["two", "one"], ["three"], [], memo(none, none, none)), S = ed(["two", "one"], ["three"], [], memo(forward(2), none, none)).
 
-?- l_skip_spaces([], R).
-   R = [].
+?- s0(S0), ed_parse_line("   ", S0, C, _).
+   C = bad, S0 = ed(["two", "one"], ["three"], [], memo(none, none, none)).
 
-?- l_skip_spaces([' '], R).
-   R = [].
+?- s0(S0), ed_parse_line("zzz", S0, C, _).
+   C = bad, S0 = ed(["two", "one"], ["three"], [], memo(none, none, none)).
 
-% --- l_number/2 ---
+% ===== Movement =====
 
-?- l_number([], N).
-   N = 1.
+?- s0(S0), ed_forward(S0, S).
+   S0 = ed(["two", "one"], ["three"], [], memo(none, none, none)), S = ed(["three", "two", "one"], [], [], memo(none, none, none)).
 
-?- l_number(['3'], N).
-   N = 3.
+?- s0(S0), ed_backward(S0, S).
+   S0 = ed(["two", "one"], ["three"], [], memo(none, none, none)), S = ed(["one"], ["two", "three"], [], memo(none, none, none)).
 
-?- l_number(['1', '2'], N).
-   N = 12.
+?- ed_forward(ed(["x"], [], [], m), _).
+   false.
 
-?- l_number(['0'], N).
-   N = 0.
+?- ed_backward(ed([], ["x"], [], m), _).
+   false.
 
-?- l_number(['9', '9', '9'], N).
-   N = 999.
+?- s0(S0), ed_repeat(9, ed_backward, S0, S).
+   S0 = ed(["two", "one"], ["three"], [], memo(none, none, none)), S = ed([], ["one", "two", "three"], [], memo(none, none, none)).
 
-% --- l_collect_to/4 ---
+?- s0(S0), ed_repeat(0, ed_forward, S0, S), S == S0.
+   S0 = ed(["two", "one"], ["three"], [], memo(none, none, none)), S = ed(["two", "one"], ["three"], [], memo(none, none, none)).
 
-?- l_collect_to([a, b, c], c, Acc, Tail).
-   Acc = "ab", Tail = [].
+?- s0(S0), ed_lines(S0, L).
+   S0 = ed(["two", "one"], ["three"], [], memo(none, none, none)), L = ["one", "two", "three"].
 
-?- l_collect_to([a, b, c, d, e], c, Acc, Tail).
-   Acc = "ab", Tail = "de".
+?- s0(S0), ed_rewind(S0, S).
+   S0 = ed(["two", "one"], ["three"], [], memo(none, none, none)), S = ed([], ["one", "two", "three"], [], memo(none, none, none)).
 
-?- l_collect_to([c, d], c, Acc, Tail).
-   Acc = [], Tail = "d".
+?- s0(S0), ed_wind(S0, S).
+   S0 = ed(["two", "one"], ["three"], [], memo(none, none, none)), S = ed(["three", "two", "one"], [], [], memo(none, none, none)).
 
-?- l_collect_to([], c, Acc, Tail).
-   Acc = [], Tail = [].
+% ===== Inserting and deleting =====
 
-% --- l_replace_all/4 ---
+?- s0(S0), ed_insert(["a", "b"], S0, S).
+   S0 = ed(["two", "one"], ["three"], [], memo(none, none, none)), S = ed(["b", "a", "two", "one"], ["three"], [], memo(none, none, none)).
 
-?- l_replace_all("hello", "x", "y", R).
-   R = "hello".
+?- ed_insert(["a"], ed([], [], [], m), S).
+   S = ed(["a"], [], [], m).
 
-?- l_replace_all("abcabc", "abc", "x", R).
-   R = "xx".
+?- s0(S0), ed_delete(1, S0, S).
+   S0 = ed(["two", "one"], ["three"], [], memo(none, none, none)), S = ed(["three", "one"], [], ["two"], memo(none, none, none)).
 
-?- l_replace_all("hello world", " ", "-", R).
-   R = "hello-world".
+?- s0(S0), ed_delete(5, S0, S).
+   S0 = ed(["two", "one"], ["three"], [], memo(none, none, none)), S = ed(["one"], [], ["two", "three"], memo(none, none, none)).
 
-?- l_replace_all("aaa", "a", "bb", R).
-   R = "bbbbbb".
+?- ed_delete(1, ed([], ["x"], [], m), _).
+   false.
 
-% --- l_for/2 ---
+?- ed_take(2, [a, b, c], P, R).
+   P = [a, b], R = [c].
 
-?- l_for(0, fail).
+?- ed_take(5, [a], P, R).
+   P = [a], R = [].
+
+?- s0(S0), ed_delete_all(S0, S).
+   S0 = ed(["two", "one"], ["three"], [], memo(none, none, none)), S = ed([], [], ["one", "two", "three"], memo(none, none, none)).
+
+?- ed_yank(ed(["one"], [], ["a", "b"], m), S).
+   S = ed(["b", "a", "one"], [], ["a", "b"], m).
+
+?- ed_yank(ed(["one"], [], [], m), _).
+   false.
+
+% ===== Searching and changing =====
+
+?- ed_look("re", ed(["one"], ["two", "three", "four"], [], m), S).
+   S = ed(["three", "two", "one"], ["four"], [], m).
+
+?- ed_look("zz", ed(["one"], ["two"], [], m), _).
+   false.
+
+?- ed_change("o", "0", 0, ed(["foo", "x"], [], [], m), S).
+   S = ed(["f0o", "x"], [], [], m).
+
+?- ed_change("o", "0", 2, ed(["foo"], ["boo", "zoo"], [], m), S).
+   S = ed(["b00", "f00"], ["zoo"], [], m).
+
+?- ed_change("o", "0", 9, ed(["foo"], ["boo"], [], m), S).
+   S = ed(["b00", "f00"], [], [], m).
+
+?- ed_change("o", "0", 0, ed([], ["foo"], [], m), _).
+   false.
+
+?- ed_contains("hello world", "lo w").
    true.
 
-?- X = 0, l_for(3, (X = 0)).
-   X = 0.
-
-% ===== State management =====
-
-% --- l_set/2 and l_value ---
-
-:- l_set(test_key, 42).
-
-?- l_value(test_key, V).
-   V = 42.
-
-:- l_set(test_key, hello).
-
-?- l_value(test_key, V).
-   V = hello.
-
-% --- l_set/3 (pattern-matching update) ---
-
-:- l_set(test_s3, start).
-:- l_set(test_s3, start, finish).
-
-?- l_value(test_s3, V).
-   V = finish.
-
-% l_set/3 fails on mismatch
-:- l_set(test_s3b, aaa).
-
-?- l_set(test_s3b, bbb, ccc).
-   false.
-
-?- l_value(test_s3b, V).
-   V = aaa.
-
-% ===== Initialization =====
-
-:- (retract(l_value(line, _)) -> true ; true).
-:- (retract(l_value(delete, _)) -> true ; true).
-:- l_initialize.
-
-?- l_value(line, L).
-   L = [top_of_file],[].
-
-?- l_value(delete, D).
-   D = [].
-
-% ===== Navigation =====
-
-% --- l_backward ---
-
-:- l_set(line, (["line two", "line one", top_of_file], ["line three"])).
-
-?- l_backward, l_value(line, L).
-   L = ["line one", top_of_file],["line two", "line three"].
-
-% backward at top fails
-:- l_set(line, ([top_of_file], ["line one", "line two", "line three"])).
-
-?- l_backward.
-   false.
-
-% --- l_forward ---
-
-:- l_set(line, (["line one", top_of_file], ["line two", "line three"])).
-
-?- l_forward, l_value(line, L).
-   L = ["line two", "line one", top_of_file],["line three"].
-
-% forward at end fails
-:- l_set(line, (["line three", "line two", "line one", top_of_file], [])).
-
-?- l_forward.
-   false.
-
-% --- l_do backward with count ---
-
-:- l_set(line, (["line three", "line two", "line one", top_of_file], [])).
-
-?- l_do([b, ' ', '2']), l_value(line, L).
-   L = ["line one", top_of_file],["line two", "line three"].
-
-% --- l_do forward with count ---
-
-:- l_set(line, ([top_of_file], ["line one", "line two", "line three"])).
-
-?- l_do([f, ' ', '2']), l_value(line, L).
-   L = ["line two", "line one", top_of_file],["line three"].
-
-% --- rewind ---
-
-:- l_set(line, (["line three", "line two", "line one", top_of_file], [])).
-:- l_do([r]).
-
-?- l_value(line, L).
-   L = [top_of_file],["line one", "line two", "line three"].
-
-% rewind from middle
-:- l_set(line, (["line two", "line one", top_of_file], ["line three"])).
-:- l_do([r]).
-
-?- l_value(line, L).
-   L = [top_of_file],["line one", "line two", "line three"].
-
-% --- wind ---
-
-:- l_set(line, ([top_of_file], ["line one", "line two", "line three"])).
-:- l_do([w]).
-
-?- l_value(line, L).
-   L = ["line three", "line two", "line one", top_of_file],[].
-
-% wind from middle
-:- l_set(line, (["line one", top_of_file], ["line two", "line three"])).
-:- l_do([w]).
-
-?- l_value(line, L).
-   L = ["line three", "line two", "line one", top_of_file],[].
-
-% ===== Delete =====
-
-% Single delete from current position (Below is non-empty)
-:- l_set(line, (["line two", "line one", top_of_file], ["line three"])).
-:- l_set(delete, []).
-
-?- l_deletebuf, l_delete, l_value(line, L), l_value(delete, D).
-   L = ["line three", "line one", top_of_file],[], D = ["line two"].
-
-% Delete at end (Below=[]) -- l_delete succeeds in modifying state then fails
-% to advance, so we catch it with -> to still verify state
-:- l_set(line, (["line three", "line two", "line one", top_of_file], [])).
-:- l_set(delete, []).
-:- l_deletebuf.
-:- (l_delete -> true ; true).
-
-?- l_value(line, L).
-   L = ["line two", "line one", top_of_file],[].
-
-?- l_value(delete, D).
-   D = ["line three"].
-
-% Delete via l_do (with count, from position with Below)
-:- l_set(line, (["line two", "line one", top_of_file], ["line three"])).
-:- l_set(delete, []).
-:- l_do([d, ' ', '2']).
-
-?- l_value(line, L).
-   L = ["line one", top_of_file],[].
-
-% Delete at top-of-file (via l_do, succeeds but does nothing)
-:- l_set(line, ([top_of_file], [])).
-
-?- l_do([d]).
+?- ed_contains("hello", "").
    true.
 
-% --- Delete all ---
+?- ed_contains("hello", "xyz").
+   false.
 
-:- l_set(line, (["line three", "line two", "line one", top_of_file], [])).
-:- l_set(delete, []).
-:- l_do(['D']).
+?- ed_replace_first("aaa", "a", "b", T).
+   T = "baa".
 
-?- l_value(line, L).
-   L = [top_of_file],[].
+?- ed_replace_all("aaa", "a", "bb", T).
+   T = "bbbbbb".
 
-% ===== Yank =====
-
-% Yank from empty delete buffer prints ? (succeeds but does nothing)
-:- l_set(delete, []).
-
-?- l_do([y]).
-   true.
-
-% Yank restores deleted lines
-:- l_set(line, (["line two", "line one", top_of_file], ["line three"])).
-:- l_set(delete, []).
-:- l_deletebuf.
-
-?- l_delete, l_value(delete, D).
-   D = ["line two"].
-
-% Now yank it back
-:- l_do([y]).
-
-?- l_value(line, L).
-   L = ["line two", "line three", "line one", top_of_file],[].
-
-% ===== Change =====
-
-:- l_set(line, (["hello world", top_of_file], [])).
-
-% l_change_once replaces first occurrence
-?- l_change_once("hello", "goodbye"), l_value(line, ([T|_], _)).
-   T = "goodbye world".
-
-% l_changes replaces all occurrences
-:- l_set(line, (["aaa bbb aaa", top_of_file], [])).
-
-?- l_changes("aaa", "zzz"), l_value(line, ([T|_], _)).
-   T = "zzz bbb zzz".
-
-% change with no match leaves line unchanged
-:- l_set(line, (["hello", top_of_file], [])).
-
-?- l_change_once("xyz", "abc"), l_value(line, ([T|_], _)).
+?- ed_replace_all("hello", "xyz", "q", T).
    T = "hello".
 
-% ===== l_continuation =====
+?- ed_replace_all("hello", "", "q", T).
+   T = "hello".
 
-% With prior command stored, empty input repeats it
-:- l_set(command, [f]).
+% ===== Command chains =====
 
-?- l_continuation([], X).
-   X = "f".
+?- session_lines(["a", "one", "two", "."], L).
+   L = ["one", "two"].
 
-% Non-empty input stores new command
-?- l_continuation([b], X).
-   X = "b".
+?- session_lines([a, x, '.'], L).
+   L = ["x"].
 
-?- l_value(command, C).
-   C = "b".
+?- session_lines(["a", "x"], L).
+   L = ["x"].
 
-% ===== l_listing (line ordering assembly) =====
+?- session_lines(["a", "x", ".", "q", "D"], L).
+   L = ["x"].
 
-?- l_reverse([b, a, top], [c], [_|L3]), !.
-   L3 = "abc".
+?- session_lines(["a", "1", "2", "3", ".", "r", "f", "d", ""], L).
+   L = ["3"].
 
-% ===== l_contains/2 =====
+?- session_lines(["a", "foo", "boo", ".", "r", "f", "c /o/0/ 2"], L).
+   L = ["f00", "b00"].
 
-?- l_contains("hello world", "world").
-   true.
+?- session_lines(["a", "1", "2", ".", "b", "d", "y"], L).
+   L = ["2", "1"].
 
-?- l_contains("hello world", "hello").
-   true.
+?- session_lines(["a", "x", ".", "D", "y"], L).
+   L = ["x"].
 
-?- l_contains("hello world", "xyz").
-   false.
-
-?- l_contains("abcdef", "cde").
-   true.
-
-?- l_contains("abc", "").
-   true.
