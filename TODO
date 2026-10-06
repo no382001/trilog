@@ -1,5 +1,12 @@
+regressions:
+- toplevel prints answers unquoted: '1' as 1, 'hello world' as hello world (#14, #16)
+- unknown flag missing: current_prolog_flag(unknown, V) raises domain_error, iso says V = error (#13)
+- read_from_chars/2, read_term_from_chars/3, write_term_to_chars/3 are missing (#20)
+- error context is left unbound, tests expect the culprit pi like error(_, is/2) (#4)
+
 correctness:
-- the printer never uses operator syntax: (a,b) prints as ','(a, b), foo/0 as /(foo, 0); 14 ledit quads fail on it
+- the printer never uses operator syntax: (a,b) prints as ','(a, b), foo/0 as /(foo, 0) (#15 shows /(ex_nihilo, 0))
+- number_codes parses with its own strtoll/strtod, not the parser's number reader, so the number_chars quads test the wrong code (#7)
 - dcg: \+//1 and pushback are missing; call//N skips compile-on-first-call (call(item, a) -> existence_error item/3)
 - atom_codes/atom_concat fail silently once an atom passes ~4k bytes
 - sub_atom/atom_length count bytes, not utf-8 chars (atom_length('Pécs', 5)) I mean how correct should we be?
@@ -7,21 +14,20 @@ correctness:
 - 7/2 gives 3 (iso: 3.5); floats print as 1e+10 (iso: 1.0e10)
 
 missing requirements:
-- missing library preds: read_from_chars/2, read_term_from_chars/3, write_term_to_chars/3, countall/2, nth0/4, nth1/4, foldl/5,6, consulted/1, unconsult/1, acyclic_term/1
+- missing library preds: countall/2, nth0/4, nth1/4, foldl/5,6, acyclic_term/1
 - missing iso builtins: read/1, read_term/2,3, write_term/2,3, write_canonical/1, print/1, put_char/1, get_char/2, peek_char/1, current_input/1, current_output/1, set_input/1, set_output/1, flush_output/1, open/4, close/2, keysort/2, numbervars/3, set_prolog_flag/2, char_conversion/2, current_predicate/1, subsumes_term/2, ground/1
 - missing iso evaluables: rem, **, ^, sqrt, sin, cos, atan, atan2, exp, log, pi, float_integer_part, float_fractional_part
-- make/0 (reload changed files): needs reconsult to replace clauses first; 2 ledit.bats tests skip until then
 - port wokwi/ to trilog.h (is it still possible? it should be w/o the libs)
-- reconsulting a file appends its clauses instead of replacing them (list_consult)
-- error context is left unbound, tests expect the culprit pi like error(_, is/2)
 - is_list([a|_]) succeeds, should fail
 - length(L, -1) fails and length(L, a) raises type_error(evaluable, a/0); want domain_error(not_less_than_zero, -1) and type_error(integer, a)
-- number_chars_quad runs out of memory
+- number_chars_quad runs out of memory, 12/71 pass (#7)
+- toplevel: key a shows all answers; stopping early prints ;  ... . instead of . (#28)
+- quad.pl: chars and dcgs instead of codes and atom_concat chains (#27)
+- unbounded max_arity, 255 for now with representation_error(max_arity) (#26)
 - fix main-specific test expectations: 32-bit max_integer, last/2 arg order, sub_atom/5 single answer, answer printing (unhandled exception, X = Y)
 - debug flag, and trace?
 - readline/history in repl
 - modules?
-- re-check all issues for regressions
 
 guidelines:
 - as much logic in prolog as possible
