@@ -236,7 +236,7 @@ run_one_test(QueryRaw, AnswerRaw, Pass) :-
     quad_display(Query, Display),
     quad_ckpt_before(Display),
     quad_now(T0),
-    ( atom_to_term(Query, QueryTerm, NameVars)
+    ( catch(atom_to_term(Query, QueryTerm, NameVars), error(syntax_error(_), _), fail)
     -> ( catch(
              ( collect_solutions(QueryTerm, NameVars, 64, Got, Snaps), Error = none ),
              Ball,

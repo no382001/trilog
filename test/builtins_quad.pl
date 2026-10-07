@@ -637,9 +637,12 @@ bcapply(G) :- call(G).
 ?- read_from_chars("[1,2,3]", T).
    T = [1, 2, 3].
 
-% empty char list has no term
-?- read_from_chars([], _).
-   false.
+% iso read_term/3 at end of input gives end_of_file
+?- read_from_chars([], T).
+   T = end_of_file.
+
+?- read_from_chars("  \n", T).
+   T = end_of_file.
 
 % --- read_term_from_chars/3 ---
 
@@ -649,8 +652,41 @@ bcapply(G) :- call(G).
 ?- read_term_from_chars("hello", T, []).
    T = hello.
 
-?- read_term_from_chars("X", T, [variable_names(Vs)]).
-   T = X, Vs = ['X'=X].
+?- read_term_from_chars("f(X)", T, [variable_names(Vs)]).
+   T = f(X), Vs = ['X'=X].
+
+?- read_term_from_chars("f(X, _, Y, X)", T, [variable_names(Ns), variables(Vs)]).
+   T = f(X, _A, Y, X), Ns = ['X'=X, 'Y'=Y], Vs = [X, _A, Y].
+
+?- catch(read_from_chars("f(", _), error(E, _), true).
+   E = syntax_error('unexpected end of input near ""').
+
+?- catch(read_from_chars(_, _), error(E, C), true).
+   E = instantiation_error, C = read_from_chars/2.
+
+?- catch(read_from_chars([a, 1], _), error(E, _), true).
+   E = type_error(character, 1).
+
+?- catch(read_term_from_chars("a", _, [bad]), error(E, C), true).
+   E = domain_error(read_option, bad), C = read_term_from_chars/3.
+
+?- catch(read_term_from_chars("a", _, foo), error(E, _), true).
+   E = type_error(list, foo).
+
+?- write_term_to_chars('a b'+[x|y], [quoted(true), ignore_ops(true)], Cs).
+   Cs = "+('a b', [x|y])".
+
+?- write_term_to_chars('a b', [quoted(false)], Cs).
+   Cs = "a b".
+
+?- catch(write_term_to_chars(a, [quoted(maybe)], _), error(E, C), true).
+   E = domain_error(write_option, quoted(maybe)), C = write_term_to_chars/3.
+
+?- catch(write_term(a, [_]), error(E, C), true).
+   E = instantiation_error, C = write_term/2.
+
+?- catch(write_term(a, [color(red)]), error(E, _), true).
+   E = domain_error(write_option, color(red)).
 
 % --- write_term_to_chars/3 ---
 

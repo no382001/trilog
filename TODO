@@ -1,8 +1,8 @@
 regressions:
-- read_from_chars/2, read_term_from_chars/3, write_term_to_chars/3 are missing (#20)
 
 correctness:
 - the printer never uses operator syntax: (a,b) prints as ','(a, b), foo/0 as /(foo, 0) (#15 shows /(ex_nihilo, 0))
+- write_term/2,3 accept numbervars(true) but the printer never renders '$VAR'(N) as a variable name
 - number_codes parses with its own strtoll/strtod, not the parser's number reader, so the number_chars quads test the wrong code (#7)
 - dcg: \+//1 and pushback are missing; call//N skips compile-on-first-call (call(item, a) -> existence_error item/3)
 - atom_codes/atom_concat fail silently once an atom passes ~4k bytes

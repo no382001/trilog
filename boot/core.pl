@@ -387,6 +387,7 @@ with_output_to(atom(A), Goal) :-
     ;  '$$capture_stop'(_), fail
     ).
 with_output_to(codes(Cs), Goal) :- with_output_to(atom(A), Goal), atom_codes(A, Cs).
+with_output_to(chars(Cs), Goal) :- with_output_to(atom(A), Goal), atom_chars(A, Cs).
 
 '$stream_alias'(user_output, 0).
 '$stream_alias'(user_error, 1).
@@ -407,6 +408,97 @@ writeq(T) :- '$$write_raw'(0, T, 1).
 writeq(S, T) :-
     '$with_context'('$resolve_stream'(S, N), writeq/2),
     ( '$$write_raw'(N, T, 1) -> true ; throw(error(existence_error(stream, S), writeq/2)) ).
+
+%!  write_term(@Term, +Options) is det.
+%!  write_term(+Stream, @Term, +Options) is det.
+%   Options: quoted(Bool), ignore_ops(Bool), numbervars(Bool).
+%   TODO: numbervars(true) and ignore_ops(false) are accepted but not honored.
+write_term(T, Opts) :-
+    '$with_context'('$write_options'(Opts, Q), write_term/2),
+    '$$write_raw'(0, T, Q).
+write_term(S, T, Opts) :-
+    '$with_context'(('$resolve_stream'(S, N), '$write_options'(Opts, Q)), write_term/3),
+    ( '$$write_raw'(N, T, Q) -> true ; throw(error(existence_error(stream, S), write_term/3)) ).
+
+'$write_options'(Opts, Q) :-
+    '$options_list'(Opts),
+    '$write_options'(Opts, 0, Q).
+'$write_options'([], Q, Q).
+'$write_options'([O|Os], Q0, Q) :-
+    '$write_option'(O, Q0, Q1),
+    '$write_options'(Os, Q1, Q).
+
+'$write_option'(O, _, _) :- var(O), !, throw(error(instantiation_error, _)).
+'$write_option'(quoted(B), _, Q) :- '$option_bool'(quoted(B), write_option, Q), !.
+'$write_option'(ignore_ops(B), Q, Q) :- '$option_bool'(ignore_ops(B), write_option, _), !.
+'$write_option'(numbervars(B), Q, Q) :- '$option_bool'(numbervars(B), write_option, _), !.
+'$write_option'(O, _, _) :- throw(error(domain_error(write_option, O), _)).
+
+'$option_bool'(O, _, _) :- arg(1, O, B), var(B), !, throw(error(instantiation_error, _)).
+'$option_bool'(O, _, 1) :- arg(1, O, true), !.
+'$option_bool'(O, _, 0) :- arg(1, O, false), !.
+'$option_bool'(O, Domain, _) :- throw(error(domain_error(Domain, O), _)).
+
+'$options_list'(L) :- var(L), !, throw(error(instantiation_error, _)).
+'$options_list'([]) :- !.
+'$options_list'([_|L]) :- !, '$options_list'(L).
+'$options_list'(L) :- throw(error(type_error(list, L), _)).
+
+%!  write_term_to_chars(@Term, +Options, -Chars) is det.
+write_term_to_chars(T, Opts, Cs) :-
+    '$with_context'('$write_options'(Opts, _), write_term_to_chars/3),
+    with_output_to(chars(Cs0), write_term(T, Opts)),
+    Cs = Cs0.
+
+%!  read_from_chars(+Chars, -Term) is det.
+read_from_chars(Cs, T) :-
+    '$with_context'('$read_term_from_chars'(Cs, T, []), read_from_chars/2).
+
+%!  read_term_from_chars(+Chars, -Term, +Options) is det.
+%   Options: variable_names(-Pairs), variables(-Vars).
+%   Blank Chars read as end_of_file.
+read_term_from_chars(Cs, T, Opts) :-
+    '$with_context'('$read_term_from_chars'(Cs, T, Opts), read_term_from_chars/3).
+
+'$read_term_from_chars'(Cs, T, Opts) :-
+    '$options_list'(Opts),
+    '$read_options_check'(Opts),
+    '$chars_list'(Cs),
+    (   '$blank_chars'(Cs)
+    ->  T0 = end_of_file, Names = []
+    ;   atom_chars(A, Cs),
+        catch(atom_to_term(A, T0, Names), error(syntax_error(M), _),
+              throw(error(syntax_error(M), _)))
+    ),
+    term_variables(T0, Vars),
+    '$read_options_bind'(Opts, Names, Vars),
+    T = T0.
+
+'$read_options_check'([]).
+'$read_options_check'([O|Os]) :-
+    '$read_option_check'(O),
+    '$read_options_check'(Os).
+'$read_option_check'(O) :- var(O), !, throw(error(instantiation_error, _)).
+'$read_option_check'(variable_names(_)) :- !.
+'$read_option_check'(variables(_)) :- !.
+'$read_option_check'(O) :- throw(error(domain_error(read_option, O), _)).
+
+'$read_options_bind'([], _, _).
+'$read_options_bind'([variable_names(Names)|Os], Names, Vars) :- !, '$read_options_bind'(Os, Names, Vars).
+'$read_options_bind'([variables(Vars)|Os], Names, Vars) :- '$read_options_bind'(Os, Names, Vars).
+
+'$chars_list'(L) :- var(L), !, throw(error(instantiation_error, _)).
+'$chars_list'([]) :- !.
+'$chars_list'([C|L]) :-
+    !,
+    (   var(C) -> throw(error(instantiation_error, _))
+    ;   character(C) -> '$chars_list'(L)
+    ;   throw(error(type_error(character, C), _))
+    ).
+'$chars_list'(L) :- throw(error(type_error(list, L), _)).
+
+'$blank_chars'([]).
+'$blank_chars'([C|Cs]) :- memberchk(C, [' ', '\t', '\n', '\r']), '$blank_chars'(Cs).
 
 %!  nl is det.
 %!  nl(+Stream) is det.

@@ -1765,3 +1765,21 @@ PLEOF
   [[ "$output" == *"C4 = /(assertz, 1)"* ]]
   [[ "$output" == *"C5 = /(compare, 3)"* ]]
 }
+
+@test "read_from_chars/2, read_term_from_chars/3, write_term_to_chars/3 exist (#20)" {
+  run "$TRILOG" -f -e "
+    write_term_to_chars(f('A b', [x|y]), [quoted(true)], Cs),
+    read_term_from_chars(Cs, T, []),
+    read_from_chars(\"g(X, Y, X)\", G),
+    read_term_from_chars(\"h(X, _)\", _, [variable_names(Ns), variables(Vs)]),
+    length(Vs, NV),
+    catch(read_from_chars(\"g(\", _), error(E, C), true).
+  "
+  [[ "$output" == *"Cs = \"f('A b', [x|y])\""* ]]
+  [[ "$output" == *"T = f('A b', [x|y])"* ]]
+  [[ "$output" == *"G = g(_G"* ]]
+  [[ "$output" == *"Ns = [=('X', _G"* ]]
+  [[ "$output" == *"NV = 2"* ]]
+  [[ "$output" == *"E = syntax_error("* ]]
+  [[ "$output" == *"C = /(read_from_chars, 2)"* ]]
+}

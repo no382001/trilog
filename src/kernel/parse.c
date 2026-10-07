@@ -781,12 +781,8 @@ static bool parse_term_from_string_(trilog_t *T, const char *src,
                                     tterm_t **term_out, int32_t *nvars_out,
                                     const char ***varnames_out) {
   T->P = src;
-  if (setjmp(T->err_jmp)) {
-    char msg[32 + sizeof T->err_msg];
-    snprintf(msg, sizeof msg, "parse error: %s\n", T->err_msg);
-    io_write_err(T, msg);
+  if (setjmp(T->err_jmp))
     return false;
-  }
   vartab_reset(T);
   tterm_t *t = parse_expr(T, 1200);
   skip_ws(T);

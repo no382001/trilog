@@ -165,6 +165,11 @@ static size_t make_representation_error(trilog_t *T, const char *what) {
   return make_error(
       T, heap_new_struct(T, atom_intern(T, "representation_error"), 1, args));
 }
+static size_t make_syntax_error(trilog_t *T) {
+  size_t args[1] = {heap_new_atom(T, atom_intern(T, T->err_msg))};
+  return make_error(
+      T, heap_new_struct(T, atom_intern(T, "syntax_error"), 1, args));
+}
 static size_t make_resource_error(trilog_t *T, const char *what) {
   size_t args[1] = {heap_new_atom(T, atom_intern(T, what))};
   return make_error(
@@ -1520,6 +1525,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     tterm_t *t;
     if (!parse_term_from_string(T, atom_name(T, T->heap[atom_arg].as.atom_id),
                                 &t, &nvars, &names)) {
+      T->pending_error_ball = make_syntax_error(T);
       *ok = 0;
       return 1;
     }
@@ -1537,6 +1543,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     tterm_t *t;
     if (!parse_term_from_string(T, atom_name(T, T->heap[atom_arg].as.atom_id),
                                 &t, &nvars, &names)) {
+      T->pending_error_ball = make_syntax_error(T);
       *ok = 0;
       return 1;
     }
