@@ -9,9 +9,13 @@ API_TEST_BINS = $(API_TESTS:%=_build/%)
 $(API_TEST_BINS): _build/%: $(DEV)/test/api/%.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) $(if $(findstring threads,$*),-pthread) -o $@ $^ -lm
 
-.PHONY: test test-api quad quad-junit conformity
+.PHONY: test test-api quad quad-junit syscheck-junit conformity
 test: trilog test-api
 	bats test/e2e/
+
+syscheck-junit: trilog
+	@mkdir -p _build/test-results
+	bats --report-formatter junit --output _build/test-results test/e2e/
 
 test-api: $(API_TEST_BINS) examples/embed
 	examples/embed

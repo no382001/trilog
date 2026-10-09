@@ -29,16 +29,30 @@ if [ -f "$DIR/report.xml" ]; then
   st=$(grep -ohE 'tests="[0-9]+"' "$DIR/report.xml" | grep -oE '[0-9]+' | awk '{s+=$1} END{print s+0}')
   sf=$(grep -ohE 'failures="[0-9]+"' "$DIR/report.xml" | grep -oE '[0-9]+' | awk '{s+=$1} END{print s+0}')
   sp=$((st - sf))
-  rows="${rows}test/*.bats|${st}|${sp}|${sf}|0"$'\n'
+  rows="${rows}test/e2e/*.bats|${st}|${sp}|${sf}|0"$'\n'
   total=$((total + st)); passed=$((passed + sp)); failed=$((failed + sf))
 fi
 
+failed_only=$((failed - crashed))
+[ "$failed_only" -ge 0 ] || failed_only=0
+
 echo "### Test results"
+echo ""
+echo '```mermaid'
+echo "pie showData title $passed of $total tests pass"
+echo "  \"Passed\" : $passed"
+echo "  \"Failed\" : $failed_only"
+echo "  \"Crashed\" : $crashed"
+echo '```'
+echo ""
+echo "<details><summary>Per file</summary>"
 echo ""
 echo "| File | Tests | Passed | Failed | Crashed |"
 echo "|---|---|---|---|---|"
 printf '%s' "$rows" | sort -t'|' -k1,1 | awk -F'|' 'NF{print "| "$1" | "$2" | "$3" | "$4" | "$5" |"}'
 echo "| **TOTAL** | **$total** | **$passed** | **$failed** | **$crashed** |"
+echo ""
+echo "</details>"
 
 if [ "$suite_count" -eq 0 ]; then
   echo ""
