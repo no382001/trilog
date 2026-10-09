@@ -115,11 +115,11 @@ trilog uses the ABC algorithm because it is very simple. Van Emden himself prese
 
 trilog is not a WAM. The goal is the most efficient interpreter that stays this simple. A WAM would be much faster, but trilog is fast enough for now; a WAM-style backend may come later.
 
-The first engine is on `main` (`a3536a4`). Lots of things already worked there, but it was getting harder to see what the engine was actually doing, and the design problems kept piling up. So it was rewritten, starting again from the solver:
+The first engine is on `main` (a3536a4). Lots of things already worked there, but it was getting harder to see what the engine was actually doing, and the design problems kept piling up. So it was rewritten, starting again from the solver:
 
 > The only applicable research method is to accumulate experience by implementing a system, synthesize the experience, think for a while and start over. — E. Sandewall, *Programming in an Interactive Environment: The LISP Experience* (1978)
 
-Both engines were measured on the same machine: `5979680` as a release build, the first engine with `-O2` and no sanitiser. Times are median CPU time of 7 runs (63 for start-up), with peak memory. "Now" runs `./trilog -n`, which loads only the core; the benchmarks need nothing else.
+Both engines were measured on the same machine: 5979680 as a release build, the first engine with `-O2` and no sanitiser. Times are median CPU time of 7 runs (63 for start-up), with peak memory. "Now" runs `./trilog -n`, which loads only the core; the benchmarks need nothing else.
 
 | Workload | First engine | Now | Faster | Less memory |
 | --- | --- | --- | --- | --- |

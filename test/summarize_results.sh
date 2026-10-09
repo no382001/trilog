@@ -33,18 +33,25 @@ if [ -f "$DIR/report.xml" ]; then
   total=$((total + st)); passed=$((passed + sp)); failed=$((failed + sf))
 fi
 
-failed_only=$((failed - crashed))
-[ "$failed_only" -ge 0 ] || failed_only=0
+chart=$(printf '%s' "$rows" | awk -F'|' 'NF && $2 > 0 {
+  name = $1; sub(/^test\/(quad|e2e)\//, "", name); sub(/_quad\.pl$/, "", name); sub(/\/\*\.bats$/, "", name); sub(/^\*\.bats$/, "e2e", name)
+  printf "%d|%s\n", int(100 * $3 / $2), name
+}' | sort -t'|' -k1,1n -k2,2)
 
 echo "### Test results"
 echo ""
-echo '```mermaid'
-echo "pie showData title $passed of $total tests pass"
-echo "  \"Passed\" : $passed"
-echo "  \"Failed\" : $failed_only"
-echo "  \"Crashed\" : $crashed"
-echo '```'
+echo "$passed of $total tests pass, $failed fail, $crashed crash."
 echo ""
+if [ -n "$chart" ]; then
+  echo '```mermaid'
+  echo "xychart-beta horizontal"
+  echo "  title \"Pass rate per file, %\""
+  echo "  x-axis [$(printf '%s\n' "$chart" | cut -d'|' -f2 | sed 's/.*/"&"/' | paste -sd, -)]"
+  echo "  y-axis \"pass %\" 0 --> 100"
+  echo "  bar [$(printf '%s\n' "$chart" | cut -d'|' -f1 | paste -sd, -)]"
+  echo '```'
+  echo ""
+fi
 echo "<details><summary>Per file</summary>"
 echo ""
 echo "| File | Tests | Passed | Failed | Crashed |"
