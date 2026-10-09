@@ -143,6 +143,7 @@ void trilog_free(trilog_t *t) {
   mem_free(t, t->heap);
   mem_free(t, t->trail);
   mem_free(t, t->atoms);
+  mem_free(t, t->atom_slots);
   arena_free(t);
   t->alloc_free(t->alloc_ud, t);
 }

@@ -36,6 +36,8 @@ struct trilog {
   size_t trail_cap, trail_top;
   char **atoms;
   int32_t atom_count, atom_cap;
+  int32_t *atom_slots; // open addressing over atom ids, -1 is empty
+  uint32_t atom_slots_cap;
 
   trilog_io_t hooks;
   io_reader_t streams[MAX_OPEN_STREAMS];

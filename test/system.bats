@@ -2066,3 +2066,20 @@ PLEOF
   [ "${lines[0]}" = "*(1, +(2, 3))" ]
   [ "${lines[1]}" = "removed" ]
 }
+
+@test "atoms with the same text are the same atom, across many atoms" {
+  run "$TRILOG" -f -e "
+    findall(A, (between(1, 5000, I), number_codes(I, Cs), atom_codes(A, [0'a|Cs])), As),
+    findall(B, (between(1, 5000, I), number_codes(I, Cs), atom_codes(B, [0'a|Cs])), Bs),
+    ( As == Bs -> R1 = same ; R1 = different ),
+    sort(As, S),
+    length(S, N),
+    atom_chars(X, \"a4999\"),
+    ( X == a4999 -> R2 = same ; R2 = different ),
+    ( 'it''s' == 'it\\'s', '' == '', [] == '[]' -> R3 = same ; R3 = different ),
+    ( a1 \\== a2, 'A' \\== a -> R4 = distinct ; R4 = merged ),
+    write(r(R1, N, R2, R3, R4)),
+    nl.
+  "
+  [[ "$output" == *"r(same, 5000, same, same, distinct)"* ]]
+}

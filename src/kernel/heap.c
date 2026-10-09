@@ -116,15 +116,45 @@ void trail_release(trilog_t *T, size_t mark) {
   }
 }
 
+static uint32_t atom_hash(const char *s) {
+  uint32_t h = 2166136261u;
+  for (; *s; s++)
+    h = (h ^ (unsigned char)*s) * 16777619u;
+  return h;
+}
+
+static uint32_t atom_slot(trilog_t *T, const char *name) {
+  uint32_t mask = T->atom_slots_cap - 1;
+  uint32_t i = atom_hash(name) & mask;
+  while (T->atom_slots[i] >= 0 && strcmp(T->atoms[T->atom_slots[i]], name))
+    i = (i + 1) & mask;
+  return i;
+}
+
+static void atom_slots_grow(trilog_t *T) {
+  uint32_t cap = T->atom_slots_cap ? T->atom_slots_cap * 2 : 256;
+  int32_t *slots = mem_grow_n(T, NULL, cap, sizeof(int32_t));
+  for (uint32_t i = 0; i < cap; i++)
+    slots[i] = -1;
+  mem_free(T, T->atom_slots);
+  T->atom_slots = slots;
+  T->atom_slots_cap = cap;
+  for (int32_t id = 0; id < T->atom_count; id++)
+    T->atom_slots[atom_slot(T, T->atoms[id])] = id;
+}
+
 int32_t atom_intern(trilog_t *T, const char *name) {
-  for (int32_t i = 0; i < T->atom_count; i++)
-    if (strcmp(T->atoms[i], name) == 0)
-      return i;
+  if ((uint32_t)(T->atom_count + 1) * 2 > T->atom_slots_cap)
+    atom_slots_grow(T);
+  uint32_t slot = atom_slot(T, name);
+  if (T->atom_slots[slot] >= 0)
+    return T->atom_slots[slot];
   if (T->atom_count >= T->atom_cap) {
     T->atoms = mem_grow_n(T, T->atoms, (size_t)T->atom_cap * 2, sizeof(char *));
     T->atom_cap *= 2;
   }
   T->atoms[T->atom_count] = arena_strdup(T, name);
+  T->atom_slots[slot] = T->atom_count;
   return T->atom_count++;
 }
 
