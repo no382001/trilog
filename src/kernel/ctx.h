@@ -12,7 +12,6 @@
 #include <stdint.h>
 
 #define CAPTURE_STACK_MAX 32
-#define MAX_CVARS 512
 
 struct chunk;
 
@@ -74,8 +73,9 @@ struct trilog {
   const char *P;
   jmp_buf err_jmp;
   char err_msg[256];
-  int32_t var_names[MAX_CVARS]; // atom ids
+  int32_t *var_names; // atom ids
   int32_t var_count;
+  size_t var_names_cap;
   char *tok; // parser token, valid until the next token is read
   size_t tok_cap;
   struct tterm **pstack; // parser scratch for arguments and list elements
@@ -85,6 +85,14 @@ struct trilog {
   size_t scratch_cap;
   size_t *wstack;
   size_t wsp, wstack_cap; // cap in bytes
+  // one rename table and goal list per query nesting level
+  struct query_buf {
+    size_t *p;
+    size_t cap;
+  } *query_bufs;
+  int query_bufs_len;
+  size_t *rename_tmp, *goals_tmp; // short-lived, never nested
+  size_t rename_tmp_cap, goals_tmp_cap;
   const char *consulting; // path of the file being consulted
   int32_t consulting_atom;
 

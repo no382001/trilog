@@ -124,6 +124,12 @@ void trilog_free(trilog_t *t) {
   mem_free(t, t->path_tmp);
   mem_free(t, t->scratch);
   mem_free(t, t->wstack);
+  mem_free(t, t->var_names);
+  for (int i = 0; i < t->query_bufs_len; i++)
+    mem_free(t, t->query_bufs[i].p);
+  mem_free(t, t->query_bufs);
+  mem_free(t, t->rename_tmp);
+  mem_free(t, t->goals_tmp);
   mem_free(t, t->capture_buf);
   mem_free(t, t->consulted_decls);
   mem_free(t, t->dynamic_decls);

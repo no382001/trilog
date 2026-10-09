@@ -2107,3 +2107,50 @@ PLEOF
   "
   [[ "$output" == *"r(5000, 20000, same, unbounded, resource_error(memory))"* ]]
 }
+
+@test "clauses, directives and queries with many goals and variables run correctly" {
+  # A 200-goal clause, a 200-goal directive, a fact sharing 400 variables, and a 200-goal query.
+  python3 -c "
+goals = ', '.join('X%d = %d' % (i, i) for i in range(200))
+print('t(S) :- ' + goals + ', S is X0 + X199.')
+print(':- ' + ', '.join(['true'] * 200) + ', assertz(dir_ran).')
+args = ', '.join('V%d' % i for i in range(400))
+print('wide(f(' + args + '), g(' + ', '.join('V%d' % i for i in reversed(range(400))) + ')).')
+" > "$BATS_TEST_TMPDIR/many.pl"
+  query="$(python3 -c "print(', '.join(['true'] * 200) + ', write(query_ran), nl')")"
+  run "$TRILOG" -f "$BATS_TEST_TMPDIR/many.pl" -e "
+    t(S),
+    dir_ran,
+    wide(F, G),
+    F =.. [_|Fs],
+    G =.. [_|Gs],
+    reverse(Gs, Rs),
+    term_variables(F, Vs),
+    length(Vs, NV),
+    ( Fs == Rs -> Shared = shared ; Shared = not_shared ),
+    write(r(S, NV, Shared)),
+    nl.
+  "
+  [[ "$output" == *"r(199, 400, shared)"* ]]
+  run "$TRILOG" -f -e "$query."
+  [[ "$output" == *"query_ran"* ]]
+}
+
+@test "no limit on body goals or variables per clause, directive or query" {
+  # regression: more than 255 body goals or 512 variables was a parse error.
+  python3 -c "
+goals = ', '.join('X%d = %d' % (i, i) for i in range(1000))
+print('t(S) :- ' + goals + ', S is X0 + X999.')
+print(':- ' + ', '.join(['true'] * 1000) + ', assertz(dir_ran).')
+" > "$BATS_TEST_TMPDIR/huge.pl"
+  query="$(python3 -c "print(', '.join('Q%d = %d' % (i, i) for i in range(1000)) + ', S is Q0 + Q999, write(s(S)), nl')")"
+  run "$TRILOG" -f "$BATS_TEST_TMPDIR/huge.pl" -e "
+    t(S),
+    dir_ran,
+    write(r(S)),
+    nl.
+  "
+  [[ "$output" == *"r(999)"* ]]
+  run "$TRILOG" -f -e "$query."
+  [[ "$output" == *"s(999)"* ]]
+}

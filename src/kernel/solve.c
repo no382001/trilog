@@ -496,18 +496,28 @@ static size_t body_as_term(trilog_t *T, size_t *goals, int32_t n) {
 
 static void rename_init(size_t *rename, int32_t n);
 
+static size_t *tmp_rename(trilog_t *T, int32_t n) {
+  mem_reserve(T, (void **)&T->rename_tmp, &T->rename_tmp_cap,
+              (size_t)(n > 0 ? n : 1) * sizeof(size_t));
+  rename_init(T->rename_tmp, n);
+  return T->rename_tmp;
+}
+
+static size_t *tmp_goals(trilog_t *T, int32_t n) {
+  mem_reserve(T, (void **)&T->goals_tmp, &T->goals_tmp_cap,
+              (size_t)(n > 0 ? n : 1) * sizeof(size_t));
+  return T->goals_tmp;
+}
+
 static size_t fresh_copy_term(trilog_t *T, tterm_t *t, int32_t nvars) {
-  size_t rn[nvars > 0 ? nvars : 1];
-  rename_init(rn, nvars);
-  return heap_copy(T, t, rn, 0);
+  return heap_copy(T, t, tmp_rename(T, nvars), 0);
 }
 
 static void fresh_copy_clause(trilog_t *T, clause_t *c, size_t *head_out,
                               size_t *body_out) {
-  size_t rn[c->nvars > 0 ? c->nvars : 1];
-  rename_init(rn, c->nvars);
+  size_t *rn = tmp_rename(T, c->nvars);
   *head_out = heap_copy(T, c->head, rn, 0);
-  size_t bodies[c->nbody > 0 ? c->nbody : 1];
+  size_t *bodies = tmp_goals(T, c->nbody);
   for (int32_t j = 0; j < c->nbody; j++)
     bodies[j] = heap_copy(T, c->body[j], rn, 0);
   *body_out = body_as_term(T, bodies, c->nbody);
@@ -1145,9 +1155,7 @@ size_t foreign_error_ball(trilog_t *T, const char *formal) {
   const char **names;
   size_t term;
   if (parse_term_from_string(T, formal, &tmpl, &nvars, &names)) {
-    size_t rn[nvars > 0 ? nvars : 1];
-    rename_init(rn, nvars);
-    term = heap_copy(T, tmpl, rn, 0);
+    term = heap_copy(T, tmpl, tmp_rename(T, nvars), 0);
   } else {
     size_t text[1] = {heap_new_atom(T, atom_intern(T, formal))};
     term = heap_new_struct(T, atom_intern(T, "syntax_error"), 1, text);
@@ -1581,9 +1589,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       *ok = 0;
       return 1;
     }
-    size_t rn[nvars > 0 ? nvars : 1];
-    rename_init(rn, nvars);
-    *ok = unify(T, f + 2, heap_copy(T, tmpl, rn, 0));
+    *ok = unify(T, f + 2, heap_copy(T, tmpl, tmp_rename(T, nvars), 0));
     return 1;
   }
   if (arity == 2 && id == atom_clause_candidates) {
@@ -1673,8 +1679,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       *ok = 0;
       return 1;
     }
-    size_t rn[nvars > 0 ? nvars : 1];
-    rename_init(rn, nvars);
+    size_t *rn = tmp_rename(T, nvars);
     size_t term_copy = heap_copy(T, t, rn, 0);
     // 'Name'=Var per named source variable; skips bare "_" and any slot
     // heap_copy never visited.
@@ -1998,13 +2003,25 @@ query_result_t run_query(trilog_t *T, tterm_t **goals, int32_t ngoals,
 static query_result_t run_query_body(trilog_t *T, tterm_t **goals,
                                      int32_t ngoals, int32_t nvars,
                                      solution_fn on_solution, void *ud) {
-  size_t rename[nvars > 0 ? nvars : 1];
+  int depth = T->query_depth;
+  if (depth > T->query_bufs_len) {
+    T->query_bufs =
+        mem_grow_n(T, T->query_bufs, (size_t)depth, sizeof *T->query_bufs);
+    for (int i = T->query_bufs_len; i < depth; i++)
+      T->query_bufs[i] = (struct query_buf){0};
+    T->query_bufs_len = depth;
+  }
+  struct query_buf *qb = &T->query_bufs[depth - 1];
+  size_t nrename = (size_t)(nvars > 0 ? nvars : 1);
+  mem_reserve(T, (void **)&qb->p, &qb->cap,
+              (nrename + (size_t)(ngoals > 0 ? ngoals : 1)) * sizeof(size_t));
+  size_t *rename = qb->p;
   rename_init(rename, nvars);
 
   size_t hmark = heap_mark(T), tmark = trail_mark(T), cut_barrier = 0;
   int any_found = 0;
 
-  size_t qgoals[ngoals > 0 ? ngoals : 1];
+  size_t *qgoals = qb->p + nrename;
   for (int32_t i = 0; i < ngoals; i++)
     qgoals[i] = heap_copy_goal(T, goals[i], rename, cut_barrier);
   size_t cn = build_conj_tail(T, qgoals, ngoals, heap_new_atom(T, atom_true));
@@ -2153,12 +2170,11 @@ A:
           trail_release(T, rtmark);
           heap_release(T, rmark);
           clause_t *c = &T->db[ci];
-          size_t rn[c->nvars > 0 ? c->nvars : 1];
-          rename_init(rn, c->nvars);
+          size_t *rn = tmp_rename(T, c->nvars);
           size_t h = heap_copy(T, c->head, rn, 0);
           if (!unify(T, h, want_head))
             continue;
-          size_t bodies[c->nbody > 0 ? c->nbody : 1];
+          size_t *bodies = tmp_goals(T, c->nbody);
           for (int32_t i = 0; i < c->nbody; i++)
             bodies[i] = heap_copy(T, c->body[i], rn, 0);
           size_t body_whole = body_as_term(T, bodies, c->nbody);
@@ -2263,14 +2279,13 @@ B: {
     trail_release(T, tmark);
     heap_release(T, hmark);
 
-    size_t r2[c->nvars > 0 ? c->nvars : 1];
-    rename_init(r2, c->nvars);
+    size_t *r2 = tmp_rename(T, c->nvars);
     size_t h = heap_copy(T, c->head, r2, cut_barrier);
 
     if (!unify(T, h, first))
       goto B;
 
-    size_t bodies[c->nbody > 0 ? c->nbody : 1];
+    size_t *bodies = tmp_goals(T, c->nbody);
     for (int32_t i = 0; i < c->nbody; i++)
       bodies[i] = heap_copy_goal(T, c->body[i], r2, cut_barrier);
     size_t newcn = build_conj_tail(T, bodies, c->nbody, rest);

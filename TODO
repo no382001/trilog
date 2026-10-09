@@ -20,7 +20,6 @@ missing requirements:
 - wokwi/ runs on the Pico 2 (rp2350); the full boot/core.pl needs 307 KB live, the RP2040 heap is 258 KB
 - pico 2: building a 100-deep term and round-tripping it through term_to_atom runs out of memory; the prolog heap doubles to 8192 cells between GC points, then asks for 16384, it should be possible to modify the multiplier from the outside
 - quad.pl: chars and dcgs instead of codes and atom_concat chains (#27)
-- clauses, directives and queries hold at most 255 body goals (MAX_BODY_GOALS, parse.c) and 512 variables (MAX_CVARS); clause bodies live in the arena, but run_query_body puts a query's goals and variables in stack arrays (qgoals, rename)
 - fix main-specific test expectations: 32-bit max_integer, last/2 arg order, sub_atom/5 single answer, answer printing (unhandled exception, X = Y)
 - debug flag, and trace?
 - readline/history in repl
