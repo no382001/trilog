@@ -10,13 +10,25 @@ member(X, [_|T]) :- member(X, T).
 %!  memberchk(?Elem, ?List) is semidet.
 memberchk(X, L) :- member(X, L), !.
 
-%!  length(?List, ?N) is det.
-length(L, N) :- nonvar(N), !, '$length_make'(N, L).
-length(L, N) :- '$length_count'(L, 0, N).
+%!  length(?List, ?N) is nondet.
+length(L, N) :-
+    (   var(N) -> true
+    ;   integer(N) ->
+        ( N >= 0 -> true ; throw(error(domain_error(not_less_than_zero, N), length/2)) )
+    ;   throw(error(type_error(integer, N), length/2))
+    ),
+    '$$skip_list'(L, K, T),
+    (   T == [] -> N = K
+    ;   var(T) -> '$length_open'(T, K, N)
+    ).
+'$length_open'(T, K, N) :-
+    (   integer(N) -> M is N - K, M >= 0, '$length_make'(M, T)
+    ;   '$length_enum'(T, K, N)
+    ).
 '$length_make'(0, []) :- !.
-'$length_make'(N, [_|T]) :- N > 0, N1 is N - 1, '$length_make'(N1, T).
-'$length_count'([], N, N).
-'$length_count'([_|T], N0, N) :- N1 is N0 + 1, '$length_count'(T, N1, N).
+'$length_make'(N, [_|T]) :- N1 is N - 1, '$length_make'(N1, T).
+'$length_enum'([], N, N).
+'$length_enum'([_|T], N0, N) :- N1 is N0 + 1, '$length_enum'(T, N1, N).
 
 %!  reverse(?List, ?Reversed) is det.
 reverse(L, R) :- '$reverse'(L, [], R).
@@ -24,8 +36,7 @@ reverse(L, R) :- '$reverse'(L, [], R).
 '$reverse'([H|T], Acc, R) :- '$reverse'(T, [H|Acc], R).
 
 %!  is_list(@Term) is semidet.
-is_list([]) :- !.
-is_list([_|T]) :- is_list(T).
+is_list(L) :- '$$skip_list'(L, _, T), T == [].
 
 %!  last(+List, ?Last) is semidet.
 last([X], X) :- !.

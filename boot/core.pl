@@ -148,6 +148,14 @@ number(X) :- float(X).
 atomic(X) :- atom(X).
 atomic(X) :- number(X).
 
+%!  subsumes_term(@General, @Specific) is semidet.
+subsumes_term(General, Specific) :-
+    \+ \+ ( term_variables(Specific, SVars1),
+            unify_with_occurs_check(General, Specific),
+            term_variables(SVars1, SVars2),
+            SVars1 == SVars2
+          ).
+
 %!  ground(@Term) is semidet.
 ground(T) :- term_variables(T, []).
 
@@ -251,6 +259,35 @@ sort(L, Sorted) :- '$with_context'('$msort'(L, M), sort/2), '$dedup'(M, Sorted).
 '$dedup'([X], [X]) :- !.
 '$dedup'([X,Y|T], R) :- X == Y, !, '$dedup'([Y|T], R).
 '$dedup'([X,Y|T], [X|R]) :- '$dedup'([Y|T], R).
+
+%!  keysort(+Pairs, -Sorted) is det.
+keysort(Pairs, Sorted) :-
+    '$with_context'('$keysort'(Pairs, Sorted), keysort/2).
+
+'$keysort'(Pairs, Sorted) :-
+    '$sort_length'(Pairs, Pairs, 0, _),
+    '$keysort_index'(Pairs, 0, Indexed),
+    '$can_be_list'(Sorted),
+    '$msort'(Indexed, S),
+    '$keysort_strip'(S, Sorted0),
+    Sorted = Sorted0.
+
+% Key-(Index-Value): the index keeps equal keys in their original order.
+'$keysort_index'([], _, []).
+'$keysort_index'([P|Ps], I, [K-(I-V)|Is]) :-
+    (   var(P) -> throw(error(instantiation_error, _))
+    ;   P = K-V -> true
+    ;   throw(error(type_error(pair, P), _))
+    ),
+    I1 is I + 1,
+    '$keysort_index'(Ps, I1, Is).
+
+'$keysort_strip'([], []).
+'$keysort_strip'([K-(_-V)|Is], [K-V|Ps]) :- '$keysort_strip'(Is, Ps).
+
+'$can_be_list'(L) :-
+    '$$skip_list'(L, _, T),
+    ( var(T) -> true ; T == [] -> true ; throw(error(type_error(list, L), _)) ).
 
 % --- database ---
 
@@ -460,6 +497,11 @@ numbervars(T, S, E) :-
 '$numbervars'(['$VAR'(N)|Vs], N, E) :-
     N1 is N + 1,
     '$numbervars'(Vs, N1, E).
+
+%!  write_canonical(@Term) is det.
+%!  write_canonical(+Stream, @Term) is det.
+write_canonical(T) :- write_term(T, [quoted(true), ignore_ops(true)]).
+write_canonical(S, T) :- write_term(S, T, [quoted(true), ignore_ops(true)]).
 
 %!  write_term_to_chars(@Term, +Options, -Chars) is det.
 write_term_to_chars(T, Opts, Cs) :-

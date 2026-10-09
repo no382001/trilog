@@ -1855,3 +1855,80 @@ PLEOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"f(..., [a|...])"* ]]
 }
+
+@test "is_list/1 fails on an open or cyclic list without binding it (regression)" {
+  # regression: is_list([a|T]) bound T = [] and succeeded.
+  run "$TRILOG" -f -e "
+    ( is_list([a|T]) -> R1 = yes ; R1 = no ),
+    ( X = [a|X], is_list(X) -> R2 = yes ; R2 = no ),
+    ( is_list([a, b]) -> R3 = yes ; R3 = no ),
+    ( var(T) -> R4 = unbound ; R4 = bound ),
+    write(r(R1, R2, R3, R4)),
+    nl.
+  "
+  [[ "$output" == *"r(no, no, yes, unbound)"* ]]
+}
+
+@test "length/2 raises ISO errors for a bad length (regression)" {
+  # regression: length(L, -1) failed and length(L, a) raised type_error(evaluable, a/0).
+  run "$TRILOG" -f -e "
+    catch(length(_, -1), error(E1, C1), true),
+    catch(length(_, a), error(E2, C2), true),
+    write(r(E1, C1, E2, C2)),
+    nl.
+  "
+  [[ "$output" == *"r(domain_error(not_less_than_zero, -1), /(length, 2), type_error(integer, a), /(length, 2))"* ]]
+}
+
+@test "length/2 fills, measures and enumerates partial lists, fails on improper ones" {
+  run "$TRILOG" -f -e "
+    length([a, b|T], 4),
+    length(T, NT),
+    findall(N, (length([x|_], N), (N >= 3 -> ! ; true)), Ns),
+    ( length([a|b], _) -> R1 = yes ; R1 = no ),
+    ( X = [a|X], length(X, _) -> R2 = yes ; R2 = no ),
+    write(r(NT, Ns, R1, R2)),
+    nl.
+  "
+  [[ "$output" == *"r(2, [1, 2, 3], no, no)"* ]]
+}
+
+@test "keysort/2 is stable and checks its arguments" {
+  run "$TRILOG" -f -e "
+    keysort([b-1, a-2, b-0, a-1, a-0], S),
+    catch(keysort([a-1, x], _), error(E1, _), true),
+    catch(keysort([a-1|_], _), error(E2, _), true),
+    catch(keysort(foo, _), error(E3, C3), true),
+    catch(keysort([a-1], foo), error(E4, _), true),
+    write(r(S, E1, E2, E3, C3, E4)),
+    nl.
+  "
+  [[ "$output" == *"r([-(a, 2), -(a, 1), -(a, 0), -(b, 1), -(b, 0)], type_error(pair, x), instantiation_error, type_error(list, foo), /(keysort, 2), type_error(list, foo))"* ]]
+}
+
+@test "subsumes_term/2 is one-way and does not bind" {
+  run "$TRILOG" -f -e "
+    ( subsumes_term(f(_, b), f(a, b)) -> R1 = yes ; R1 = no ),
+    ( subsumes_term(f(a, b), f(_, b)) -> R2 = yes ; R2 = no ),
+    ( subsumes_term(f(X, X), f(_, _)) -> R3 = yes ; R3 = no ),
+    ( subsumes_term(f(_, _), f(Y, Y)) -> R4 = yes ; R4 = no ),
+    ( subsumes_term(Z, f(Z)) -> R5 = yes ; R5 = no ),
+    G = g(A),
+    subsumes_term(G, g(1)),
+    ( var(A) -> R6 = unbound ; R6 = bound ),
+    write(r(R1, R2, R3, R4, R5, R6)),
+    nl.
+  "
+  [[ "$output" == *"r(yes, no, no, yes, no, unbound)"* ]]
+}
+
+@test "write_canonical/1,2 quote atoms and ignore operators" {
+  run "$TRILOG" -f -e "
+    write_canonical(f('B c', 1+2, -(3), [1])),
+    nl,
+    write_canonical(user_output, 'it''s' = a),
+    nl.
+  "
+  [[ "$output" == *"f('B c', +(1, 2), -(3), [1])"* ]]
+  [[ "$output" == *"=('it\\'s', a)"* ]]
+}

@@ -733,3 +733,59 @@ bcapply(G) :- call(G).
 
 ?- with_output_to(chars(Cs), write('$VAR'(2))).
    Cs = "C".
+
+% is_list/1 does not bind an open tail
+?- is_list([a|_]).
+   false.
+
+?- X = [a|X], is_list(X).
+   false.
+
+% length/2 errors and modes
+?- catch(length(_, -1), error(E, _), true).
+   E = domain_error(not_less_than_zero, -1).
+
+?- catch(length(_, a), error(E, _), true).
+   E = type_error(integer, a).
+
+?- length([a, b|T], 4).
+   T = [_A, _B].
+
+?- once(length([a, b|T], N)).
+   T = [], N = 2.
+
+?- length([a|b], _).
+   false.
+
+% keysort/2 is stable and checks its arguments
+?- keysort([b-1, a-2, b-0, a-1], S).
+   S = [a-2, a-1, b-1, b-0].
+
+?- catch(keysort([a-1, x], _), error(E, _), true).
+   E = type_error(pair, x).
+
+?- catch(keysort([a-1|_], _), error(E, _), true).
+   E = instantiation_error.
+
+?- catch(keysort(foo, _), error(E, C), true).
+   E = type_error(list, foo), C = keysort/2.
+
+% subsumes_term/2
+?- subsumes_term(f(_, b), f(a, b)).
+   true.
+
+?- subsumes_term(f(a, b), f(_, b)).
+   false.
+
+?- subsumes_term(f(X, X), f(_, _)).
+   false.
+
+?- subsumes_term(f(_, _), f(X, X)).
+   true.
+
+?- subsumes_term(X, f(X)).
+   false.
+
+% write_canonical/1
+?- with_output_to(chars(Cs), write_canonical(f('B c', 1+2))).
+   Cs = "f('B c', +(1, 2))".
