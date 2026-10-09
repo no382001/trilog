@@ -8,7 +8,8 @@ echo
 i=0
 for f in "$@"; do
   printf 'static const unsigned char file%d[] = {\n' "$i"
-  od -An -v -tx1 "$f" | sed -e 's/[0-9a-f][0-9a-f]/0x&,/g'
+  # Whole-line comments only: a % mid-line may be inside quotes or a 0'%.
+  grep -v -E '^[[:space:]]*(%.*)?$' "$f" | od -An -v -tx1 | sed -e 's/[0-9a-f][0-9a-f]/0x&,/g'
   printf '    0x00};\n\n'
   i=$((i + 1))
 done
