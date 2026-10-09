@@ -5,11 +5,11 @@
 # tests/ulrich). Each test is "number RS query RS expected answer", tests are
 # separated by GS. The query is piped into the toplevel.
 #
-# usage: test/conformity.sh [-v] [test-number...]
+# usage: test/conformity/conformity.sh [-v] [test-number...]
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BIN="${TRILOG:-$ROOT/trilog}"
-FILE="$ROOT/test/conformity.txt"
+FILE="$ROOT/test/conformity/conformity.txt"
 MEM_KB=524288
 GS=$'\x1D'
 RS=$'\x1E'

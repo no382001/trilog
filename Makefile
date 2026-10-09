@@ -68,7 +68,7 @@ $(REL)/trilog: $(REL_CLI_OBJS) $(REL)/libtrilog.a
 	$(CC) $(CFLAGS) -flto=auto -o $@ $^ -lm
 
 -include $(DEV_LIB_OBJS:.o=.d) $(REL_LIB_OBJS:.o=.d) $(DEV_CLI_OBJS:.o=.d) $(REL_CLI_OBJS:.o=.d) \
-         $(DEV)/test/api_test.d $(DEV)/test/api_threads_test.d $(DEV)/test/api_oom_test.d $(DEV)/test/api_namespace_test.d $(DEV)/examples/embed.d
+         $(DEV)/test/api/api_test.d $(DEV)/test/api/api_threads_test.d $(DEV)/test/api/api_oom_test.d $(DEV)/test/api/api_namespace_test.d $(DEV)/examples/embed.d
 
 .PHONY: trilog release lib
 trilog: $(DEV)/trilog
@@ -87,24 +87,24 @@ _build/embedded.c: $(EMBED_FILES) tools/embed_libs.sh
 release: $(REL)/trilog
 	@cp $< _build/trilog
 
-_build/api_test: $(DEV)/test/api_test.o $(DEV)/libtrilog.a
+_build/api_test: $(DEV)/test/api/api_test.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
 examples/embed: $(DEV)/examples/embed.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
-_build/api_namespace_test: $(DEV)/test/api_namespace_test.o $(DEV)/libtrilog.a
+_build/api_namespace_test: $(DEV)/test/api/api_namespace_test.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
-_build/api_oom_test: $(DEV)/test/api_oom_test.o $(DEV)/libtrilog.a
+_build/api_oom_test: $(DEV)/test/api/api_oom_test.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
-_build/api_threads_test: $(DEV)/test/api_threads_test.o $(DEV)/libtrilog.a
+_build/api_threads_test: $(DEV)/test/api/api_threads_test.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -pthread -o $@ $^ -lm
 
 .PHONY: test test-api clean format format-check
 test: trilog test-api
-	bats test/
+	bats test/e2e/
 
 test-api: _build/api_test _build/api_threads_test _build/api_oom_test _build/api_namespace_test examples/embed
 	examples/embed
@@ -120,10 +120,10 @@ QUAD_MEM_LIMIT_KB := 1048576
 
 .PHONY: quad conformity
 conformity: trilog
-	test/conformity.sh
+	test/conformity/conformity.sh
 
 quad: trilog
-	@for f in test/*_quad.pl; do \
+	@for f in test/quad/*_quad.pl; do \
 		[ -f "$$f" ] || continue; \
 		( ulimit -v $(QUAD_MEM_LIMIT_KB); timeout $(QUAD_TIMEOUT) ./trilog -e "consult('lib/quad.pl'), quad_cli('$$f')" ) || true; \
 	done
@@ -134,7 +134,7 @@ QUAD_MAX_RESUME_ATTEMPTS := 20
 .PHONY: quad-junit
 quad-junit: trilog
 	@mkdir -p _build/test-results
-	@for f in test/*_quad.pl; do \
+	@for f in test/quad/*_quad.pl; do \
 		[ -f "$$f" ] || continue; \
 		suite=$$(basename "$$f" .pl); \
 		skip=0; \
@@ -162,7 +162,7 @@ clean:
 	rm -rf trilog _build/trilog _build/embedded.c _build/api_test _build/api_threads_test _build/api_oom_test _build/api_namespace_test examples/embed _build/dev-* _build/release-*
 
 format:
-	clang-format -i $(SRCS) test/api_test.c test/api_threads_test.c test/api_oom_test.c test/api_namespace_test.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
+	clang-format -i $(SRCS) test/api/api_test.c test/api/api_threads_test.c test/api/api_oom_test.c test/api/api_namespace_test.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
 
 format-check:
-	clang-format --dry-run --Werror $(SRCS) test/api_test.c test/api_threads_test.c test/api_oom_test.c test/api_namespace_test.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
+	clang-format --dry-run --Werror $(SRCS) test/api/api_test.c test/api/api_threads_test.c test/api/api_oom_test.c test/api/api_namespace_test.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
