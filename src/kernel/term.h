@@ -35,7 +35,8 @@ size_t heap_rebake_cuts(trilog_t *T, size_t r, size_t cut_barrier);
 void print_term(trilog_t *T, size_t r);
 void print_term_quoted(trilog_t *T, size_t r);
 typedef void (*emit_fn)(trilog_t *T, const char *s);
-void print_term_via(trilog_t *T, size_t r, int quoted, emit_fn emit);
+enum { PRINT_QUOTED = 1, PRINT_NUMBERVARS = 2 };
+void print_term_via(trilog_t *T, size_t r, int flags, emit_fn emit);
 
 tterm_t *heap_to_template(trilog_t *T, size_t r, int32_t *nvars_out);
 

@@ -708,3 +708,28 @@ bcapply(G) :- call(G).
 
 ?- write_term_to_chars(hello, [quoted(true)], Cs), read_from_chars(Cs, T).
    Cs = "hello", T = hello.
+
+% numbervars/3 and the numbervars(true) write option
+?- T = f(X, Y, X), numbervars(T, 0, E).
+   T = f('$VAR'(0), '$VAR'(1), '$VAR'(0)), X = '$VAR'(0), Y = '$VAR'(1), E = 2.
+
+?- numbervars(f(a), 5, E).
+   E = 5.
+
+?- catch(numbervars(_, a, _), error(E, C), true).
+   E = type_error(integer, a), C = numbervars/3.
+
+?- write_term_to_chars(['$VAR'(0), '$VAR'(25), '$VAR'(26), '$VAR'(53)], [numbervars(true)], Cs).
+   Cs = "[A, Z, A1, B2]".
+
+?- write_term_to_chars('$VAR'(1), [quoted(true)], Cs).
+   Cs = "'$VAR'(1)".
+
+?- write_term_to_chars(['$VAR'(-1), '$VAR'(x)], [quoted(true), numbervars(true)], Cs).
+   Cs = "['$VAR'(-1), '$VAR'(x)]".
+
+?- with_output_to(chars(Cs), writeq('$VAR'(1))).
+   Cs = "B".
+
+?- with_output_to(chars(Cs), write('$VAR'(2))).
+   Cs = "C".

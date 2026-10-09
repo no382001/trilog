@@ -1783,3 +1783,17 @@ PLEOF
   [[ "$output" == *"E = syntax_error("* ]]
   [[ "$output" == *"C = /(read_from_chars, 2)"* ]]
 }
+
+@test "numbervars/3 and write_term numbervars(true) print '\$VAR'(N) as a variable name" {
+  run "$TRILOG" -f -e "
+    T = f(X, Y, X, Z),
+    numbervars(T, 0, End),
+    writeq(T),
+    nl,
+    write_term(T, [quoted(true), numbervars(false)]),
+    nl.
+  "
+  [[ "$output" == *"f(A, B, A, C)"* ]]
+  [[ "$output" == *"f('\$VAR'(0), '\$VAR'(1), '\$VAR'(0), '\$VAR'(2))"* ]]
+  [[ "$output" == *"End = 3"* ]]
+}

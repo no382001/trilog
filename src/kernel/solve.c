@@ -1250,7 +1250,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
   }
   if (arity == 3 && id == atom_write_raw) {
     size_t target = heap_deref(T, f + 1);
-    int quoted = T->heap[heap_deref(T, f + 3)].as.ival != 0;
+    int flags = (int)T->heap[heap_deref(T, f + 3)].as.ival;
     int kind;
     void *h;
     if (!resolve_write_target(T, target, &kind, &h)) {
@@ -1258,12 +1258,12 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       return 1;
     }
     if (kind == OUT_STDOUT)
-      print_term_via(T, f + 2, quoted, io_write_str);
+      print_term_via(T, f + 2, flags, io_write_str);
     else if (kind == OUT_STDERR)
-      print_term_via(T, f + 2, quoted, io_write_err);
+      print_term_via(T, f + 2, flags, io_write_err);
     else {
       T->file_target = h;
-      print_term_via(T, f + 2, quoted, emit_to_file);
+      print_term_via(T, f + 2, flags, emit_to_file);
     }
     *ok = 1;
     return 1;
@@ -1512,7 +1512,8 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     if (T->heap[term_arg].tag != TAG_REF) {
       T->tta_pos = 0;
       T->tta_buf[0] = '\0';
-      print_term_via(T, term_arg, 1, tta_emit); // quoted, so it round-trips
+      print_term_via(T, term_arg, PRINT_QUOTED,
+                     tta_emit); // quoted, so it round-trips
       *ok = unify(T, atom_arg, heap_new_atom(T, atom_intern(T, T->tta_buf)));
       return 1;
     }

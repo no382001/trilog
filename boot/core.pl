@@ -397,22 +397,22 @@ with_output_to(chars(Cs), Goal) :- with_output_to(atom(A), Goal), atom_chars(A, 
 
 %!  write(@Term), write(+Stream, @Term) is det.
 %   TODO: no operator-aware output.
-write(T) :- '$$write_raw'(0, T, 0).
+write(T) :- '$$write_raw'(0, T, 2).
 write(S, T) :-
     '$with_context'('$resolve_stream'(S, N), write/2),
-    ( '$$write_raw'(N, T, 0) -> true ; throw(error(existence_error(stream, S), write/2)) ).
+    ( '$$write_raw'(N, T, 2) -> true ; throw(error(existence_error(stream, S), write/2)) ).
 
 %!  writeq(@Term) is det.
 %!  writeq(+Stream, @Term) is det.
-writeq(T) :- '$$write_raw'(0, T, 1).
+writeq(T) :- '$$write_raw'(0, T, 3).
 writeq(S, T) :-
     '$with_context'('$resolve_stream'(S, N), writeq/2),
-    ( '$$write_raw'(N, T, 1) -> true ; throw(error(existence_error(stream, S), writeq/2)) ).
+    ( '$$write_raw'(N, T, 3) -> true ; throw(error(existence_error(stream, S), writeq/2)) ).
 
 %!  write_term(@Term, +Options) is det.
 %!  write_term(+Stream, @Term, +Options) is det.
 %   Options: quoted(Bool), ignore_ops(Bool), numbervars(Bool).
-%   TODO: numbervars(true) and ignore_ops(false) are accepted but not honored.
+%   TODO: ignore_ops(false) is accepted but not honored.
 write_term(T, Opts) :-
     '$with_context'('$write_options'(Opts, Q), write_term/2),
     '$$write_raw'(0, T, Q).
@@ -429,9 +429,9 @@ write_term(S, T, Opts) :-
     '$write_options'(Os, Q1, Q).
 
 '$write_option'(O, _, _) :- var(O), !, throw(error(instantiation_error, _)).
-'$write_option'(quoted(B), _, Q) :- '$option_bool'(quoted(B), write_option, Q), !.
-'$write_option'(ignore_ops(B), Q, Q) :- '$option_bool'(ignore_ops(B), write_option, _), !.
-'$write_option'(numbervars(B), Q, Q) :- '$option_bool'(numbervars(B), write_option, _), !.
+'$write_option'(quoted(B), F0, F) :- '$option_bool'(quoted(B), write_option, V), !, F is F0 \/ V.
+'$write_option'(ignore_ops(B), F, F) :- '$option_bool'(ignore_ops(B), write_option, _), !.
+'$write_option'(numbervars(B), F0, F) :- '$option_bool'(numbervars(B), write_option, V), !, F is F0 \/ V << 1.
 '$write_option'(O, _, _) :- throw(error(domain_error(write_option, O), _)).
 
 '$option_bool'(O, _, _) :- arg(1, O, B), var(B), !, throw(error(instantiation_error, _)).
@@ -443,6 +443,20 @@ write_term(S, T, Opts) :-
 '$options_list'([]) :- !.
 '$options_list'([_|L]) :- !, '$options_list'(L).
 '$options_list'(L) :- throw(error(type_error(list, L), _)).
+
+%!  numbervars(?Term, +Start, -End) is det.
+%   Binds each variable of Term to '$VAR'(N), N counting up from Start.
+numbervars(T, S, E) :-
+    (   var(S) -> throw(error(instantiation_error, numbervars/3))
+    ;   integer(S) -> true
+    ;   throw(error(type_error(integer, S), numbervars/3))
+    ),
+    term_variables(T, Vs),
+    '$numbervars'(Vs, S, E).
+'$numbervars'([], N, N).
+'$numbervars'(['$VAR'(N)|Vs], N, E) :-
+    N1 is N + 1,
+    '$numbervars'(Vs, N1, E).
 
 %!  write_term_to_chars(@Term, +Options, -Chars) is det.
 write_term_to_chars(T, Opts, Cs) :-

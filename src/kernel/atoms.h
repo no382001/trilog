@@ -100,6 +100,7 @@
   X(atom_copy_term, "copy_term")                                               \
   X(atom_term_to_atom, "term_to_atom")                                         \
   X(atom_atom_to_term, "atom_to_term")                                         \
+  X(atom_dollar_var, "$VAR")                                                   \
   X(atom_clause_candidates, "$$clause_candidates")                             \
   X(atom_choice_mark, "$$choice_mark")                                         \
   X(atom_cut_to, "$$cut_to")                                                   \

@@ -243,10 +243,29 @@ static int try_print_char_string(trilog_t *T, size_t r, emit_fn emit) {
   return 1;
 }
 
+// '$VAR'(N) prints as A..Z, then A1..Z1 and so on
+static int print_var_name(trilog_t *T, size_t f, emit_fn emit) {
+  if (T->heap[f].as.func.arity != 1 ||
+      T->heap[f].as.func.atom_id != atom_dollar_var)
+    return 0;
+  size_t n = heap_deref(T, f + 1);
+  if (T->heap[n].tag != TAG_INT || T->heap[n].as.ival < 0)
+    return 0;
+  int64_t i = T->heap[n].as.ival;
+  char buf[32];
+  if (i / 26)
+    snprintf(buf, sizeof buf, "%c%lld", 'A' + (int)(i % 26),
+             (long long)(i / 26));
+  else
+    snprintf(buf, sizeof buf, "%c", 'A' + (int)(i % 26));
+  emit(T, buf);
+  return 1;
+}
+
 // Cyclic terms (X = [X|_], no occurs-check by default) used to blow the
 // C stack - a long acyclic list is safe since the list branch below
 // walks its spine iteratively.
-static void print_term_ex(trilog_t *T, size_t r, int quoted, emit_fn emit) {
+static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
   if (T->print_depth >= MAX_PRINT_DEPTH) {
     emit(T, "...");
     return;
@@ -260,7 +279,8 @@ static void print_term_ex(trilog_t *T, size_t r, int quoted, emit_fn emit) {
     emit(T, buf);
     break;
   case TAG_ATOM:
-    print_atom(T, atom_name(T, T->heap[r].as.atom_id), quoted, emit);
+    print_atom(T, atom_name(T, T->heap[r].as.atom_id), flags & PRINT_QUOTED,
+               emit);
     break;
   case TAG_INT:
     snprintf(buf, sizeof buf, "%ld", T->heap[r].as.ival);
@@ -286,7 +306,7 @@ static void print_term_ex(trilog_t *T, size_t r, int quoted, emit_fn emit) {
         size_t cf = T->heap[cell].as.ptr;
         if (!first)
           emit(T, ", ");
-        print_term_ex(T, cf + 1, quoted, emit); // head
+        print_term_ex(T, cf + 1, flags, emit); // head
         size_t tail = heap_deref(T, cf + 2);
         if (T->heap[tail].tag == TAG_ATOM &&
             T->heap[tail].as.atom_id == atom_nil)
@@ -304,19 +324,21 @@ static void print_term_ex(trilog_t *T, size_t r, int quoted, emit_fn emit) {
           }
         }
         emit(T, "|");
-        print_term_ex(T, tail, quoted, emit);
+        print_term_ex(T, tail, flags, emit);
         break;
       }
       emit(T, "]");
       break;
     }
-    print_atom(T, name, quoted, emit);
+    if ((flags & PRINT_NUMBERVARS) && print_var_name(T, f, emit))
+      break;
+    print_atom(T, name, flags & PRINT_QUOTED, emit);
     if (arity > 0) {
       emit(T, "(");
       for (int32_t i = 0; i < arity; i++) {
         if (i)
           emit(T, ", ");
-        print_term_ex(T, f + 1 + i, quoted, emit);
+        print_term_ex(T, f + 1 + i, flags, emit);
       }
       emit(T, ")");
     }
@@ -330,10 +352,10 @@ static void print_term_ex(trilog_t *T, size_t r, int quoted, emit_fn emit) {
 
 void print_term(trilog_t *T, size_t r) { print_term_ex(T, r, 0, io_write_str); }
 void print_term_quoted(trilog_t *T, size_t r) {
-  print_term_ex(T, r, 1, io_write_str);
+  print_term_ex(T, r, PRINT_QUOTED, io_write_str);
 }
-void print_term_via(trilog_t *T, size_t r, int quoted, emit_fn emit) {
-  print_term_ex(T, r, quoted, emit);
+void print_term_via(trilog_t *T, size_t r, int flags, emit_fn emit) {
+  print_term_ex(T, r, flags, emit);
 }
 
 static void template_mark(trilog_t *T, size_t f) {
