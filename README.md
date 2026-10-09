@@ -1,187 +1,145 @@
 # trilog
 
-A Prolog interpreter aiming to be embeddable, based on van Emden's ABC algorithm (hence the three/tri), written in C11.
+[![CI](https://github.com/no382001/trilog/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/no382001/trilog/actions/workflows/ci.yml?query=branch%3Amain)
+
+A Prolog interpreter aiming to be embeddable.
+
+The name comes from the ABC algorithm in M. H. van Emden's *An Algorithm for Interpreting Prolog Programs* (University of Waterloo, CS-81-28, 1981). ABC is not short for anything. A, B and C are the three labels of a small state machine: go down while there is an untried alternative, come back up and try the next one when there is not, and fail once you have climbed past the root. trilog's solver is built on this algorithm.
 
 ## Contents
 
 - [Build](#build)
-- [Usage](#usage)
-- [Language](#language)
-  - [Operators](#operators)
-  - [Arithmetic](#arithmetic)
-  - [ISO built-ins](#iso-built-ins)
-  - [Extensions](#extensions)
-  - [Standard library](#standard-library-libcorepl)
 - [Embedding](#embedding)
-  - [Context allocation](#context-allocation)
-  - [Custom builtins (FFI)](#custom-builtins-ffi)
-  - [I/O hooks](#io-hooks)
-- [Testing](#testing)
-- [Algorithm](#algorithm)
+- [Libraries](#libraries)
+- [History](#history)
 
 ## Build
 
-```sh
-make        # native build (trilog)
-make small  # size-constrained build (see Embedding)
-make pico   # RP2040 build for the wokwi/ simulator, see wokwi/
-```
-
-## Usage
+You need `build-essential` and `clang-format`.
 
 ```sh
-./trilog                  # interactive REPL
-./trilog file.pl          # load file
-./trilog -f file.pl       # load file, skip ~/.trilog (fast startup)
-./trilog -e "goal."       # evaluate and exit
+make           # debug build: ./trilog
+make release   # release build: _build/trilog and _build/release-posix/libtrilog.a
 ```
 
-On startup, trilog loads `~/.trilog` if it exists, unless `-f` (fast startup) is given.
-
-## Language
-
-Standard Prolog syntax. Integers, atoms, functors, lists, rules and facts. Comments: `%` line comments and `/* */` block comments. Character code notation: `0'a` evaluates to 97.
-
-### Operators
-
-| Operators | Prec | Notes |
-|-----------|------|-------|
-| `* / // mod >> << /\ xor` | 40 | `>>` `<<` shift; `/\` bitwise and |
-| `+ - \/` | 30 | `\/` bitwise or |
-| `< > =< >= =:= =\= == \== @< @> @=< @>=` | 20 | |
-| `is = \= =..` | 10 | |
-| `->` | 7 | if-then |
-| `^` | 6 | existential quantification |
-| `;` | 5 | disjunction / if-then-else |
-
-Prefix: `\+` (negation), `\` (bitwise complement).
-
-`op/3` and `current_op/3` are supported for defining and querying operators at runtime.
-
-### Arithmetic
-
-Integer arithmetic via `is/2`. Operators: `+ - * / // mod max min >> << /\ \/ xor`. Unary: `- abs \`. ISO overflow and zero-divisor errors are raised.
-
-### ISO built-ins
-
-| Predicate | Notes |
-|-----------|-------|
-| `true` `fail` `!` `halt/0` `halt/1` | basics |
-| `\+(G)` `call(G)` `once(G)` | meta-call |
-| `,(G,G)` `;(G,G)` `->(G,G)` | control |
-| `throw(T)` `catch(G,C,R)` | exceptions (`error(Formal, Context)` convention) |
-| `findall/3` `bagof/3` `setof/3` | aggregation; `X^Goal` for existential quantification |
-| `asserta(C)` `assertz(C)` `retract(H)` `retractall(H)` `abolish(F/A)` | dynamic database |
-| `dynamic(+Spec)` | declares predicate as dynamic; file-loaded predicates without a `dynamic` declaration are protected from modification |
-| `var/1` `nonvar/1` `atom/1` `integer/1` `number/1` `atomic/1` `compound/1` `callable/1` `is_list/1` | type tests |
-| `functor/3` `arg/3` `=../2` `copy_term/2` | term introspection |
-| `compare/3` `sort/2` | ordering |
-| `atom_length/2` `atom_concat/3` `atom_chars/2` `atom_codes/2` `sub_atom/5` | atoms |
-| `char_code/2` `atom_number/2` `number_chars/2` `number_codes/2` | conversion |
-| `write/1` `write/2` `writeq/1` `writeq/2` `nl/0` `nl/1` `flush_output/0` `get_char/1` | I/O; `/2` variants take a stream as first arg |
-| `open/3` `close/1` `read_term/2` | streams |
-| `current_prolog_flag/2` | flags: `max_integer` `min_integer` `bounded` `integer_rounding_function` |
-| `is/2` | arithmetic |
-
-### Extensions
-
-These are non-ISO predicates
-
-| Predicate | Notes |
-|-----------|-------|
-| `consult(+F)` `[F]` `[F1,F2,…]` `include(+F)` `make` | file loading; list syntax consults each element |
-| `consulted(-Ls)` | unifies `Ls` with the list of currently loaded files |
-| `unconsult(+F)` | unloads all clauses contributed by file `F`; fails if `F` is not loaded |
-| `msort/2` | sort without removing duplicates |
-| `writeln/1` `writeln/2` `with_output_to(+Sink, +Goal)` | output; Sink: `atom(A)`, `codes(Cs)`, `chars(Chs)` |
-| `read_line_to_atom/2` `read_line_to_chars/2` | read one line from a stream; unifies `end_of_file` at EOF |
-| `put_chars/1` `put_chars/2` | write a char list to stdout / stream |
-| `read_from_chars/2` `read_term_from_chars/3` | read a term from a char list |
-| `write_term_to_chars/3` | write a term to a char list with options |
-| `atom_to_term/3` `term_to_atom/2` | term <-> atom |
-
-### Standard library (`lib/core.pl`)
-
-Loaded automatically. Provides: `false/0`, `repeat/0`, `halt/0`, `succ/2`, `plus/3`, `between/3`, `forall/2`, `member/2`, `memberchk/2`, `select/3`, `append/3`, `length/2`, `reverse/2`, `last/2`, `nth0/3`, `nth1/3`, `numlist/3`, `permutation/2`, `delete/3`, `subtract/3`, `intersection/3`, `union/3`, `list_to_set/2`, `flatten/2`, `sum_list/2`, `max_list/2`, `min_list/2`, `max_member/2`, `min_member/2`, `include/3`, `exclude/3`, `partition/4`, `maplist/2-4`, `foldl/4-6`, `countall/3`, `must_be/2`.
+The release build has the Prolog core and libraries built in, so it runs without the source tree.
 
 ## Embedding
 
-### Context allocation
-
-The library itself performs no dynamic allocation — the host allocates a single contiguous block for the interpreter context (including its term pool) and passes it in:
+This program prints every answer to a query. Save it as `hello.c`:
 
 ```c
-trilog_ctx_t *ctx = malloc(TRILOG_CTX_SIZE(TERM_POOL_BYTES));
-trilog_ctx_init(ctx, TERM_POOL_BYTES);
-io_hooks_init_default(ctx);
-// ... use ctx ...
-free(ctx);
-```
+#include "trilog.h"
+#include <stdio.h>
 
-`TERM_POOL_BYTES` defaults to 256 MB — sized for the `quad.pl` test harness, which runs every test query through `findall/3` inside one long-lived process and needs the headroom. Override at compile time for constrained targets (e.g. `-DTERM_POOL_BYTES=(128*1024)` for RP2040); see `make small` and `wokwi/` for a complete constrained-target build targeting the RP2040 (simulated via [wokwi](https://wokwi.com)).
-
-### Custom builtins (FFI)
-
-```c
-builtin_result_t my_handler(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
-    term_t *arg = deref(env, goal->args[0]);
-    // ... inspect/unify args ...
-    return BUILTIN_OK; // or BUILTIN_FAIL / BUILTIN_ERROR
+static bool print_answer(trilog_t *t, void *ud, bool has_more) {
+  (void)ud;
+  for (int i = 0; i < trilog_binding_count(t); i++) {
+    char text[64];
+    trilog_format(t, trilog_binding_value(t, i), 0, text, sizeof text);
+    printf("%s%s = %s", i ? ", " : "", trilog_binding_name(t, i), text);
+  }
+  printf("\n");
+  return has_more;
 }
-ffi_register_builtin(ctx, "my_pred", 1, my_handler, NULL);
-```
 
-See `examples/ffi_example.c` for a complete example.
-
-### I/O hooks
-
-All interpreter I/O goes through a hook struct, so you can redirect it entirely — useful for embedding in applications, GUIs, or constrained environments.
-
-```c
-io_hooks_t hooks = {0};
-hooks.write_str  = my_write;    // void(ctx, str, userdata)
-hooks.writef     = my_writef;   // void(ctx, fmt, va_list, userdata)
-hooks.writef_err = my_writef;   // stderr channel
-hooks.read_char  = my_getchar;  // int(ctx, userdata)
-hooks.read_line  = my_readline; // char*(ctx, buf, size, userdata)
-// file i/o (needed for consult/include):
-hooks.file_open      = my_fopen;
-hooks.file_close     = my_fclose;
-hooks.file_read_line = my_freadline;
-hooks.file_write     = my_fwrite;
-hooks.file_exists    = my_exists;
-hooks.file_mtime     = my_mtime;
-hooks.userdata = my_state;
-io_hooks_set(ctx, &hooks);
-```
-
-Only set the callbacks you need; unset ones fall back to the defaults (`stdio`/`libc`).
-
-## Testing
-
-Tests use the [quad format](https://web.liminal.cafe/~byakuren/flowlog/docs/QUAD_TESTS.html) — plain `.pl` files containing queries and their expected output:
-
-```prolog
-?- member(X, "abc").
-   X = a
-;  X = b
-;  X = c.
-
-?- atom_length(hello, N).
-   N = 5.
+int main(void) {
+  trilog_t *t = trilog_new(NULL);
+  if (!t)
+    return 1;
+  trilog_load_string(t, "double(X, Y) :- Y is X * 2.");
+  trilog_query(t, "member(X, [1, 2, 3]), double(X, Y)", print_answer, NULL);
+  trilog_free(t);
+  return 0;
+}
 ```
 
 ```sh
-make quad          # TAP output via quad format
-make quad-junit    # JUnit XML → _build/test-results/
-make syscheck      # bats system tests (test/*.bats)
-make test          # quad + syscheck
+cc -std=c11 -Iinclude hello.c _build/release-posix/libtrilog.a -lm -o hello
+./hello
 ```
 
-There are ISO conformance tests (`test/iso_quad.pl`) that run but do not fail the build.
+```text
+X = 1, Y = 2
+X = 2, Y = 4
+X = 3, Y = 6
+```
 
-## Algorithm
+The public API is [`include/trilog.h`](include/trilog.h):
 
-Based on the **ABC algorithm** from M.H. van Emden's *"An Algorithm for Interpreting PROLOG Programs"* (1981): a depth-first, left-to-right SLD resolution loop with an explicit stack for backtracking. Each clause invocation gets fresh variables via an integer counter.
+| Function | Use |
+| --- | --- |
+| `trilog_new`, `trilog_free` | create and destroy an interpreter; `trilog_config_t` sets the allocator and I/O |
+| `trilog_load_file`, `trilog_load_string` | load Prolog code |
+| `trilog_query` | run a goal, calling back once per answer |
+| `trilog_binding_count`, `trilog_binding_name`, `trilog_binding_value` | read an answer's bindings |
+| `trilog_term_type`, `trilog_get_int`, `trilog_get_float`, `trilog_get_atom`, `trilog_get_functor`, `trilog_get_arg` | inspect a term |
+| `trilog_format` | write a term as text |
+| `trilog_error_term`, `trilog_halt_code` | why a query stopped |
+| `trilog_register`, `trilog_error` | define a predicate in C, and raise an error from it |
+| `trilog_set_io` | replace the I/O hooks |
+| `trilog_set_yield` | call back every N steps, to stop a long query |
+| `trilog_usage`, `trilog_version` | memory use and build version |
 
-**Memory layout** — dual-ended bump allocator inside the context buffer: temporary query terms grow up from offset 0; permanent clause terms grow down from the top. After each top-level query the temp region is reclaimed unconditionally. A staging-area compaction pass (`compact_perm_pool`) defragments the permanent region after retracts, controlled by the `COMPACT_AFTER_RETRACTS` macro (default: compact every retract).
+[`examples/embed.c`](examples/embed.c) uses `trilog_register` and `trilog_set_yield`.
+
+The library builds for two platforms:
+
+| Build | Command | Notes |
+| --- | --- | --- |
+| POSIX | `make release` | the default |
+| no POSIX | `make PLATFORM=no_posix release` | no `get_time_ms/1` or `file_mtime/2`, so `make/0` raises `existence_error`; relative file names are not made absolute, so one file loaded under two spellings counts as two |
+
+Both builds currently need glibc: stdio, stdlib, string, `setjmp` and math (`-lm`), plus `getenv`, `<ctype.h>`, `errno` and `assert`. The default allocator and I/O use `malloc` and stdio; `trilog_config_t` replaces them, but stdio stays linked.
+
+## Libraries
+
+The core holds the built-in predicates. Everything else is a library in [`lib/`](lib/), loaded with `ensure_loaded(library(Name))`. There is no module system yet: `use_module(library(Name))` is accepted as a placeholder and does the same as `ensure_loaded/1`.
+
+| Library | Contents | Loaded by |
+| --- | --- | --- |
+| `lists` | `append/3`, `member/2`, `length/2`, `nth0/3`, `reverse/2`, `select/3`, … | the core |
+| `error` | `must_be/2`, `can_be/2` | the core |
+| `misc` | `forall/2`, `with_output_to/2`, `numbervars/3`, `writeln/1` | the core |
+| `apply` | `maplist/2..`, `foldl/4`, `include/3`, `exclude/3` | the CLI |
+| `dcgs` | DCG translation, `phrase/2,3` | the CLI |
+| `between` | `between/3`, `succ/2`, `plus/3` | the CLI |
+| `charsio` | `read_term_from_chars/3`, `write_term_to_chars/3` | the CLI |
+| `make` | `make/0`, `consulted/1`, `unconsult/1` | the CLI |
+
+`trilog_new` loads only the core. The CLI also loads the five marked "the CLI"; `./trilog -n` skips them.
+
+## History
+
+trilog uses the ABC algorithm because it is very simple. Van Emden himself presented it that way:
+
+> The only novelty we believe this paper to have is the human-oriented form of the algorithm and its derivation from a mathematical description of the SLD (Selective Linear Definite clause resolution) theorem-prover. — M. H. van Emden, *An interpreting algorithm for Prolog programs*, First International Logic Programming Conference (1982)
+
+trilog is not a WAM. The goal is the most efficient interpreter that stays this simple. A WAM would be much faster, but trilog is fast enough for now; a WAM-style backend may come later.
+
+The first engine is on `main` (a3536a4). Lots of things already worked there, but it was getting harder to see what the engine was actually doing, and the design problems kept piling up. So it was rewritten, starting again from the solver:
+
+> The only applicable research method is to accumulate experience by implementing a system, synthesize the experience, think for a while and start over. — E. Sandewall, *Programming in an Interactive Environment: The LISP Experience* (1978)
+
+Both engines were measured on the same machine: 5979680 as a release build, the first engine with `-O2` and no sanitiser. Times are median CPU time of 7 runs (63 for start-up), with peak memory. "Now" runs `./trilog -n`, which loads only the core; the benchmarks need nothing else.
+
+| Workload | First engine | Now | Faster | Less memory |
+| --- | --- | --- | --- | --- |
+| start and exit | 9.9 ms, 4.6 MB | 4.4 ms, 2.5 MB | 2.2× | 1.8× |
+| naive reverse, 300 elements | 992 ms, 234 MB | 33 ms, 2.8 MB | 30× | 84× |
+| 8 queens, all solutions | 2,866 ms, 24 MB | 334 ms, 2.8 MB | 8.6× | 8.6× |
+| `fib(21)` | 493 ms, 49 MB | 33 ms, 3.0 MB | 15× | 16× |
+| build 20,000 atoms | 15,082 ms, 34 MB | 1,319 ms, 3.6 MB | 11× | 9.4× |
+
+On average (geometric mean) the new engine is 10× faster and uses 11.5× less memory.
+
+Without `-n`, the CLI also loads its five libraries, and start-up takes 22.3 ms and 3.0 MB.
+
+Lines of code, without blanks and comments, counted with `cloc`. C is the engine and the CLI for one platform; Prolog is the core and the libraries the CLI loads:
+
+| Language | First engine | Now |
+| --- | --- | --- |
+| C | 6,598 | 5,866 |
+| Prolog | 399 | 836 |
+
+The C code shrank by 11% and the Prolog doubled, this is because code that needs no C and is not on a hot path moved to Prolog: lists, errors, DCGs, `between/3`, text I/O helpers and `make/0`. The new engine has more built-ins and passes more tests (265 end-to-end and 1,431 quad tests, against 79 and 1,231) with less C.

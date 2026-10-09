@@ -1,48 +1,55 @@
-towards some form of iso compliance:
-    https://www.complang.tuwien.ac.at/ulrich/iso-prolog/prologue
+regressions:
 
-ease of use on the default linux target:
-    - readline/history in repl
+must have:
 
-wokwi demo:
-    - reduce binary size
-    - some more complex example
+correctness:
+- the CLI's five default libraries add about 18 ms to boot (4.4 ms with -n, 22.3 ms by default, 5979680 release); ensure_loaded/consult is slow for small files
+- reconsulting a file while one of its predicates still has a choicepoint breaks the logical update view: member(X, [a,b]), consult('lib/lists.pl'), write(X), fail loops on b forever
+- the printer never uses operator syntax: (a,b) prints as ','(a, b), foo/0 as /(foo, 0) (#15 shows /(ex_nihilo, 0))
+- number_codes parses with its own strtoll/strtod, not the parser's number reader, so the number_chars quads test the wrong code (#7)
+- dcg: \+//1 and pushback are missing; call//N skips compile-on-first-call (call(item, a) -> existence_error item/3)
+- sub_atom/atom_length count bytes, not utf-8 chars (atom_length('Pécs', 5)) I mean how correct should we be?
+- directives run to exhaustion instead of once
+- 7/2 gives 3 (iso: 3.5); floats print as 1e+10 (iso: 1.0e10)
+- syntax conformity (make conformity): 140/363
+- quoted atoms: \a \b \f \v \0, octal \NNN\ and hex \xHH\ escapes, backslash-newline continuation; unknown escapes and raw tabs should be syntax errors
+- the toplevel reads one line per query, not one term; queries cannot span lines
+- printed arguments are separated by ", ", iso writes ","
 
-ledit:
-    - printing 20 lines will need 100k termpool, for what?
+missing requirements:
+- use_module/1 is ensure_loaded/1 under another name and suggests a module system that does not exist; revise it (implement modules, or drop the alias)
+- missing library preds: countall/2, nth0/4, nth1/4, foldl/5,6, acyclic_term/1
+- missing iso builtins: read/1, read_term/2,3, put_char/1, get_char/2, peek_char/1, current_input/1, current_output/1, set_input/1, set_output/1, flush_output/1, open/4, close/2, set_prolog_flag/2, char_conversion/2, current_predicate/1
+- wokwi/ runs on the Pico 2 (rp2350); the full boot/core.pl needs 307 KB live, the RP2040 heap is 258 KB
+- pico 2: building a 100-deep term and round-tripping it through term_to_atom runs out of memory; the prolog heap doubles to 8192 cells between GC points, then asks for 16384, it should be possible to modify the multiplier from the outside
+- quad.pl: chars and dcgs instead of codes and atom_concat chains (#27)
+- fix main-specific test expectations: 32-bit max_integer, last/2 arg order, sub_atom/5 single answer, answer printing (unhandled exception, X = Y)
+- a build without glibc: drop getenv, assert, ctype and errno from the engine, leaving stdio (default I/O), setjmp and libm
+- debug flag, and trace?
+- readline/history in repl
+- modules?
 
-modules:
-    - the includes are getting confusing, i should try to implement this aswell, or is this too much instrumentation for the small target?
+performance (release build, cpu ms, median of 5 runs; differences under ~10% are noise):
+                32fad8a   ea9b6a1   2d8aed6
+  boot              4.7       9.9       3.4
+  nrev 300x200     6752      6809      6705
+  queens 8          357       417       380
+  fib 21             46        50        48
+  assert 20k        287       377       299
+  msort 50k        2782      2676      2010
+  atoms 20k        1571      2547      1089
+  gc churn         3817      3584      3670
 
-- since we are not working with that much memory, stability should be first
+main (a3536a4, -O2, no asan) vs 2d8aed6 release, cpu ms / peak rss:
+                main            2d8aed6
+  boot           8.9 / 4.9 MB    4.4 / 2.6 MB
+  nrev 300x1    1020 / 237 MB     30 / 2.8 MB
+  queens 8      3078 / 24 MB     354 / 3.1 MB
+  fib 21         543 / 49 MB      37 / 3.1 MB
+  atoms 20k    12389 / 35 MB     963 / 3.6 MB
 
-- i really shouldnt be having that dynamic array at the end of the ctx struct, c89 does not have it - i could hack it with [1] but thats ub, with malloc it could work
-
-papers to look into:
-    - Aït-Kaci, "Warren's Abstract Machine: A Tutorial Reconstruction" (1991)
-    - Demoen, "Dynamic attributes, their hProlog implementation" (2002)
-    - Appleby et al., "Garbage Collection for Prolog Based on WAM" (1988)
-    - Tarau, "The BinProlog Experience: Architecture and Implementation Choices"
-    - Tarau & Dahl, "Logic Programming and Logic Grammars with First-Order Continuations"
-    - Lindholm, "Unification and the Efficient Execution of Prolog"
-    - Zhou, "Parameter Passing and Control Stack Management in Prolog Implementation Revisited" (1996)
-
-non-determinism support?
-
-known bugs (found via test/ulrich/ and test/iso_quad.pl):
-    - builtin_atom_concat (src/builtins.c): stack-use-after-return once the
-      concatenated atom gets large (MAX_NAME, 16k) ASAN crash
-      triggered by ulrich/select_quad.pl's self-referential select/3 case,
-      and independently by lib/quad.pl's own crash-recovery code before it
-      was rewritten to stream line-by-line instead of accumulating one
-      big atom (see count_partial/4, stream_copy_lines/2 in lib/quad.pl)
-    - term.c make_var: MAX_VARS table exhaustion is a hard assertion
-      failure (abort), hit by test/iso_quad.pl's
-      number_codes tests
-    - sub_atom/atom_concat split strings by byte offset, not UTF-8
-      character offset, can produce invalid truncated multi-byte
-      sequences (see test/iso_quad.pl's 'Pécs' test, breaks strict XML
-      parsers reading the JUnit report)
-    - no occurs-check, and no cycle detection either: self-referential
-      unification (member(X,X), select(E,Xs,Xs), nth0(N,[[]|Es],Es)) either
-      hangs forever or crashes the printer on the resulting cyclic term
+guidelines:
+- as much logic in prolog as possible
+- minimize the interpreter code in C
+- same kind of embeddability goals as on main; builds as a library for linux and the rp2350 (wokwi/)
+- malloc/realloc usage minimized, ideally the memory we can use is up to the user embedding the interpreter

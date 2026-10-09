@@ -1,155 +1,103 @@
-CC := gcc
-CFLAGS := \
-    -std=c11 \
-    -Wall \
-    -Wextra \
-    -Wpedantic \
-	-Werror \
-    -g
-CFLAGS += -fsanitize=address -fno-omit-frame-pointer
-LDFLAGS += -fsanitize=address -lm
+.DEFAULT_GOAL := trilog
 
-TARGET := trilog
-BUILD_DIR := _build
-EXAMPLES_DIR := examples
+CC = gcc
+AR = gcc-ar
+CFLAGS = -Wall -Wextra -std=c11 -O2
+CPPFLAGS = -Iinclude -Isrc/kernel -Isrc/io -Isrc/platform -I_build -MMD -MP
 
-SRCS := $(wildcard src/*.c)
-HDRS := $(wildcard src/*.h)
-OBJS := $(SRCS:src/%.c=$(BUILD_DIR)/%.o)
+PLATFORM ?= posix
+KERNEL_SRCS = src/kernel/heap.c src/kernel/unify.c src/kernel/term.c src/kernel/solve.c \
+              src/kernel/parse.c src/kernel/arena.c src/kernel/gc.c src/kernel/mem.c
+IO_SRCS = src/io/io.c src/io/streams.c
+LIB_SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c src/platform/$(PLATFORM).c
+CLI_SRCS = cli/main.c cli/terminal_$(PLATFORM).c
+SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c cli/main.c
+HDRS = include/trilog.h cli/terminal.h $(wildcard src/kernel/*.h) $(wildcard src/io/*.h) $(wildcard src/platform/*.h)
 
-LIB_OBJS := $(filter-out $(BUILD_DIR)/main.o,$(OBJS))
+# OPAQUE=0 exports every engine symbol instead of only the trilog_* API.
+OPAQUE ?= 1
+VARIANT = $(PLATFORM)$(if $(filter 0,$(OPAQUE)),-open)
+DEV = _build/dev-$(VARIANT)
+REL = _build/release-$(VARIANT)
+HIDE_INTERNALS = $(if $(filter 0,$(OPAQUE)),true,objcopy --wildcard --keep-global-symbol='trilog_*')
+DEV_LIB_OBJS = $(patsubst %.c,$(DEV)/%.o,$(LIB_SRCS) src/kernel/embedded_none.c)
+REL_LIB_OBJS = $(patsubst %.c,$(REL)/%.o,$(LIB_SRCS) _build/embedded.c)
+DEV_CLI_OBJS = $(patsubst %.c,$(DEV)/%.o,$(CLI_SRCS))
+REL_CLI_OBJS = $(patsubst %.c,$(REL)/%.o,$(CLI_SRCS))
 
-EXAMPLE_SRCS := $(wildcard $(EXAMPLES_DIR)/*.c)
-EXAMPLE_BINS := $(EXAMPLE_SRCS:$(EXAMPLES_DIR)/%.c=$(BUILD_DIR)/%)
+$(DEV)/cli/%.o $(REL)/cli/%.o: CPPFLAGS = -Iinclude -Icli -MMD -MP
 
-all: format $(TARGET) $(EXAMPLE_BINS)
+$(DEV)/%.o: %.c | format
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-$(TARGET): $(OBJS)
-	$(CC) $(LDFLAGS) $(OBJS) -o $@
+$(REL)/%.o: %.c | format
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) -DTRILOG_EMBEDDED $(CFLAGS) -flto=auto -c $< -o $@
 
-$(BUILD_DIR)/%.o: src/%.c $(HDRS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+# Unless OPAQUE=0, internal names are not exported.
+$(DEV)/libtrilog.a: $(DEV_LIB_OBJS)
+	@rm -f $@
+	$(CC) -r -nostdlib -o $(DEV)/libtrilog.o $^
+	$(HIDE_INTERNALS) $(DEV)/libtrilog.o
+	$(AR) rcs $@ $(DEV)/libtrilog.o
 
-$(BUILD_DIR)/%: $(EXAMPLES_DIR)/%.c $(LIB_OBJS) $(HDRS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $< $(LIB_OBJS) $(LDFLAGS) -o $@
+$(REL)/libtrilog.a: $(REL_LIB_OBJS)
+	@rm -f $@
+	$(CC) $(CFLAGS) -r -nostdlib -flto=auto -flinker-output=nolto-rel -o $(REL)/libtrilog.o $^
+	$(HIDE_INTERNALS) $(REL)/libtrilog.o
+	$(AR) rcs $@ $(REL)/libtrilog.o
 
-$(BUILD_DIR):
-	mkdir -p $@
+GIT_DESCRIBE := $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
 
-.PHONY: clean
+_build/version.h: FORCE
+	@mkdir -p _build
+	@printf '#define TRILOG_BUILD_VERSION "%s (%s)"\n' '$(GIT_DESCRIBE)' '$(GIT_BRANCH)' > $@.tmp
+	@if cmp -s $@.tmp $@; then rm $@.tmp; else mv $@.tmp $@; fi
+
+$(DEV)/src/trilog.o $(REL)/src/trilog.o: _build/version.h
+
+.PHONY: FORCE
+FORCE:
+
+$(DEV)/trilog: $(DEV_CLI_OBJS) $(DEV)/libtrilog.a
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+$(REL)/trilog: $(REL_CLI_OBJS) $(REL)/libtrilog.a
+	$(CC) $(CFLAGS) -flto=auto -o $@ $^ -lm
+
+-include $(DEV_LIB_OBJS:.o=.d) $(REL_LIB_OBJS:.o=.d) $(DEV_CLI_OBJS:.o=.d) $(REL_CLI_OBJS:.o=.d) \
+         $(DEV)/examples/embed.d
+
+.PHONY: trilog release lib
+trilog: $(DEV)/trilog
+	@cp $< $@
+
+lib: $(DEV)/libtrilog.a
+
+# The release build bakes boot/core.pl and lib/*.pl into the binary, so it
+# runs from anywhere without the library files next to it.
+EMBED_FILES = boot/core.pl $(sort $(wildcard lib/*.pl))
+
+_build/embedded.c: $(EMBED_FILES) tools/embed_libs.sh
+	@mkdir -p _build
+	sh tools/embed_libs.sh $(EMBED_FILES) > $@
+
+release: $(REL)/trilog
+	@cp $< _build/trilog
+
+examples/embed: $(DEV)/examples/embed.o $(DEV)/libtrilog.a
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
 clean:
-	rm -rf $(BUILD_DIR) $(TARGET) wokwi/build
+	rm -rf trilog _build/trilog _build/embedded.c $(API_TEST_BINS) examples/embed _build/dev-* _build/release-*
 
-.PHONY: examples
-examples: $(EXAMPLE_BINS)
-
-.PHONY: format
 format:
-	clang-format -i $(SRCS) $(HDRS)
+	clang-format -i $(SRCS) $(API_TEST_SRCS) examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
 
-.PHONY: format-check
 format-check:
-	clang-format --dry-run --Werror $(SRCS) $(HDRS)
+	clang-format --dry-run --Werror $(SRCS) $(API_TEST_SRCS) examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
 
-.PHONY: run
-run: $(TARGET)
-	./$(TARGET)
-
-.PHONY: debug
-debug: $(TARGET)
-	./$(TARGET) -d
-
-QUAD_TIMEOUT := 60
-
-.PHONY: quad
-quad: $(TARGET)
-	@for f in test/*_quad.pl test/ulrich/*_quad.pl; do \
-		[ -f "$$f" ] || continue; \
-		timeout $(QUAD_TIMEOUT) ./$(TARGET) -e "consult('lib/quad.pl'), quad_cli('$$f')" || true; \
-	done
-
-QUAD_MAX_RESUME_ATTEMPTS := 20
-
-.PHONY: quad-junit
-quad-junit: $(TARGET)
-	@mkdir -p _build/test-results
-	@for f in test/*_quad.pl test/ulrich/*_quad.pl; do \
-		[ -f "$$f" ] || continue; \
-		suite=$$(basename "$$f" .pl); \
-		skip=0; \
-		attempt=0; \
-		while :; do \
-			attempt=$$((attempt + 1)); \
-			timeout $(QUAD_TIMEOUT) ./$(TARGET) -e "consult('lib/quad.pl'), quad_cli_junit('$$f', '_build/test-results', $$skip)" || true; \
-			[ -f "_build/test-results/$$suite.xml" ] && break; \
-			if [ ! -s "_build/test-results/$$suite.xml.partial" ] && [ ! -s "_build/test-results/$$suite.progress" ]; then \
-				echo "# $$f: trilog crashed with no checkpoint to recover from"; \
-				break; \
-			fi; \
-			if [ $$attempt -ge $(QUAD_MAX_RESUME_ATTEMPTS) ]; then \
-				echo "# $$f: gave up after $(QUAD_MAX_RESUME_ATTEMPTS) crashes, finalizing what ran"; \
-				./$(TARGET) -e "consult('lib/quad.pl'), quad_mark_crash('$$suite', '_build/test-results'), quad_finalize_junit('$$f', '$$suite', '_build/test-results')" || true; \
-				break; \
-			fi; \
-			skip=$$(./$(TARGET) -e "consult('lib/quad.pl'), quad_mark_crash('$$suite', '_build/test-results'), quad_resolved_count('$$suite', '_build/test-results', N), write(N), halt." 2>/dev/null); \
-			echo "# $$f: trilog crashed mid-run (attempt $$attempt), resuming after test $$skip"; \
-		done; \
-	done
-	@echo "JUnit reports written to _build/test-results/"
-
-.PHONY: iso
-iso: $(TARGET)
-	./$(TARGET) -e "consult('lib/quad.pl'), quad_cli('test/iso_quad.pl')" || true
-
-.PHONY: syscheck
-syscheck: $(TARGET)
-	bats test/*.bats
-
-.PHONY: syscheck-junit
-syscheck-junit: $(TARGET)
-	@mkdir -p _build/test-results
-	bats --report-formatter junit --output _build/test-results test/*.bats
-
-.PHONY: test
-test: quad syscheck
-
-# arm cortex-m0+ constraints (rp2040, 264kb sram)
-SMALL_FLAGS := \
-    -DMAX_NAME=48 \
-    -DMAX_LIST_LIT=128 \
-    -DMAX_CLAUSES=256 \
-    -DMAX_BINDINGS=1024 \
-    -DMAX_VARS=2048 \
-    -DMAX_GOALS=64 \
-    -DMAX_STACK=128 \
-    -DMAX_ERROR_MSG=128 \
-    -DMAX_CUSTOM_BUILTINS=8 \
-    -DMAX_STRING_POOL=8192 \
-    -DMAX_FILE_PATH=128 \
-    -DMAX_MAKE_FILES=4 \
-    -DMAX_OPEN_STREAMS=4 \
-    -DMAX_CLAUSE_VARS=32 \
-    -DMAX_OPS=48 \
-    -DTERM_POOL_BYTES=49152
-
-SMALL_SRCS := src/arith.c src/builtins.c src/cli.c src/debug.c src/env.c \
-              src/errors.c src/ffi.c src/io.c src/main.c src/parse.c \
-              src/print.c src/solve.c src/streams.c src/term.c \
-              src/unify.c
-
-.PHONY: small
-small: format
-	$(CC) -std=c11 -Os -ffunction-sections -fdata-sections -Wl,--gc-sections \
-	    $(SMALL_FLAGS) $(SMALL_SRCS) -o $(BUILD_DIR)/trilog-small
-	@strip $(BUILD_DIR)/trilog-small
-	@size $(BUILD_DIR)/trilog-small
-
-
-.PHONY: pico
-pico:
-	mkdir -p wokwi/build
-	cd wokwi/build && cmake .. -Wno-dev > /dev/null
-	$(MAKE) -C wokwi/build -j$$(nproc)
-	@echo "sim:   wokwi/build/trilog/trilog.elf"
-	@echo "flash: wokwi/build/trilog.uf2"
-
+.PHONY: clean format format-check
+include test/test.mk

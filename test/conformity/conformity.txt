@@ -1,0 +1,2301 @@
+1
+
+writeq('\n').
+
+'\n'   true.
+
+2
+
+'
+
+syntax err.
+
+3
+
+)
+
+waits
+
+261
+
+)
+'
+
+syntax err.
+
+4
+
+.
+
+syntax err.
+
+5
+
+writeq('	'). % horiz. tab
+
+syntax err.
+
+177
+
+0'\t=0'	. % horiz. tab
+
+syntax err.
+
+6
+
+writeq('
+').                
+
+syntax err.
+
+7
+
+writeq('\
+'). % "\\\n"
+
+''   true.
+
+8
+
+writeq('\
+a'). % "\\\na"
+
+a   true.
+
+9
+
+writeq('a\
+b'). % "a\\\nb"
+
+ab   true.
+
+10
+
+writeq('a\
+ b'). % "a\\\n b"
+
+'a b'   true.
+
+11
+
+writeq('\ ').
+
+syntax err.
+
+193
+
+writeq('\ 
+'). % "\\ \n"
+
+syntax err.
+
+12
+
+writeq('\ '). % "\\\t"
+
+syntax err.
+
+13
+
+writeq('\t').
+
+'\t'   true.
+
+14
+
+writeq('\a').
+
+'\a'   true.
+
+15
+
+writeq('\7\').
+
+'\a'   true.
+
+16
+
+writeq('\ca').
+
+syntax err.
+
+241
+
+writeq('\d').
+
+syntax err.
+
+17
+
+writeq('\e').
+
+syntax err.
+
+18
+
+writeq('\033\').
+
+'\33\'   true.
+
+301
+
+writeq('\0\').
+
+'\0\'   true.
+
+19
+
+char_code('\e',C).
+
+syntax err.
+
+21
+
+char_code('\d',C).
+
+syntax err.
+
+22
+
+writeq('\u1').
+
+syntax err.
+
+312
+
+writeq('\u0021').
+
+syntax err.
+
+313
+
+put_code(0'\u0021).
+
+syntax err.
+
+314
+
+writeq("\u0021").
+
+syntax err.
+
+315
+
+writeq('\x21\').
+
+!   true.
+
+316
+
+writeq('\x0021\').
+
+!   true.
+
+23
+
+X = 0'\u1.
+
+syntax err.
+
+24
+
+writeq('
+
+syntax err.
+
+25
+
+writeq(.
+
+syntax err.
+
+26
+
+'\
+''.
+
+syntax err.
+
+210
+
+X = 0'\.
+
+syntax err.
+
+211
+
+X = 0'\. .
+
+syntax err.
+
+222
+
+writeq((-)-(-)).
+
+(-)-(-)   true.
+
+223
+
+writeq(((:-):-(:-))).
+
+(:-):-(:-)   true.
+
+27
+
+writeq((*)=(*)).
+
+(*)=(*)   true.
+
+28
+
+writeq([:-,-]).
+
+[:-,-]   true.
+
+29
+
+writeq(f(*)).
+
+f(*)   true.
+
+30
+
+writeq(a*(b+c)).
+
+a*(b+c)   true.
+
+31
+
+writeq(f(;,'|',';;')).
+
+f(;,'|',';;')   true.
+
+32
+
+writeq([.,.(.,.,.)]).
+
+['.','.'('.','.','.')]   true.
+
+33
+
+writeq((a :- b,c)).
+
+a:-b,c   true.
+
+34
+
+write_canonical([a]).
+
+'.'(a,[])   true.
+
+35
+
+writeq('/*').
+
+'/*'   true.
+
+203
+
+writeq(//*).
+
+//*   true.
+
+282
+
+writeq(//*.*/).
+
+//*.*/   true.
+
+36
+
+writeq('/**').
+
+'/**'   true.
+
+37
+
+writeq('*/').
+
+*/   true.
+
+38
+
+"\'\`\"" = "'`""". % "
+
+succeeds
+
+179
+
+"\'\"" = "'""". % "
+
+succeeds
+
+178
+
+"\`" = "`".
+
+succeeds
+
+39
+
+'\'\`\"' = '''`"'.
+
+succeeds
+
+40
+
+writeq('\'\`\"\"').
+
+'\'`""'   true.
+
+41
+
+('\\') = (\).
+
+succeeds
+
+42
+
+op(1,xf,xf1).
+1xf1 = xf1(1).
+
+succeeds
+
+43
+
+X = 0X1.
+
+syntax err.
+
+44
+
+float(.0).
+
+syntax err.
+
+45
+
+op(100,xfx,.).
+functor(3 .2,F,A). 
+
+   F = ('.'), A = 2.
+
+46
+
+float(- .0).
+
+syntax err.
+
+47
+
+float(1E9).
+
+syntax err.
+
+48
+
+integer(1e).
+
+syntax err.
+
+49
+
+op(9,xf,e9).
+1e9 = e9(1).
+
+succeeds
+
+50
+
+op(9,xf,e).
+1e-9 = -(e(1),9).
+
+succeeds
+
+51
+
+op(9,xf,e).
+1.0e- 9 = -(e(1.0),9).
+
+succeeds
+
+204
+
+op(9,xf,e).
+writeq(1e).
+
+1 e   true.
+
+220
+
+op(9,xf,e).
+writeq(1.0e).
+
+1.0 e   true.
+
+52
+
+op(9,xfy,e).
+1.2e 3 = e(X,Y).
+
+   X = 1.2, Y = 3.
+
+53
+
+writeq(1.0e100).
+
+1.0e+100   true.
+
+54
+
+float(1.0ee9).
+
+syntax err.
+
+286
+
+(- (1)) = -(1).
+
+succeeds
+
+287
+
+(- -1) = -(-1).
+
+succeeds
+
+288
+
+(- 1^2) = ^(-1,2).
+
+succeeds
+
+56
+
+integer(- 1).
+
+succeeds
+
+57
+
+integer('-'1).
+
+succeeds
+
+58
+
+integer('-' 1).
+
+succeeds
+
+59
+
+integer(- /*.*/1).
+
+succeeds
+
+60
+
+integer(-/*.*/1).
+
+syntax err.
+
+61
+
+integer('-'/*.*/1).
+
+succeeds
+
+62
+
+atom(-/*.*/-).
+
+succeeds
+
+63
+
+op(0,fy,-).
+
+succeeds
+
+180
+
+op(0,fy,-).
+integer(-1).
+
+succeeds
+
+64
+
+op(0,fy,-).
+integer(- 1).
+
+succeeds
+
+136
+
+op(0,fy,-).
+writeq(-(1)).
+
+-(1)   true.
+
+328
+
+op(0,fy,-).
+writeq([-]).
+
+[-]   true.
+
+135
+
+writeq(-(1)).
+
+- (1)   true.
+
+182
+
+writeq(-(-1)).
+
+- -1   true.
+
+183
+
+writeq(-(1^2)).
+
+- (1^2)   true.
+
+260
+
+writeq(-(a^2)).
+
+- (a^2)   true.
+
+139
+
+writeq(-((a,b))).
+
+- (a,b)   true.
+
+218
+
+writeq(-(1*2)).
+
+- (1*2)   true.
+
+140
+
+writeq(-a).
+
+-a   true.
+
+184
+
+writeq(-(-)).
+
+- (-)   true.
+
+185
+
+writeq(-[-]).
+
+-[-]   true.
+
+188
+
+writeq(-p(c)).
+
+-p(c)   true.
+
+189
+
+writeq(-{}).
+
+-{}   true.
+
+190
+
+writeq(-{a}).
+
+-{a}   true.
+
+191
+
+writeq(-(-a)).
+
+- -a   true.
+
+192
+
+writeq(-(-(-a))).
+
+- - -a   true.
+
+216
+
+writeq(-(-(1))).
+
+- - (1)   true.
+
+215
+
+op(100,yfx,~).
+writeq(-(1~2~3)).
+
+- (1~2~3)   true.
+
+248
+
+op(100,yfx,~).
+writeq(- (1~2)).
+
+- (1~2)   true.
+
+249
+
+op(100,yfx,~).
+writeq(1~2).
+
+1~2   true.
+
+278
+
+op(9,xfy,.), writeq(-[1]).
+
+-[1]   true.
+
+279
+
+op(9,xf,'$VAR'),
+writeq(- '$VAR'(0)).
+
+-A   true.
+
+296
+
+op(9,xf,'$VAR'),
+writeq('$VAR'(0)).
+
+A   true.
+
+355
+
+op(9,xf,'$VAR'),
+writeq('$VAR'(-1)).
+
+-1'$VAR'   true.
+
+55
+
+op(1,yf,yf1).
+{-1 yf1}={yf1(X)}.
+
+   X = -1.
+
+65
+
+compound(+1).
+
+succeeds
+
+66
+
+compound(+ 1).
+
+succeeds
+
+277
+
+writeq(+1^2).
+
++1^2   true.
+
+67
+
+op(0,fy,+).
+compound(+1).
+
+syntax err.
+
+257
+
+writeq([+{a},+[]]).
+
+[+{a},+[]]   true.
+
+68
+
+[(:-)|(:-)]=[:-|:-].
+
+succeeds
+
+69
+
+X=[a|b,c].
+
+syntax err.
+
+70
+
+op(1000,xfy,',').
+
+error(permission_error(modify,operator,','),op/3)
+
+71
+
+op(1001,xfy,',').
+
+error(permission_error(modify,operator,','),op/3)
+
+72
+
+op(999,xfy,'|').
+
+error(permission_error(create,operator,'|'),op/3)
+
+73
+
+op(999,xfy,'|').
+X=[a|b].
+
+   X = [a|b].
+
+285
+
+op(999,xfy,'|').
+X=[(a|b)].
+
+syntax err.
+
+219
+
+op(999,xfy,'|').
+[a|[]]=[a].
+
+succeeds
+
+74
+
+op(999,xfy,'|').
+X=[a|b|c].
+
+syntax err.
+
+75
+
+var(a:-b).
+
+syntax err.
+
+76
+
+:- = :- .
+
+syntax err.
+
+77
+
+- = - .
+
+syntax err.
+
+78
+
+* = * .
+
+syntax err.
+
+79
+
+current_op(200,fy,-).
+
+succeeds
+
+80
+
+current_op(200,fy,+).
+
+succeeds
+
+81
+
+{- - c}={-(-(c))}.
+
+succeeds
+
+82
+
+(- -) = -(-).
+
+syntax err.
+
+83
+
+(- - -) = -(-(-)).
+
+syntax err.
+
+84
+
+(- - - -) = -(-(-(-))).
+
+syntax err.
+
+85
+
+{:- :- c} = {:-(:-,c)}.
+
+syntax err.
+
+86
+
+{- = - 1}={(-(=)) - 1}.
+
+syntax err.
+
+87
+
+write_canonical((- = - 1)).
+
+syntax err.
+
+88
+
+write_canonical((- = -1)).
+
+syntax err.
+
+89
+
+write_canonical((-;)).
+
+syntax err.
+
+90
+
+write_canonical((-;-)).
+
+syntax err.
+
+91
+
+write_canonical((:-;-)).
+
+syntax err.
+
+92
+
+[:- -c] = [(:- -c)].
+
+syntax err.
+
+93
+
+writeq([a,b|,]).
+
+syntax err.
+
+94
+
+X ={,}.
+
+syntax err.
+
+95
+
+{1} = {}(1).
+
+succeeds
+
+96
+
+write_canonical({1}).
+
+{}(1)   true.
+
+97
+
+'[]'(1) = [ ](X).
+
+   X = 1.
+
+98
+
+X = [] (1).
+
+syntax err.
+
+99
+
+op(100,yfy,op).
+
+error(domain_error(operator_specifier,yfy),op/3)
+
+100
+
+'''' = '\''.
+
+succeeds
+
+101
+
+a = '\141\'.
+
+succeeds
+
+102
+
+a = '\141'.
+
+syntax err.
+
+103
+
+X = '\141\141'.
+
+   X = a141.
+
+104
+
+X = '\9'.
+
+syntax err.
+
+105
+
+X = '\N'.
+
+syntax err.
+
+106
+
+X = '\\' .
+
+syntax err.
+
+107
+
+X = '\77777777777\'.
+
+syntax err.
+
+108
+
+a = '\x61\'.
+
+succeeds
+
+109
+
+atom_codes('\xG\',Cs).
+
+syntax err.
+
+110
+
+atom_codes('\xG1\',Cs).
+
+syntax err.
+
+111
+
+atom(`).
+
+syntax err.
+
+112
+
+atom(`+).
+
+syntax err.
+
+297
+
+atom(`
+`).
+
+syntax err.
+
+113
+
+X = `a`.
+
+syntax err.
+
+114
+
+integer(0'\').
+
+succeeds
+
+115
+
+integer(0''').
+
+succeeds
+
+116
+
+0''' = 0'\'.
+
+succeeds
+
+117
+
+integer(0'').
+
+syntax err.
+
+195
+
+op(100,xf,'').
+
+succeeds
+
+205
+
+op(100,xf,'').
+(0 '') = ''(X).
+
+   X = 0.
+
+196
+
+op(100,xf,'').
+writeq(0 '').
+
+0''   true.
+
+197
+
+op(100,xf,'').
+writeq(0'').
+
+0''   true.
+
+118
+
+op(100,xfx,'').
+
+succeeds
+
+119
+
+op(100,xfx,'').
+functor(0 ''1,F, A).
+
+   F = (''), A = 2.
+
+120
+
+op(100,xfx,'').
+functor(0''1, F, A).
+
+   F = (''), A = 2.
+
+206
+
+op(100,xf,f).
+writeq(0'f').
+
+syntax err.
+
+207
+
+op(100,xf,f).
+writeq(0'f'f').
+
+102 f   true.
+
+209
+
+op(100,xf,f).
+writeq(0'ff).
+
+102 f   true.
+
+256
+
+op(100,xf,f).
+writeq(0f).
+
+0 f   true.
+
+208
+
+op(100,xf,'f ').
+writeq(0 'f ').
+
+0 'f '   true.
+
+121
+
+X = 2'1.
+
+syntax err.
+
+122
+
+op(100,xfx,'1').
+functor(2'1'y, F, A).
+
+   F = ('1'), A = 2.
+
+262
+
+op(100,xfx,'1').
+functor(2 '1'y, F, A).
+
+   F = ('1'), A = 2.
+
+123
+
+X =0'\x41\ .
+
+   X = 65.
+
+124
+
+X =0'\x41\.
+
+   X = 65.
+
+125
+
+X =0'\x1\.
+
+   X = 1.
+
+339
+
+writeq(0'\x\).
+
+syntax err.
+
+127
+
+X is 16'mod'2.
+
+   X = 0.
+
+128
+
+X is 37'mod'2.
+
+   X = 1.
+
+129
+
+X is 0'mod'1.
+
+syntax err.
+
+130
+
+X is 1'+'1.
+
+   X = 2.
+
+212
+
+X is 1'\
++'1.
+
+   X = 2.
+
+213
+
+X is 0'\
++'1.
+
+   X = 1.
+
+259
+
+X = 0'\
++'/*'. %*/1.
+
+   X = 0+1.
+
+303
+
+X = 0'\
+a.
+
+syntax err.
+
+214
+
+X is 0'\
+
+waits
+
+126
+
+X = 0'\
+.\
+
+waits
+
+131
+
+op(100,fx,' op').
+
+succeeds
+
+132
+
+op(100,fx,' op').
+writeq(' op' '1').
+
+' op' '1'   true.
+
+133
+
+op(100,fx,' op').
+writeq(' op'[]).
+
+' op'[]   true.
+
+134
+
+op(1,xf,xf1).
+writeq({- =xf1}).
+
+syntax err.
+
+137
+
+writeq(- (a*b)).
+
+- (a*b)   true.
+
+138
+
+writeq(\ (a*b)).
+
+\ (a*b)   true.
+
+141
+
+current_op(P,xfy,.).
+
+   false.
+
+142
+
+op(100,xfy,.).
+
+succeeds
+
+143
+
+op(100,xfy,.).
+writeq(1 .2).
+
+[1|2]   true.
+
+144
+
+op(100,xfy,.).
+writeq([1]).
+
+[1]   true.
+
+283
+
+op(100,xfy,.).
+writeq(-[1]).
+
+-[1]   true.
+
+221
+
+op(100,xfy,.).
+X = 1.e. 
+
+   X = [1|e].
+
+258
+
+op(100,xfy,.).
+writeq(ok).%
+1 = X.
+
+   true.
+ok   true.
+   X = 1.
+
+145
+
+write_canonical('$VAR'(0)).
+
+'$VAR'(0)   true.
+
+146
+
+write_term('$VAR'(0), []).
+
+$VAR(0)   true.
+
+244
+
+writeq('$VAR'(0)).
+
+A   true.
+
+245
+
+writeq('$VAR'(-1)).
+
+'$VAR'(-1)   true.
+
+246
+
+writeq('$VAR'(-2)).
+
+'$VAR'(-2)   true.
+
+247
+
+writeq('$VAR'(x)).
+
+'$VAR'(x)   true.
+
+289
+
+writeq('$VAR'('A')).
+
+'$VAR'('A')   true.
+
+147
+
+op(9,fy,fy),op(9,yf,yf).
+write_canonical(fy 1 yf).
+
+fy(yf(1))   true.
+
+148
+
+op(9,fy,fy),op(9,yf,yf).
+write_canonical(fy yf).
+
+syntax err.
+
+149
+
+op(9,fy,fy),op(9,yf,yf).
+writeq(fy(yf(1))).
+
+fy 1 yf   true.
+
+150
+
+op(9,fy,fy),op(9,yf,yf).
+writeq(yf(fy(1))).
+
+(fy 1)yf   true.
+
+319
+
+op(9,fy,fy),op(9,yf,yf).
+writeq(yf(fy(yf(fy(1))))).
+
+(fy (fy 1)yf)yf   true.
+
+151
+
+op(9,fy,fy),op(9,yfx,yfx).
+write_canonical(fy 1 yfx 2).
+
+fy(yfx(1,2))   true.
+
+152
+
+op(9,fy,fy),op(9,yfx,yfx).
+writeq(fy(yfx(1,2))).
+
+fy 1 yfx 2   true.
+
+153
+
+op(9,fy,fy),op(9,yfx,yfx).
+writeq(yfx(fy (1),2)).
+
+(fy 1)yfx 2   true.
+
+154
+
+op(9,yf,yf),op (9,xfy,xfy).
+write_canonical(1 xfy 2 yf).
+
+xfy(1,yf(2))   true.
+
+155
+
+op(9,yf,yf),op (9,xfy,xfy).
+writeq(xfy(1,yf(2))).
+
+1 xfy 2 yf   true.
+
+156
+
+op(9,yf,yf),op (9,xfy,xfy).
+writeq(yf(xfy (1,2))).
+
+(1 xfy 2)yf   true.
+
+157
+
+op(0,xfy,:-).
+current_op(P,xfx,:-).
+
+fails
+
+158
+
+op(0,xfy,',').
+
+error(permission_error(modify,operator,','),op/3)
+
+159
+
+op(9,fy,f),op(9,yf,f).
+write_canonical(f f 0).
+
+f(f(0))   true.
+
+201
+
+op(9,fy,f),op(9,yf,f).
+writeq(f(f(0))).
+
+f f 0   true.
+
+202
+
+op(9,fy,f),op(9,yf,f).
+write_canonical(f 0 f).
+
+f(f(0))   true.
+
+160
+
+op(9,fy,f),op(9,yf,f).
+write_canonical(0 f f).
+
+f(f(0))   true.
+
+161
+
+op(9,fy,f),op(9,yf,f).
+write_canonical
+(f f).
+
+syntax err.
+
+162
+
+op(9,fy,p),op (9,yfx,p).
+write_canonical(1 p p p 2).
+
+syntax err.
+
+163
+
+op(9,fy,p),op(9,xfy,p).
+write_canonical(1 p p p 2).
+
+p(1,p(p(2)))   true.
+
+164
+
+op(7,fy,p),op(9,yfx,p).
+write_canonical(1 p p p 2).
+
+p(1,p(p(2)))   true.
+
+165
+
+atom('.''-''.').
+
+succeeds
+
+166
+
+op(0,xfy,'|').
+
+succeeds
+
+167
+
+op(0,xfy,'|').
+writeq((a|b)).
+
+syntax err.
+
+168
+
+op(0,xfy,.),op(9,yf,.).
+
+succeeds
+
+169
+
+op(0,xfy,.),op(9,yf,.).
+writeq(.(.)).
+
+('.')'.'   true.
+
+194
+
+op(0,xfy,.),writeq((.)+(.)).
+
+'.'+'.'   true.
+
+170
+
+set_prolog_flag(double_quotes,chars).
+
+succeeds
+
+171
+
+set_prolog_flag(double_quotes,chars).
+writeq("a").
+
+[a]   true.
+
+229
+
+set_prolog_flag(double_quotes,chars).
+writeq("\z").
+
+syntax err.
+
+300
+
+set_prolog_flag(double_quotes,chars).
+writeq("\0\").
+
+['\0\']   true.
+
+172
+
+X is 10.0** -323, writeq(X).
+
+9.881312916824931e-324   X = 9.881312916824931e-324.
+
+173
+
+1.0e-323=:=10.0** -323.
+
+succeeds
+
+174
+
+-1 = -0x1.
+
+succeeds
+
+175
+
+T = t(0b1,0o1,0x1).
+
+   T = t(1,1,1).
+
+176
+
+X is 0b1mod 2.
+
+   X = 1.
+
+217
+
+op(1105,xfy,'|').
+
+succeeds
+
+181
+
+op(1105,xfy,'|').
+writeq((a-->b,c|d)).
+
+a-->b,c|d   true.
+
+322
+
+op(1105,xfy,'|').
+write_canonical((a|b;c)).
+
+'|'(a,;(b,c))   true.
+
+323
+
+op(1105,xfy,'|').
+write_canonical((a;b|c)).
+
+'|'(;(a,b),c)   true.
+
+348
+
+op(1105,xfy,'|').
+write_canonical([a;b|c]).
+
+syntax err.
+
+290
+
+op(1105,xfy,'|').
+writeq([(a|b)]).
+
+[(a|b)]   true.
+
+317
+
+op(1105,xfy,'|').
+writeq([a,(b,c)|[]]).
+
+[a,(b,c)]   true.
+
+186
+
+X/* /*/=7.
+
+   X = 7.
+
+187
+
+X/*/*/=7.
+
+   X = 7.
+
+198
+
+atom($-).
+
+succeeds
+
+199
+
+atom(-$).
+
+succeeds
+
+200
+
+op(900, fy, [$]).
+write_canonical($a+b).
+
+$(+(a,b))   true.
+
+224
+
+\ .
+
+error(existence_error(procedure,(\)/0),(\)/0)
+
+225
+
+char_code(C,0), writeq(C).
+
+'\0\'   C = '\0\'.
+
+250
+
+writeq('\0\').
+
+'\0\'   true.
+
+226
+
+write_canonical(_+_).
+
++(_0,_1)   true.
+
+227
+
+write_canonical(B+B).
+
++(_0,_0)   true.
+
+228
+
+writeq(0'\z).
+
+syntax err.
+
+230
+
+char_code('\^',X).
+
+syntax err.
+
+231
+
+writeq(0'\c).
+
+syntax err.
+
+232
+
+writeq(0'\ ).
+
+syntax err.
+
+233
+
+writeq(nop (1)).
+
+syntax err.
+
+234
+
+op(400,fx,f).
+writeq(f/*.*/(1,2)).
+
+f (1,2)   true.
+
+235
+
+op(400,fx,f).
+writeq(1 = f).
+
+syntax err.
+
+236
+
+write_canonical(a- - -b).
+
+-(a,-(-(b)))   true.
+
+340
+
+op(699,xf,>.).
+
+succeeds
+
+341
+
+op(699,xf,>.).
+writeq(>(>.(a),b)).
+
+a>. >b   true.
+
+342
+
+op(699,xf,>.).
+write_canonical(a>. >b).
+
+>(>.(a),b)   true.
+
+343
+
+op(699,xf,>.).
+write_canonical(a>. =b).
+
+=(>.(a),b)   true.
+
+344
+
+op(699,xf,>.).
+write_canonical((a>.,b)).
+
+','(>.(a),b)   true.
+
+345
+
+op(699,xf,>.).
+write_canonical(a>.).
+
+>.(a)   true.
+
+237
+
+op(699,xf,>).
+
+error(permission_error(create,operator,>),op/3)
+
+238
+
+op(699,xf,>).
+writeq(>(>(a),b)).
+
+>(a)>b   true.
+
+239
+
+op(699,xf,>).
+write_canonical(a> >b).
+
+syntax err.
+
+242
+
+op(699,xf,>).
+write_canonical(a> =b).
+
+syntax err.
+
+243
+
+op(699,xf,>).
+write_canonical((a>,b)).
+
+syntax err.
+
+240
+
+op(699,xf,>).
+write_canonical(a>).
+
+syntax err.
+
+346
+
+op(699,xf,>).
+write_canonical
+(a>b).
+
+>(a,b)   true.
+
+251
+
+op(9,yfx,[bop,bo,b,op,xor]).
+writeq(0bop 2).
+
+0 bop 2   true.
+
+263
+
+op(9,yfx,[bop,bo,b,op,xor]).
+writeq(0 bop 2).
+
+0 bop 2   true.
+
+252
+
+op(9,yfx,[bop,bo,b,op,xor]).
+writeq(0bo 2).
+
+0 bo 2   true.
+
+253
+
+op(9,yfx,[bop,bo,b,op,xor]).
+writeq(0b 2).
+
+0 b 2   true.
+
+254
+
+op(9,yfx,[bop,bo,b,op,xor]).
+writeq(0op 2).
+
+0 op 2   true.
+
+255
+
+op(9,yfx,[bop,bo,b,op,xor]).
+writeq(0xor 2).
+
+0 xor 2   true.
+
+264
+
+writeq('^`').
+
+'^`'   true.
+
+265
+
+op(9,yf,[b2,o8]).
+
+succeeds
+
+266
+
+op(9,yf,[b2,o8]).
+writeq(0b2).
+
+0 b2   true.
+
+267
+
+op(9,yf,[b2,o8]).
+writeq(0o8).
+
+0 o8   true.
+
+268
+
+op(500, xfy, {}).
+
+error(permission_error(create,operator,{}),op/3)
+
+269
+
+writeq('\b\r\f\t\n').
+
+'\b\r\f\t\n'   true.
+
+270
+
+get_char(C). %a
+
+   C = ' '.
+
+271
+
+get_char(C).%a
+
+   C = '%'.
+
+272
+
+writeq(0B1).
+
+syntax err.
+
+274
+
+op(20,fx,--),writeq(--(a)).
+
+--a   true.
+
+275
+
+op(20,fx,--).
+op(0,fy,--),writeq(--(a)).
+
+--(a)   true.
+
+276
+
+writeq(0xamod 2).
+
+10 mod 2   true.
+
+363
+
+writeq(010).
+
+10   true.
+
+280
+
+writeq(00'+'1).
+
+0+1   true.
+
+281
+
+writeq(00'a).
+
+syntax err.
+
+284
+
+writeq('\^J').
+
+syntax err.
+
+291
+
+writeq([(a,b)]).
+
+[(a,b)]   true.
+
+292
+
+writeq(1= \\).
+
+1= \\   true.
+
+293
+
+writeq((,)).
+
+syntax err.
+
+294
+
+writeq({[}).
+
+syntax err.
+
+295
+
+writeq({(}).
+
+syntax err.
+
+298
+
+writeq([a,b|c]).
+
+[a,b|c]   true.
+
+299
+
+(\+ (a,b)) = \+(T).
+
+   T = (a,b).
+
+302
+
+[] = '[]'.
+
+succeeds
+
+304
+
+op(300,fy,~). writeq(~ (a=b)). 
+
+~ (a=b)   true.
+
+305
+
+writeq(\ (a=b)).
+
+\ (a=b)   true.
+
+306
+
+writeq(+ (a=b)).
+
++ (a=b)   true.
+
+307
+
+writeq([/*.*/]).
+
+[]   true.
+
+308
+
+writeq(.+).
+
+.+   true.
+
+309
+
+writeq({a,b}).
+
+{a,b}   true.
+
+310
+
+writeq({\+ (}).
+
+syntax err.
+
+311
+
+writeq(\+ (()).
+
+syntax err.
+
+318
+
+writeq(+((1*2)^3)).
+
++ (1*2)^3   true.
+
+327
+
+writeq(-((1*2)^3)).
+
+- ((1*2)^3)   true.
+
+320
+
+writeq([a|\+2]).
+
+[a|\+2]   true.
+
+321
+
+writeq((a)(b)).
+
+syntax err.
+
+324
+
+writeq('%').
+
+'%'   true.
+
+325
+
+writeq({[y}]).
+
+syntax err.
+
+326
+
+(>)(1,2).
+
+syntax err.
+
+329
+
+write_canonical(;(a)).
+
+;(a)   true.
+
+330
+
+write_canonical(';'(a)).
+
+;(a)   true.
+
+331
+
+write_canonical(;(a,b)).
+
+;(a,b)   true.
+
+332
+
+writeq(1 is _).
+
+1 is _0   true.
+
+333
+
+op(9,fx,.),writeq(.(' ')).
+
+'.' ' '   true.
+
+334
+
+op(9,yf,.>).
+
+succeeds
+
+335
+
+op(9,yf,.>).
+write_canonical(a.> .>).
+
+.>(.>(a))   true.
+
+336
+
+op(9,yf,.>).
+writeq(((a).>).>).
+
+a.> .>   true.
+
+337
+
+writeq([.|1]).
+
+['.'|1]   true.
+
+338
+
+writeq(-'-'2).
+
+- -2   true.
+
+347
+
+op(100,fx,',').
+
+error(permission_error(modify,operator,','),op/3)
+
+349
+
+write_canonical((-,(1))).
+
+syntax err.
+
+350
+
+writeq(-[]1).
+
+syntax err.
+
+351
+
+writeq(-{}1).
+
+syntax err.
+
+352
+
+op(1000,xfx,~>).
+writeq([a~>b]).
+
+syntax err.
+
+353
+
+op(1000,yfx,~>).
+writeq([a~>b]).
+
+syntax err.
+
+354
+
+op(1000,xfy,~>).
+writeq([a~>b]).
+
+syntax err.
+
+356
+
+writeq({|}).
+
+syntax err.
+
+357
+
+writeq(([)).
+
+syntax err.
+
+358
+
+writeq(((>)(1)).
+
+syntax err.
+
+359
+
+writeq({a:-b}).
+
+{a:-b}   true.
+
+360
+
+op(1105,xfy,'|').
+writeq((|)).
+
+syntax err.
+
+361
+
+op(0,xfy,'|').
+writeq((|)).
+
+syntax err.
+
+362
+
+writeq(\(!;!)).
+
+syntax err.
+
+364
+
+writeq(-0.0).
+
+0.0   true.
+
+365
+
+Finis ().
+
+syntax err.

@@ -3,7 +3,7 @@
   "author": "trilog",
   "editor": "wokwi",
   "parts": [
-    { "type": "wokwi-pi-pico", "id": "pico", "top": 123.67, "left": 135.97, "rotate": 90,  "attrs": {} },
+    { "type": "board-pi-pico-2", "id": "pico", "top": 123.67, "left": 135.97, "rotate": 90,  "attrs": {} },
     { "type": "wokwi-lcd1602", "id": "lcd",  "top": -17.85, "left": 22.03,  "rotate": 0,   "attrs": {} },
     { "type": "wokwi-resistor","id": "r1",   "top": 114.8,  "left": 226.31, "rotate": 0,   "attrs": {"value": "220"} },
     { "type": "wokwi-led",     "id": "led0", "top": 280,    "left": 22,     "attrs": {"color": "red"}    },
@@ -35,6 +35,8 @@
     [ "pico:GP16",  "led3:A",  "yellow", [] ],
     [ "led3:C",     "pico:GND.1", "black", [] ],
     [ "pico:GP17",  "led4:A",  "white",  [] ],
-    [ "led4:C",     "pico:GND.1", "black", [] ]
+    [ "led4:C",     "pico:GND.1", "black", [] ],
+    [ "pico:GP0",   "$serialMonitor:RX", "", [] ],
+    [ "pico:GP1",   "$serialMonitor:TX", "", [] ]
   ]
 }

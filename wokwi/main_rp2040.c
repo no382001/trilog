@@ -1,117 +1,220 @@
-#include "pico/stdlib.h"
 #include "hd44780.h"
 #include "leds.h"
-#include <stdarg.h>
+#include "pico/stdlib.h"
+#include "trilog.h"
+#include <malloc.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
-#include "../src/trilog.h"
-#include "core_embed.h"
+extern char __end__, __HeapLimit;
 
-static uint8_t ctx_buf[TRILOG_CTX_SIZE(TERM_POOL_BYTES)];
-static trilog_ctx_t *g_ctx;
+extern char __StackTop, __scratch_x_start__;
+#define STACK_TOP ((uint32_t)&__StackTop)
+#define STACK_PAINT_LO ((uint32_t)&__scratch_x_start__)
 
-/* --- LCD FFI ---
-   lcd_clear            : clear display
-   lcd_row(+Row, +Text) : write string to row 0 or 1  */
-
-static builtin_result_t b_lcd_clear(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
-    (void)ctx; (void)goal; (void)env;
-    hd44780_clear();
-    return BUILTIN_OK;
+static void paint_stack(void) {
+  volatile uint32_t here;
+  for (uint32_t *w = (uint32_t *)STACK_PAINT_LO; w < (uint32_t *)&here - 64; w++)
+    *w = 0xDEADBEEF;
 }
 
-static builtin_result_t b_lcd_row(trilog_ctx_t *ctx, term_t *goal, env_t *env) {
-    (void)ctx;
-    term_t *r = deref(env, goal->args[0]);
-    term_t *t = deref(env, goal->args[1]);
-    long row = strtol(r->name, NULL, 10);
-    if (row < 0 || row >= LCD_ROWS) return BUILTIN_FAIL;
-    hd44780_puts((uint8_t)row, t->name);
-    return BUILTIN_OK;
+static unsigned stack_used(void) {
+  uint32_t *w = (uint32_t *)STACK_PAINT_LO;
+  while (*w == 0xDEADBEEF)
+    w++;
+  return STACK_TOP - (uint32_t)w;
 }
 
-/* --- I/O hooks --- */
+static trilog_t *T;
+static size_t live_bytes, peak_bytes, failed_request;
 
-static void rp2040_write_str(trilog_ctx_t *ctx, const char *s, void *ud) {
-    (void)ctx; (void)ud;
-    printf("%s", s);
-    stdio_flush();
+typedef struct {
+  size_t n;
+  size_t pad;
+} block_t;
+
+static void *count_realloc(void *ud, void *p, size_t n) {
+  (void)ud;
+  block_t *b = p ? (block_t *)p - 1 : NULL;
+  size_t old = b ? b->n : 0;
+  block_t *nb = realloc(b, sizeof *nb + n);
+  if (!nb) {
+    failed_request = n;
+    return NULL;
+  }
+  nb->n = n;
+  live_bytes = live_bytes - old + n;
+  if (live_bytes > peak_bytes)
+    peak_bytes = live_bytes;
+  return nb + 1;
 }
 
-static void rp2040_writef(trilog_ctx_t *ctx, const char *fmt, va_list ap, void *ud) {
-    (void)ctx; (void)ud;
-    vprintf(fmt, ap);
-    stdio_flush();
+static void count_free(void *ud, void *p) {
+  (void)ud;
+  if (!p)
+    return;
+  block_t *b = (block_t *)p - 1;
+  live_bytes -= b->n;
+  free(b);
 }
 
-static char *rp2040_read_line(trilog_ctx_t *ctx, char *buf, int size, void *ud) {
-    (void)ctx; (void)ud;
-    int i = 0, c = 0;
-    while (i < size - 1) {
-        c = getchar();
-        if (c == '\n' || c == EOF) break;
-        if (c == '\r') { putchar('\n'); stdio_flush(); break; }
-        if (c == 127 || c == '\b') {
-            if (i > 0) { i--; printf("\b \b"); stdio_flush(); }
-            continue;
-        }
-        buf[i++] = (char)c; putchar(c); stdio_flush();
+static bool lcd_clear(trilog_t *t, void *ud, const trilog_value_t *in,
+                      trilog_value_t *out) {
+  (void)t, (void)ud, (void)in, (void)out;
+  hd44780_clear();
+  return true;
+}
+
+static bool lcd_row(trilog_t *t, void *ud, const trilog_value_t *in,
+                    trilog_value_t *out) {
+  (void)t, (void)ud, (void)out;
+  if (in[0].i < 0 || in[0].i >= LCD_ROWS)
+    return false;
+  hd44780_puts((uint8_t)in[0].i, in[1].a);
+  return true;
+}
+
+static void print_memory(const char *when) {
+  struct mallinfo mi = mallinfo();
+  printf("[%s] malloc in use %d B, malloc arena %d B, heap region %d B\n", when,
+         mi.uordblks, mi.arena, (int)(&__HeapLimit - &__end__));
+  printf("[%s] trilog live %u B, peak %u B, last failed request %u B, "
+         "stack %u B\n",
+         when, (unsigned)live_bytes, (unsigned)peak_bytes,
+         (unsigned)failed_request, stack_used());
+  if (T) {
+    trilog_usage_t u;
+    trilog_usage(T, &u);
+    printf("[%s] prolog heap %u/%u cells, peak %u B, arena %u B, "
+           "%u atoms, %u clauses\n",
+           when, (unsigned)u.heap_cells, (unsigned)u.heap_capacity_cells,
+           (unsigned)u.heap_peak_bytes, (unsigned)u.arena_bytes,
+           (unsigned)u.atoms, (unsigned)u.clauses);
+  }
+}
+
+static void print_term(trilog_term_t term) {
+  char buf[256];
+  size_t n = trilog_format(T, term, TRILOG_FORMAT_QUOTED, buf, sizeof buf);
+  printf("%s", buf);
+  if (n >= sizeof buf)
+    printf("%s", "...");
+}
+
+typedef struct {
+  bool any;
+  bool closed;
+} answer_state;
+
+static bool on_solution(trilog_t *t, void *ud, bool has_more) {
+  answer_state *st = ud;
+  printf("%s", st->any ? "\n;  " : "   ");
+  st->any = true;
+  int n = trilog_binding_count(t);
+  for (int i = 0; i < n; i++) {
+    printf("%s%s = ", i ? ", " : "", trilog_binding_name(t, i));
+    print_term(trilog_binding_value(t, i));
+  }
+  if (n == 0)
+    printf("%s", "true");
+  if (!has_more) {
+    printf("%s", ".\n");
+    st->closed = true;
+    return false;
+  }
+  int key = getchar();
+  if (key == ';' || key == ' ')
+    return true;
+  printf("%s", "\n;  ... .\n");
+  st->closed = true;
+  return false;
+}
+
+static bool read_line(char *buf, int size) {
+  int i = 0;
+  for (;;) {
+    int c = getchar();
+    if (c == EOF)
+      return false;
+    if (c == '\r' || c == '\n') {
+      putchar('\n');
+      break;
     }
-    buf[i] = '\0';
-    //putchar('\n');
-    stdio_flush();
-    return (i == 0 && c == EOF) ? NULL : buf;
+    if (c == 127 || c == '\b') {
+      if (i > 0) {
+        i--;
+        printf("%s", "\b \b");
+      }
+      continue;
+    }
+    if (i < size - 1) {
+      buf[i++] = (char)c;
+      putchar(c);
+    }
+  }
+  buf[i] = '\0';
+  return true;
 }
 
-static int       rp2040_read_char(trilog_ctx_t *ctx, void *ud)                  { (void)ctx;(void)ud; return getchar(); }
-static bool      rp2040_file_exists(trilog_ctx_t *ctx, const char *p, void *ud) { (void)ctx;(void)p;(void)ud; return false; }
-static long long rp2040_file_mtime(trilog_ctx_t *ctx, const char *p, void *ud)  { (void)ctx;(void)p;(void)ud; return -1; }
+static void query(const char *goal) {
+  answer_state st = {0};
+  switch (trilog_query(T, goal, on_solution, &st)) {
+  case TRILOG_TRUE:
+    if (!st.closed)
+      printf("%s", ".\n");
+    break;
+  case TRILOG_ABORTED:
+    break;
+  case TRILOG_FALSE:
+    printf("%s", "   false.\n");
+    break;
+  case TRILOG_ERROR:
+    if (trilog_term_type(T, trilog_error_term(T)) != TRILOG_INVALID) {
+      printf("%s", "uncaught exception: ");
+      print_term(trilog_error_term(T));
+      putchar('\n');
+    }
+    break;
+  case TRILOG_HALT:
+    break;
+  }
+}
 
 int main(void) {
-    stdio_init_all();
-    leds_init();
-    hd44780_init();
-    hd44780_puts(0, "trilog");
+  paint_stack();
+  stdio_init_all();
+  leds_init();
+  hd44780_init();
+  hd44780_puts(0, "trilog");
 
-    g_ctx = (trilog_ctx_t *)ctx_buf;
-    trilog_ctx_init(g_ctx, TERM_POOL_BYTES);
-    ops_init_defaults(g_ctx);
+  printf("trilog %s\n", trilog_version());
+  print_memory("before boot");
+  T = trilog_new(&(trilog_config_t){.realloc = count_realloc, .free = count_free});
+  if (!T) {
+    print_memory("boot failed");
+    hd44780_puts(1, "boot failed");
+    for (;;)
+      tight_loop_contents();
+  }
+  print_memory("after boot");
 
-    io_hooks_init_default(g_ctx);
-    io_hooks_t hooks = {0};
-    hooks.write_str       = rp2040_write_str;
-    hooks.writef          = rp2040_writef;
-    hooks.writef_err      = rp2040_writef;
-    hooks.read_line       = rp2040_read_line;
-    hooks.read_char       = rp2040_read_char;
-    hooks.file_exists     = rp2040_file_exists;
-    hooks.file_mtime      = rp2040_file_mtime;
-    io_hooks_set(g_ctx, &hooks);
+  leds_register(T);
+  trilog_register(T, "lcd_clear", "", lcd_clear, NULL);
+  trilog_register(T, "lcd_row", "ia", lcd_row, NULL);
+  trilog_load_string(T, "led(0). led(1). led(2). led(3). led(4).");
 
-    char *core_str = malloc(core_pl_len + 1);
-    if (core_str) {
-        memcpy(core_str, core_pl, core_pl_len);
-        core_str[core_pl_len] = '\0';
-        trilog_load_string(g_ctx, core_str);
-        free(core_str);
-    }
+  char line[256];
+  for (;;) {
+    printf("%s", "?- ");
+    if (!read_line(line, sizeof line))
+      break;
+    if (line[strspn(line, " \t")] == '\0')
+      continue;
+    query(line);
+    print_memory("after query");
+  }
 
-    leds_register_ffi(g_ctx);
-    ffi_register_builtin(g_ctx, "lcd_clear", 0, b_lcd_clear, NULL);
-    ffi_register_builtin(g_ctx, "lcd_row",   2, b_lcd_row,   NULL);
-
-    char line[256];
-    while (1) {
-        io_write_str(g_ctx, "?- ");
-        if (!io_read_line(g_ctx, line, sizeof(line))) break;
-        if (!strlen(line)) continue;
-        if (!strcmp(line, "halt.")) break;
-        exec_query_interactive(g_ctx, line);
-    }
-
-    hd44780_puts(0, "halted.");
-    hd44780_puts(1, "");
-    return 0;
+  hd44780_puts(0, "halted.");
+  hd44780_puts(1, "");
+  return 0;
 }
