@@ -21,6 +21,19 @@ void *mem_grow_n(trilog_t *T, void *p, size_t count, size_t size) {
   return r;
 }
 
+void mem_reserve(trilog_t *T, void **buf, size_t *cap, size_t need) {
+  if (need <= *cap)
+    return;
+  size_t n = *cap ? *cap : 64;
+  while (n < need) {
+    if (n > SIZE_MAX / 2)
+      mem_fail(T);
+    n *= 2;
+  }
+  *buf = mem_grow_n(T, *buf, n, 1);
+  *cap = n;
+}
+
 void mem_free(trilog_t *T, void *p) {
   if (p)
     T->alloc_free(T->alloc_ud, p);

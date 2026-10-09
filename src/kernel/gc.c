@@ -189,6 +189,12 @@ static size_t compact_trail(trilog_t *T, size_t old_trail_top) {
 #define GC_MIN_CELLS 16384
 #endif
 
+// GC_SHRINK=0 keeps the heap and GC scratch at their largest size, so a small
+// target's allocator never sees them move.
+#ifndef GC_SHRINK
+#define GC_SHRINK 1
+#endif
+
 // live cells allowed after a collection before the solver throws
 #ifndef GC_MAX_LIVE_CELLS
 #define GC_MAX_LIVE_CELLS ((size_t)64 << 20)
@@ -381,8 +387,10 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
     T->gc_threshold = new_top * 2 > GC_MIN_CELLS ? new_top * 2 : GC_MIN_CELLS;
 
   // tie capacity to gc_threshold so it can shrink after a big collection.
-  heap_set_capacity(T, T->gc_threshold);
-  shrink_scratch_to(T, new_top + 1);
+  if (GC_SHRINK || T->gc_threshold > heap_capacity(T))
+    heap_set_capacity(T, T->gc_threshold);
+  if (GC_SHRINK)
+    shrink_scratch_to(T, new_top + 1);
 
   if (getenv("TRILOG_GC_DEBUG")) {
     char msg[300];

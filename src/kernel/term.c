@@ -283,7 +283,7 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
                emit);
     break;
   case TAG_INT:
-    snprintf(buf, sizeof buf, "%ld", T->heap[r].as.ival);
+    snprintf(buf, sizeof buf, "%lld", (long long)T->heap[r].as.ival);
     emit(T, buf);
     break;
   case TAG_FLT:

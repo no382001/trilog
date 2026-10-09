@@ -5,6 +5,7 @@
 #include "embedded.h"
 #include "heap.h"
 #include "io.h"
+#include "mem.h"
 #include "solve.h"
 #include <ctype.h>
 #include <errno.h>
@@ -15,7 +16,6 @@
 #include <string.h>
 
 #define MAX_ARITY 255
-#define MAX_TOKEN 4096
 
 typedef enum { XFX, XFY, YFX, FX, FY } assoc_t;
 typedef struct {
@@ -117,34 +117,36 @@ static int at_clause_end(trilog_t *T) {
 static void vartab_reset(trilog_t *T) { T->var_count = 0; }
 
 static int32_t vartab_slot(trilog_t *T, const char *name) {
+  int32_t id = atom_intern(T, name);
   if (strcmp(name, "_") != 0) {
     for (int32_t i = 0; i < T->var_count; i++)
-      if (!strcmp(T->var_names[i], name))
+      if (T->var_names[i] == id)
         return i;
   }
   if (T->var_count >= MAX_CVARS)
     perr(T, "too many distinct variables in one clause");
-  if (strlen(name) >= MAX_VARNAME)
-    perr(T, "variable name too long");
-  strcpy(T->var_names[T->var_count], name);
+  T->var_names[T->var_count] = id;
   return T->var_count++;
 }
 
 // ---- tokens ----
 
-static void read_while(trilog_t *T, char *buf, int (*pred)(int)) {
+static void tok_put(trilog_t *T, size_t n, char c) {
+  mem_reserve(T, (void **)&T->tok, &T->tok_cap, n + 2);
+  T->tok[n] = c;
+}
+
+static const char *read_while(trilog_t *T, int (*pred)(int)) {
   size_t n = 0;
-  while (pred((unsigned char)*T->P)) {
-    if (n + 1 >= MAX_TOKEN)
-      perr(T, "token too long");
-    buf[n++] = *T->P++;
-  }
-  buf[n] = '\0';
+  while (pred((unsigned char)*T->P))
+    tok_put(T, n++, *T->P++);
+  tok_put(T, n, '\0');
+  return T->tok;
 }
 
 static int is_ident_char(int c) { return isalnum(c) || c == '_'; }
 
-static void read_quoted(trilog_t *T, char quote, char *buf) {
+static const char *read_quoted(trilog_t *T, char quote) {
   T->P++; // opening quote
   size_t n = 0;
   for (;;) {
@@ -152,9 +154,7 @@ static void read_quoted(trilog_t *T, char quote, char *buf) {
       perr(T, "unterminated quoted token");
     if (*T->P == quote) {
       if (T->P[1] == quote) {
-        if (n + 1 >= MAX_TOKEN)
-          perr(T, "token too long");
-        buf[n++] = quote;
+        tok_put(T, n++, quote);
         T->P += 2;
         continue;
       }
@@ -183,11 +183,20 @@ static void read_quoted(trilog_t *T, char quote, char *buf) {
       }
     } else
       T->P++;
-    if (n + 1 >= MAX_TOKEN)
-      perr(T, "token too long");
-    buf[n++] = v;
+    tok_put(T, n++, v);
   }
-  buf[n] = '\0';
+  tok_put(T, n, '\0');
+  return T->tok;
+}
+
+static const char *read_name(trilog_t *T, int (*pred)(int)) {
+  return atom_name(T, atom_intern(T, read_while(T, pred)));
+}
+
+static void pstack_push(trilog_t *T, tterm_t *t) {
+  mem_reserve(T, (void **)&T->pstack, &T->pstack_cap,
+              (T->psp + 1) * sizeof(tterm_t *));
+  T->pstack[T->psp++] = t;
 }
 
 static tterm_t *parse_expr(trilog_t *T, int max_prec);
@@ -195,20 +204,29 @@ static tterm_t *parse_arg(trilog_t *T) {
   return parse_expr(T, 999);
 } // args stop below ','
 
-// parses comma-separated args into caller-owned scratch
-static int32_t parse_arglist(trilog_t *T, tterm_t **scratch) {
-  int32_t n = 0;
-  scratch[n++] = parse_arg(T);
+// Parses "(args)" after a functor name into name(args).
+static tterm_t *parse_compound(trilog_t *T, const char *name) {
+  T->P++; // '('
   skip_ws(T);
-  while (*T->P == ',') {
-    T->P++;
-    skip_ws(T);
+  size_t base = T->psp;
+  int32_t n = 0;
+  for (;;) {
     if (n >= MAX_ARITY)
       perr(T, "too many arguments");
-    scratch[n++] = parse_arg(T);
+    pstack_push(T, parse_arg(T));
+    n++;
+    skip_ws(T);
+    if (*T->P != ',')
+      break;
+    T->P++;
     skip_ws(T);
   }
-  return n;
+  if (*T->P != ')')
+    perr(T, "expected ')'");
+  T->P++;
+  tterm_t *t = tt_struct(T, name, n, T->pstack + base);
+  T->psp = base;
+  return t;
 }
 
 static tterm_t *parse_list(trilog_t *T) {
@@ -218,17 +236,14 @@ static tterm_t *parse_list(trilog_t *T) {
     T->P++;
     return tt_atom(T, "[]");
   }
-  tterm_t *elems[MAX_ARITY];
-  int n = 0;
-  elems[n++] = parse_arg(T);
+  size_t base = T->psp;
+  pstack_push(T, parse_arg(T));
   skip_ws(T);
   tterm_t *tail = tt_atom(T, "[]");
   while (*T->P == ',') {
     T->P++;
     skip_ws(T);
-    if (n >= MAX_ARITY)
-      perr(T, "list literal too long");
-    elems[n++] = parse_arg(T);
+    pstack_push(T, parse_arg(T));
     skip_ws(T);
   }
   if (*T->P == '|') {
@@ -241,16 +256,16 @@ static tterm_t *parse_list(trilog_t *T) {
     perr(T, "expected ']'");
   T->P++;
   tterm_t *acc = tail;
-  for (int i = n - 1; i >= 0; i--) {
-    tterm_t *cons[2] = {elems[i], acc};
+  for (size_t i = T->psp; i-- > base;) {
+    tterm_t *cons[2] = {T->pstack[i], acc};
     acc = tt_struct(T, ".", 2, cons);
   }
+  T->psp = base;
   return acc;
 }
 
 static tterm_t *parse_string(trilog_t *T) {
-  char buf[MAX_TOKEN];
-  read_quoted(T, '"', buf);
+  const char *buf = read_quoted(T, '"');
   tterm_t *acc = tt_atom(T, "[]");
   size_t n = strlen(buf);
   for (size_t i = n; i-- > 0;) {
@@ -348,7 +363,7 @@ static tterm_t *parse_primary(trilog_t *T) {
   skip_ws(T);
   if (*T->P == '\0')
     perr(T, "unexpected end of input");
-  char name[MAX_TOKEN];
+  const char *name;
 
   if (*T->P == '(') {
     T->P++;
@@ -388,43 +403,23 @@ static tterm_t *parse_primary(trilog_t *T) {
     return tt_atom(T, ";");
   }
   if (*T->P == '\'') {
-    read_quoted(T, '\'', name);
+    name = atom_name(T, atom_intern(T, read_quoted(T, '\'')));
     skip_ws(T);
-    if (*T->P == '(') {
-      T->P++;
-      skip_ws(T);
-      tterm_t *args[MAX_ARITY];
-      int32_t n = parse_arglist(T, args);
-      skip_ws(T);
-      if (*T->P != ')')
-        perr(T, "expected ')'");
-      T->P++;
-      return tt_struct(T, name, n, args);
-    }
+    if (*T->P == '(')
+      return parse_compound(T, name);
     return tt_atom(T, name);
   }
-  if (*T->P == '_' || isupper((unsigned char)*T->P)) {
-    read_while(T, name, is_ident_char);
-    return tt_var(T, vartab_slot(T, name));
-  }
+  if (*T->P == '_' || isupper((unsigned char)*T->P))
+    return tt_var(T, vartab_slot(T, read_while(T, is_ident_char)));
   if (isdigit((unsigned char)*T->P))
     return parse_number(T);
   if (*T->P == '-' && isdigit((unsigned char)T->P[1]))
     return parse_number(T);
 
   if (islower((unsigned char)*T->P)) {
-    read_while(T, name, is_ident_char);
-    if (*T->P == '(') {
-      T->P++;
-      skip_ws(T);
-      tterm_t *args[MAX_ARITY];
-      int32_t n = parse_arglist(T, args);
-      skip_ws(T);
-      if (*T->P != ')')
-        perr(T, "expected ')'");
-      T->P++;
-      return tt_struct(T, name, n, args);
-    }
+    name = read_name(T, is_ident_char);
+    if (*T->P == '(')
+      return parse_compound(T, name);
     op_t pre, dummy;
     int have_pre = find_prefix(T, name, &pre);
     if (have_pre && *T->P != '\0' && !at_clause_end(T) && *T->P != ')' &&
@@ -436,18 +431,9 @@ static tterm_t *parse_primary(trilog_t *T) {
     return tt_atom(T, name);
   }
   if (is_symbol_char((unsigned char)*T->P)) {
-    read_while(T, name, is_symbol_char);
-    if (*T->P == '(') {
-      T->P++;
-      skip_ws(T);
-      tterm_t *args[MAX_ARITY];
-      int32_t n = parse_arglist(T, args);
-      skip_ws(T);
-      if (*T->P != ')')
-        perr(T, "expected ')'");
-      T->P++;
-      return tt_struct(T, name, n, args);
-    }
+    name = read_name(T, is_symbol_char);
+    if (*T->P == '(')
+      return parse_compound(T, name);
     op_t pre;
     int have_pre = find_prefix(T, name, &pre);
     if (have_pre && *T->P != '\0' && !at_clause_end(T) && *T->P != ')' &&
@@ -478,10 +464,9 @@ static int peek_infix_op(trilog_t *T, size_t *len_out, op_t *out) {
   }
   if (is_symbol_char((unsigned char)*T->P)) {
     const char *save = T->P;
-    char name[MAX_TOKEN];
-    read_while(T, name, is_symbol_char);
+    const char *name = read_while(T, is_symbol_char);
     int found = find_infix(T, name, out);
-    size_t len = strlen(name);
+    size_t len = (size_t)(T->P - save);
     T->P = save;
     if (found)
       *len_out = len;
@@ -489,10 +474,9 @@ static int peek_infix_op(trilog_t *T, size_t *len_out, op_t *out) {
   }
   if (islower((unsigned char)*T->P)) {
     const char *save = T->P;
-    char name[MAX_TOKEN];
-    read_while(T, name, is_ident_char);
+    const char *name = read_while(T, is_ident_char);
     int found = find_infix(T, name, out);
-    size_t len = strlen(name);
+    size_t len = (size_t)(T->P - save);
     T->P = save;
     if (found)
       *len_out = len;
@@ -522,20 +506,23 @@ static tterm_t *parse_expr(trilog_t *T, int max_prec) {
 
 // flattens a right-nested ','/2 chain into an array of goals
 static tterm_t **flatten_conj(trilog_t *T, tterm_t *t, int32_t *n_out) {
-  tterm_t *scratch[MAX_ARITY];
+  size_t base = T->psp;
   int32_t n = 0;
   while (t->tag == T_STR && t->as.str.arity == 2 &&
          t->as.str.atom_id == atom_comma) {
     if (n >= MAX_ARITY)
       perr(T, "clause body too long");
-    scratch[n++] = t->as.str.args[0];
+    pstack_push(T, t->as.str.args[0]);
+    n++;
     t = t->as.str.args[1];
   }
   if (n >= MAX_ARITY)
     perr(T, "clause body too long");
-  scratch[n++] = t;
+  pstack_push(T, t);
+  n++;
   tterm_t **out = arena_alloc(T, (size_t)n * sizeof(tterm_t *));
-  memcpy(out, scratch, (size_t)n * sizeof(tterm_t *));
+  memcpy(out, T->pstack + base, (size_t)n * sizeof(tterm_t *));
+  T->psp = base;
   *n_out = n;
   return out;
 }
@@ -580,30 +567,52 @@ static void assemble_clause(trilog_t *T, tterm_t *t, int32_t nvars) {
 // folds "." and "dir/.." segments in place, so that "boot/../lib/lists.pl"
 // matches the embedded file "lib/lists.pl".
 static void normalize_path(char *path) {
-  char *seg[256];
-  int n = 0;
-  for (char *tok = strtok(path, "/"); tok; tok = strtok(NULL, "/")) {
-    if (!strcmp(tok, "."))
+  // The result is never longer than the input, so it is rebuilt in place.
+  size_t r = 0, w = 0;
+  while (path[r]) {
+    while (path[r] == '/')
+      r++;
+    size_t start = r;
+    while (path[r] && path[r] != '/')
+      r++;
+    size_t k = r - start;
+    if (k == 0 || (k == 1 && path[start] == '.'))
       continue;
-    if (!strcmp(tok, "..") && n > 0 && strcmp(seg[n - 1], ".."))
-      n--;
-    else if (n < 256)
-      seg[n++] = tok;
+    if (k == 2 && path[start] == '.' && path[start + 1] == '.' && w > 0) {
+      size_t last = w;
+      while (last > 0 && path[last - 1] != '/')
+        last--;
+      if (!(w - last == 2 && path[last] == '.' && path[last + 1] == '.')) {
+        w = last > 0 ? last - 1 : 0;
+        continue;
+      }
+    }
+    if (w > 0)
+      path[w++] = '/';
+    memmove(path + w, path + start, k);
+    w += k;
   }
-  char out[4096];
-  size_t len = 0;
-  out[0] = '\0';
-  for (int i = 0; i < n; i++)
-    len += (size_t)snprintf(out + len, sizeof out - len, "%s%s", i ? "/" : "",
-                            seg[i]);
-  memcpy(path, out, strlen(out) + 1);
+  path[w] = '\0';
+}
+
+#ifndef PATH_CAP
+#define PATH_CAP 4096
+#endif
+
+static void path_buffers(trilog_t *T) {
+  if (!T->path_buf) {
+    T->path_buf = mem_grow_n(T, NULL, PATH_CAP, 1);
+    T->path_tmp = mem_grow_n(T, NULL, PATH_CAP, 1);
+  }
 }
 
 // the embedded text for a relative path, or NULL. On a hit, resolved gets
 // the "embedded:" name that later relative consults resolve against.
-static const char *find_embedded(const char *path, char *resolved, size_t cap) {
-  char key[4096];
-  snprintf(key, sizeof key, "%s", path);
+static const char *find_embedded(trilog_t *T, const char *path, char *resolved,
+                                 size_t cap) {
+  char *key = T->path_tmp;
+  if (key != path)
+    snprintf(key, PATH_CAP, "%s", path);
   normalize_path(key);
   for (const embedded_file *e = embedded_files; e->path; e++)
     if (!strcmp(e->path, key)) {
@@ -618,15 +627,17 @@ static size_t read_file_pass(trilog_t *T, const char *path, char *out,
   void *h = io_file_open(T, path, "rb");
   if (!h)
     return (size_t)-1;
-  char chunk[4096];
+  char chunk[256]; // only for the sizing pass; the copy pass reads in place
   size_t len = 0;
   long got;
-  while ((got = io_file_read(T, h, chunk, sizeof chunk)) > 0) {
-    size_t n = (size_t)got;
-    size_t room = len < cap ? cap - len : 0;
-    if (out)
-      memcpy(out + len, chunk, n < room ? n : room);
-    len += n;
+  for (;;) {
+    char *dst = out ? out + len : chunk;
+    size_t room = out ? cap - len : sizeof chunk;
+    if (room == 0)
+      break;
+    if ((got = io_file_read(T, h, dst, room)) <= 0)
+      break;
+    len += (size_t)got;
   }
   io_file_close(T, h);
   return len;
@@ -647,15 +658,14 @@ static char *read_whole_file(trilog_t *T, const char *path) {
 static const char *consult_text(trilog_t *T, const char *path, char *resolved,
                                 size_t cap) {
   if (!strncmp(path, EMBED_PREFIX, EMBED_PREFIX_LEN))
-    return find_embedded(path + EMBED_PREFIX_LEN, resolved, cap);
+    return find_embedded(T, path + EMBED_PREFIX_LEN, resolved, cap);
   const char *slash = T->consulting ? strrchr(T->consulting, '/') : NULL;
   if (path[0] != '/' && slash) {
     snprintf(resolved, cap, "%.*s/%s", (int)(slash - T->consulting),
              T->consulting, path);
     if (!strncmp(resolved, EMBED_PREFIX, EMBED_PREFIX_LEN)) {
-      char rel[4096];
-      snprintf(rel, sizeof rel, "%s", resolved + EMBED_PREFIX_LEN);
-      const char *text = find_embedded(rel, resolved, cap);
+      snprintf(T->path_tmp, PATH_CAP, "%s", resolved + EMBED_PREFIX_LEN);
+      const char *text = find_embedded(T, T->path_tmp, resolved, cap);
       if (text)
         return text;
     } else {
@@ -668,7 +678,7 @@ static const char *consult_text(trilog_t *T, const char *path, char *resolved,
   char *text = read_whole_file(T, resolved);
   if (text)
     return text;
-  return path[0] != '/' ? find_embedded(path, resolved, cap) : NULL;
+  return path[0] != '/' ? find_embedded(T, path, resolved, cap) : NULL;
 }
 
 static bool consult_source(trilog_t *T, const char *text, const char *path);
@@ -679,6 +689,7 @@ static bool consult_nested(trilog_t *T, const char *text, const char *file,
                            const char *name) {
   const char *saved_P = T->P, *saved_consulting = T->consulting;
   int32_t saved_atom = T->consulting_atom;
+  size_t saved_psp = T->psp;
   jmp_buf saved_jmp;
   memcpy(saved_jmp, T->err_jmp, sizeof(jmp_buf));
   T->consulting = file;
@@ -687,20 +698,23 @@ static bool consult_nested(trilog_t *T, const char *text, const char *file,
   T->consulting = saved_consulting;
   T->consulting_atom = saved_atom;
   T->P = saved_P;
+  T->psp = saved_psp;
   memcpy(T->err_jmp, saved_jmp, sizeof(jmp_buf));
   return ok;
 }
 
 bool consult_file(trilog_t *T, const char *path, int32_t *source) {
-  char resolved[4096];
-  const char *text = consult_text(T, path, resolved, sizeof resolved);
+  path_buffers(T);
+  const char *text = consult_text(T, path, T->path_buf, PATH_CAP);
   if (!text) {
-    char msg[300];
-    snprintf(msg, sizeof msg, "cannot open %s\n", path);
-    io_write_err(T, msg);
+    io_write_err(T, "cannot open ");
+    io_write_err(T, path);
+    io_write_err(T, "\n");
     return false;
   }
-  int32_t atom = atom_intern(T, resolved);
+  // The path buffers are reused by nested consults; the atom's name is not.
+  int32_t atom = atom_intern(T, T->path_buf);
+  const char *resolved = atom_name(T, atom);
   db_unload(T, atom);
   if (source)
     *source = atom;
@@ -714,9 +728,11 @@ bool consult_string(trilog_t *T, const char *text) {
 static bool consult_source(trilog_t *T, const char *text, const char *path) {
   T->P = text;
   if (setjmp(T->err_jmp)) {
-    char msg[300 + sizeof T->err_msg];
-    snprintf(msg, sizeof msg, "parse error in %s: %s\n", path, T->err_msg);
-    io_write_err(T, msg);
+    io_write_err(T, "parse error in ");
+    io_write_err(T, path);
+    io_write_err(T, ": ");
+    io_write_err(T, T->err_msg);
+    io_write_err(T, "\n");
     return false;
   }
   for (;;) {
@@ -738,10 +754,11 @@ bool parse_query(trilog_t *T, const char *src, tterm_t ***goals_out,
                  int32_t *ngoals_out, int32_t *nvars_out,
                  const char ***varnames_out) {
   T->P = src;
+  T->psp = 0;
   if (setjmp(T->err_jmp)) {
-    char msg[32 + sizeof T->err_msg];
-    snprintf(msg, sizeof msg, "parse error: %s\n", T->err_msg);
-    io_write_err(T, msg);
+    io_write_err(T, "parse error: ");
+    io_write_err(T, T->err_msg);
+    io_write_err(T, "\n");
     return false;
   }
   vartab_reset(T);
@@ -757,7 +774,7 @@ bool parse_query(trilog_t *T, const char *src, tterm_t ***goals_out,
   const char **names = arena_alloc(
       T, (size_t)(T->var_count > 0 ? T->var_count : 1) * sizeof(char *));
   for (int32_t i = 0; i < T->var_count; i++)
-    names[i] = arena_strdup(T, T->var_names[i]);
+    names[i] = atom_name(T, T->var_names[i]);
   *varnames_out = names;
   return true;
 }
@@ -769,10 +786,12 @@ static bool parse_term_from_string_(trilog_t *T, const char *src,
 bool parse_term_from_string(trilog_t *T, const char *src, tterm_t **term_out,
                             int32_t *nvars_out, const char ***varnames_out) {
   const char *saved_P = T->P;
+  size_t saved_psp = T->psp;
   jmp_buf saved_jmp;
   memcpy(saved_jmp, T->err_jmp, sizeof(jmp_buf));
   bool ok = parse_term_from_string_(T, src, term_out, nvars_out, varnames_out);
   T->P = saved_P;
+  T->psp = saved_psp;
   memcpy(T->err_jmp, saved_jmp, sizeof(jmp_buf));
   return ok;
 }
@@ -796,7 +815,7 @@ static bool parse_term_from_string_(trilog_t *T, const char *src,
   const char **names = arena_alloc(
       T, (size_t)(T->var_count > 0 ? T->var_count : 1) * sizeof(char *));
   for (int32_t i = 0; i < T->var_count; i++)
-    names[i] = arena_strdup(T, T->var_names[i]);
+    names[i] = atom_name(T, T->var_names[i]);
   *varnames_out = names;
   return true;
 }

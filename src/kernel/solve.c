@@ -11,8 +11,9 @@
 #include "streams.h"
 #include "unify.h"
 #include <errno.h>
-#include <inttypes.h>
+#include <limits.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -817,6 +818,30 @@ static size_t eval_arith(trilog_t *T, size_t r, int *ok) {
   return 0;
 }
 
+// One whole line from user_input (sid < 0) or a stream into T->scratch,
+// or NULL at end of file.
+static char *read_whole_line(trilog_t *T, int sid) {
+  size_t len = 0;
+  for (;;) {
+    mem_reserve(T, &T->scratch, &T->scratch_cap, len + 256);
+    size_t room = T->scratch_cap - len;
+    int size = room > INT_MAX ? INT_MAX : (int)room;
+    char *buf = (char *)T->scratch + len;
+    char *got = sid < 0 ? io_read_line(T, buf, size)
+                        : stream_read_line(T, sid, buf, size);
+    if (!got)
+      break;
+    size_t k = strlen(got);
+    len += k;
+    if (got[k - 1] == '\n' || k + 1 < (size_t)size)
+      break;
+  }
+  if (len == 0)
+    return NULL;
+  ((char *)T->scratch)[len] = '\0';
+  return T->scratch;
+}
+
 static size_t codes_from_cstr(trilog_t *T, const char *s) {
   size_t acc = heap_new_atom(T, atom_nil);
   size_t n = strlen(s);
@@ -827,10 +852,11 @@ static size_t codes_from_cstr(trilog_t *T, const char *s) {
   return acc;
 }
 
-// incomplete is set when the list or an element is unbound (vs. wrong
-// shape/type) - lets callers throw instantiation_error, not just fail.
-static int cstr_from_codes(trilog_t *T, size_t list, char *buf, size_t bufcap,
-                           int *incomplete) {
+// The text of a code list in T->scratch, or NULL. incomplete is set when the
+// list or an element is unbound (vs. wrong shape/type)
+// lets callers throw instantiation_error, not just fail.
+static char *codes_text(trilog_t *T, size_t list, size_t max_len,
+                        int *incomplete) {
   size_t d = heap_deref(T, list);
   size_t n = 0;
   while (T->heap[d].tag != TAG_ATOM || T->heap[d].as.atom_id != atom_nil) {
@@ -852,13 +878,15 @@ static int cstr_from_codes(trilog_t *T, size_t list, char *buf, size_t bufcap,
     }
     if (T->heap[h].tag != TAG_INT)
       return 0;
-    if (n + 1 >= bufcap)
+    if (n >= max_len)
       return 0;
-    buf[n++] = (char)T->heap[h].as.ival;
+    mem_reserve(T, &T->scratch, &T->scratch_cap, n + 2);
+    ((char *)T->scratch)[n++] = (char)T->heap[h].as.ival;
     d = heap_deref(T, f + 2);
   }
-  buf[n] = '\0';
-  return 1;
+  mem_reserve(T, &T->scratch, &T->scratch_cap, n + 1);
+  ((char *)T->scratch)[n] = '\0';
+  return T->scratch;
 }
 
 // Recurses into every argument but the last and loops on that one.
@@ -1305,19 +1333,15 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     return 1;
   }
   if (arity == 2 && id == atom_read_line_to_atom) {
-    char buf[8192];
-    char *got;
     size_t sd = heap_deref(T, f + 1);
-    int sid;
-    if (T->heap[sd].tag == TAG_ATOM &&
-        T->heap[sd].as.atom_id == atom_user_input) {
-      got = io_read_line(T, buf, sizeof buf);
-    } else if (resolve_stream_id(T, f + 1, &sid)) {
-      got = stream_read_line(T, sid, buf, sizeof buf);
-    } else {
+    int sid = -1;
+    if ((T->heap[sd].tag != TAG_ATOM ||
+         T->heap[sd].as.atom_id != atom_user_input) &&
+        !resolve_stream_id(T, f + 1, &sid)) {
       *ok = 0;
       return 1;
     }
+    char *got = read_whole_line(T, sid);
     size_t line;
     if (!got) {
       line = heap_new_atom(T, atom_end_of_file);
@@ -1626,7 +1650,8 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       *ok = unify(T, term, name_d);
       return 1;
     }
-    size_t args[MAX_ARITY]; // ar <= MAX_ARITY, checked above
+    mem_reserve(T, &T->scratch, &T->scratch_cap, (size_t)ar * sizeof(size_t));
+    size_t *args = T->scratch; // ar <= MAX_ARITY, checked above
     for (int64_t i = 0; i < ar; i++)
       args[i] = heap_new_var(T);
     *ok = unify(
@@ -1721,7 +1746,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     }
     size_t head = heap_deref(T, T->heap[d].as.ptr + 1);
     size_t cur = heap_deref(T, T->heap[d].as.ptr + 2);
-    size_t elems[MAX_ARITY];
+    size_t *elems = NULL;
     int32_t ne = 0;
     while (T->heap[cur].tag == TAG_STR &&
            T->heap[T->heap[cur].as.ptr].as.func.atom_id == atom_dot &&
@@ -1730,6 +1755,8 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
         T->pending_error_ball = make_representation_error(T, "max_arity");
         return 1;
       }
+      mem_reserve(T, &T->scratch, &T->scratch_cap, (ne + 1) * sizeof(size_t));
+      elems = T->scratch;
       elems[ne++] = heap_deref(T, T->heap[cur].as.ptr + 1);
       cur = heap_deref(T, T->heap[cur].as.ptr + 2);
     }
@@ -1757,22 +1784,22 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
                   codes_from_cstr(T, atom_name(T, T->heap[a].as.atom_id)));
       return 1;
     }
-    char buf[4096];
     int incomplete = 0;
-    if (!cstr_from_codes(T, f + 2, buf, sizeof buf, &incomplete)) {
+    char *text = codes_text(T, f + 2, SIZE_MAX, &incomplete);
+    if (!text) {
       if (incomplete)
         T->pending_error_ball = make_instantiation_error(T);
       *ok = 0;
       return 1;
     }
-    *ok = unify(T, f + 1, heap_new_atom(T, atom_intern(T, buf)));
+    *ok = unify(T, f + 1, heap_new_atom(T, atom_intern(T, text)));
     return 1;
   }
   if (arity == 2 && id == atom_number_codes) {
     size_t a = heap_deref(T, f + 1);
     if (T->heap[a].tag == TAG_INT) {
       char buf[32];
-      snprintf(buf, sizeof buf, "%" PRId64, T->heap[a].as.ival);
+      snprintf(buf, sizeof buf, "%lld", (long long)T->heap[a].as.ival);
       *ok = unify(T, f + 2, codes_from_cstr(T, buf));
       return 1;
     }
@@ -1782,9 +1809,9 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       *ok = unify(T, f + 2, codes_from_cstr(T, buf));
       return 1;
     }
-    char buf[64];
     int incomplete = 0;
-    if (!cstr_from_codes(T, f + 2, buf, sizeof buf, &incomplete)) {
+    char *buf = codes_text(T, f + 2, 63, &incomplete);
+    if (!buf) {
       if (incomplete)
         T->pending_error_ball = make_instantiation_error(T);
       *ok = 0;

@@ -6,7 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define CHUNK_SIZE (1 << 20)
+#ifndef ARENA_CHUNK_SIZE
+#define ARENA_CHUNK_SIZE (1 << 20)
+#endif
 
 typedef struct chunk {
   struct chunk *next;
@@ -15,7 +17,7 @@ typedef struct chunk {
 } chunk_t;
 
 static chunk_t *new_chunk(trilog_t *T, size_t at_least) {
-  size_t cap = at_least > CHUNK_SIZE ? at_least : CHUNK_SIZE;
+  size_t cap = at_least > ARENA_CHUNK_SIZE ? at_least : ARENA_CHUNK_SIZE;
   if (cap > SIZE_MAX - sizeof(chunk_t))
     mem_fail(T);
   chunk_t *c = mem_grow_n(T, NULL, 1, sizeof(chunk_t) + cap);

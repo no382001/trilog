@@ -44,7 +44,7 @@ $(DEV)/libtrilog.a: $(DEV_LIB_OBJS)
 
 $(REL)/libtrilog.a: $(REL_LIB_OBJS)
 	@rm -f $@
-	$(CC) -r -nostdlib -flto=auto -flinker-output=nolto-rel -o $(REL)/libtrilog.o $^
+	$(CC) $(CFLAGS) -r -nostdlib -flto=auto -flinker-output=nolto-rel -o $(REL)/libtrilog.o $^
 	$(HIDE_INTERNALS) $(REL)/libtrilog.o
 	$(AR) rcs $@ $(REL)/libtrilog.o
 

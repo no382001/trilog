@@ -116,6 +116,11 @@ void trilog_free(trilog_t *t) {
       t->pred_hash[i] = next;
     }
   mem_free(t, t->db);
+  mem_free(t, t->tok);
+  mem_free(t, t->pstack);
+  mem_free(t, t->path_buf);
+  mem_free(t, t->path_tmp);
+  mem_free(t, t->scratch);
   mem_free(t, t->consulted_decls);
   mem_free(t, t->dynamic_decls);
   mem_free(t, t->foreign);
@@ -220,12 +225,17 @@ bool trilog_set_io(trilog_t *t, const trilog_io_t *io) { return io_set(t, io); }
 bool trilog_error(trilog_t *t, const char *formal, ...) {
   if (!t->foreign_current)
     return false;
-  char text[1024];
   va_list ap;
   va_start(ap, formal);
-  vsnprintf(text, sizeof text, formal, ap);
+  int n = vsnprintf(NULL, 0, formal, ap);
   va_end(ap);
-  t->foreign_error = foreign_error_ball(t, text);
+  if (n < 0)
+    return false;
+  mem_reserve(t, &t->scratch, &t->scratch_cap, (size_t)n + 1);
+  va_start(ap, formal);
+  vsnprintf(t->scratch, (size_t)n + 1, formal, ap);
+  va_end(ap);
+  t->foreign_error = foreign_error_ball(t, t->scratch);
   return false;
 }
 

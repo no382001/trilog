@@ -13,7 +13,6 @@
 #define CAPTURE_BUF_SIZE 4096
 #define CAPTURE_STACK_MAX 32
 #define MAX_CVARS 512
-#define MAX_VARNAME 256
 
 struct chunk;
 
@@ -74,8 +73,15 @@ struct trilog {
   const char *P;
   jmp_buf err_jmp;
   char err_msg[256];
-  char var_names[MAX_CVARS][MAX_VARNAME];
+  int32_t var_names[MAX_CVARS]; // atom ids
   int32_t var_count;
+  char *tok; // parser token, valid until the next token is read
+  size_t tok_cap;
+  struct tterm **pstack; // parser scratch for arguments and list elements
+  size_t psp, pstack_cap;
+  char *path_buf, *path_tmp; // consult path scratch, PATH_CAP bytes each
+  void *scratch;             // builtin scratch; builtins do not nest
+  size_t scratch_cap;
   const char *consulting; // path of the file being consulted
   int32_t consulting_atom;
 
