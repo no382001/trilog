@@ -92,11 +92,11 @@ PLEOF
 }
 
 @test "consulted/1 lists loaded files, including ones from the command line" {
-  printf "q(1).\n" > "$BATS_TEST_TMPDIR/c.pl"
-  run "$TRILOG" -f "$BATS_TEST_TMPDIR/c.pl" -e "
+  printf "q(1).\n" > "$BATS_TEST_TMPDIR/from_command_line.pl"
+  run "$TRILOG" -f "$BATS_TEST_TMPDIR/from_command_line.pl" -e "
     consulted(L),
     member(F, L),
-    atom_concat(_, 'c.pl', F).
+    atom_concat(_, '/from_command_line.pl', F).
   "
   succeeded
   [ "$(answers)" -eq 1 ]

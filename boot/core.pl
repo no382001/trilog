@@ -49,9 +49,6 @@ once(G) :- call(G), !.
 '\\+'(G) :- call(G), !, fail.
 '\\+'(_).
 
-%!  forall(:Cond, :Action) is semidet.
-forall(Cond, Action) :- \+ (Cond, \+ Action).
-
 %!  halt is det.
 halt :- halt(0).
 
@@ -113,26 +110,6 @@ use_module(Spec) :-
     ;   Dir = '.'
     ).
 
-%!  consulted(-Files) is det.
-consulted(Files) :-
-    findall(Path, '$consulted'(Path, _), Files).
-
-%!  unconsult(+File) is semidet.
-%   Fails if File is not loaded.
-unconsult(File) :-
-    ( atom(File), '$$source_path'(File, Path) -> true ; Path = File ),
-    '$$retract'('$consulted'(Path, _)),
-    '$$unload'(Path).
-
-%!  make is det.
-%   Reconsults every loaded file whose modification time changed. Needs the
-%   platform's file_mtime/2; raises existence_error without it.
-make :-
-    forall(( '$consulted'(Path, Time0),
-             file_mtime(Path, Time),
-             Time \== Time0 ),
-           consult(Path)).
-
 %!  [], [+File|+Files] is det.
 [].
 [File|Files] :- consult(File), call(Files).
@@ -143,24 +120,12 @@ repeat :- repeat.
 
 % --- lists ---
 
-% These load before the op/3 directives below, which need member/2.
+% The core's own dependencies.
 :- consult('../lib/lists.pl').
+:- consult('../lib/error.pl').
+:- consult('../lib/misc.pl').
 
 % --- arithmetic ---
-
-%!  between(+Low, +High, ?X) is nondet.
-between(L, H, X) :- integer(X), !, X >= L, X =< H.
-between(L, H, L) :- L =< H.
-between(L, H, X) :- L < H, L1 is L + 1, between(L1, H, X).
-
-%!  succ(?X, ?Y) is det.
-succ(X, Y) :- integer(X), !, Y is X + 1.
-succ(X, Y) :- integer(Y), X is Y - 1.
-
-%!  plus(?A, ?B, ?C) is det.
-plus(A, B, C) :- integer(A), integer(B), !, C is A + B.
-plus(A, B, C) :- integer(A), integer(C), !, B is C - A.
-plus(A, B, C) :- integer(B), integer(C), A is C - B.
 
 % --- term comparison ---
 % ==, \==, @<, @>, @=<, @>=, <, >, =<, >=, =:=, =\= are native
@@ -204,51 +169,6 @@ ground(T) :- term_variables(T, []).
 %!  callable(@Term) is semidet.
 callable(X) :- atom(X).
 callable(X) :- compound(X).
-
-%!  boolean(@Term) is semidet.
-boolean(true).
-boolean(false).
-
-%!  character(@Term) is semidet.
-character(C) :- atom(C), atom_length(C, 1).
-
-%!  must_be(+Type, @Term) is det.
-must_be(Type, _) :-
-    var(Type),
-    !,
-    throw(error(instantiation_error, must_be/2)).
-must_be(var, Term) :-
-    !,
-    ( var(Term) -> true ; throw(error(uninstantiation_error(Term), must_be/2)) ).
-must_be(list, Term) :- !, '$must_be_list'(Term).
-must_be(not_less_than_zero, Term) :-
-    !,
-    '$must_be_type'(integer, Term),
-    ( Term >= 0 -> true ; throw(error(domain_error(not_less_than_zero, Term), must_be/2)) ).
-must_be(Type, Term) :- '$must_be_type'(Type, Term).
-
-'$must_be_type'(_, Term) :-
-    var(Term),
-    !,
-    throw(error(instantiation_error, must_be/2)).
-'$must_be_type'(Type, Term) :- call(Type, Term), !.
-'$must_be_type'(Type, Term) :- throw(error(type_error(Type, Term), must_be/2)).
-
-'$must_be_list'([]) :- !.
-'$must_be_list'([_|T]) :- !, '$must_be_list'(T).
-'$must_be_list'(Term) :-
-    ( var(Term) -> throw(error(instantiation_error, must_be/2))
-    ; throw(error(type_error(list, Term), must_be/2))
-    ).
-
-%!  can_be(+Type, @Term) is semidet.
-%   Like must_be/2, but an unbound Term passes without throwing.
-can_be(Type, _) :-
-    var(Type),
-    !,
-    throw(error(instantiation_error, can_be/2)).
-can_be(_, Term) :- var(Term), !.
-can_be(Type, Term) :- must_be(Type, Term).
 
 % --- errors ---
 
@@ -459,18 +379,6 @@ setof(Template, Goal, Set) :-
 % --- I/O ---
 % put_code/1, get_code/1 are native.
 
-%!  with_output_to(+Sink, :Goal) is semidet.
-%   Sink is atom(-A) or codes(-Cs).
-with_output_to(atom(A), Goal) :-
-    '$$capture_start',
-    % must pop the capture level even if Goal throws, or output stays silently swallowed after.
-    ( catch(call(Goal), Ball, ('$$capture_stop'(_), throw(Ball)))
-    -> '$$capture_stop'(A)
-    ;  '$$capture_stop'(_), fail
-    ).
-with_output_to(codes(Cs), Goal) :- with_output_to(atom(A), Goal), '$$atom_codes'(A, Cs).
-with_output_to(chars(Cs), Goal) :- with_output_to(atom(A), Goal), atom_chars(A, Cs).
-
 '$stream_alias'(user_output, 0).
 '$stream_alias'(user_error, 1).
 '$resolve_stream'(S, N) :- '$stream_alias'(S, N), !.
@@ -526,94 +434,20 @@ write_term(S, T, Opts) :-
 '$options_list'([_|L]) :- !, '$options_list'(L).
 '$options_list'(L) :- throw(error(type_error(list, L), _)).
 
-%!  numbervars(?Term, +Start, -End) is det.
-%   Binds each variable of Term to '$VAR'(N), N counting up from Start.
-numbervars(T, S, E) :-
-    (   var(S) -> throw(error(instantiation_error, numbervars/3))
-    ;   integer(S) -> true
-    ;   throw(error(type_error(integer, S), numbervars/3))
-    ),
-    term_variables(T, Vs),
-    '$numbervars'(Vs, S, E).
-'$numbervars'([], N, N).
-'$numbervars'(['$VAR'(N)|Vs], N, E) :-
-    N1 is N + 1,
-    '$numbervars'(Vs, N1, E).
-
 %!  write_canonical(@Term) is det.
 %!  write_canonical(+Stream, @Term) is det.
 write_canonical(T) :- write_term(T, [quoted(true), ignore_ops(true)]).
 write_canonical(S, T) :- write_term(S, T, [quoted(true), ignore_ops(true)]).
-
-%!  write_term_to_chars(@Term, +Options, -Chars) is det.
-write_term_to_chars(T, Opts, Cs) :-
-    '$with_context'('$write_options'(Opts, _), write_term_to_chars/3),
-    with_output_to(chars(Cs0), write_term(T, Opts)),
-    Cs = Cs0.
-
-%!  read_from_chars(+Chars, -Term) is det.
-read_from_chars(Cs, T) :-
-    '$with_context'('$read_term_from_chars'(Cs, T, []), read_from_chars/2).
-
-%!  read_term_from_chars(+Chars, -Term, +Options) is det.
-%   Options: variable_names(-Pairs), variables(-Vars).
-%   Blank Chars read as end_of_file.
-read_term_from_chars(Cs, T, Opts) :-
-    '$with_context'('$read_term_from_chars'(Cs, T, Opts), read_term_from_chars/3).
-
-'$read_term_from_chars'(Cs, T, Opts) :-
-    '$options_list'(Opts),
-    '$read_options_check'(Opts),
-    '$chars_list'(Cs),
-    (   '$blank_chars'(Cs)
-    ->  T0 = end_of_file, Names = []
-    ;   atom_chars(A, Cs),
-        catch(atom_to_term(A, T0, Names), error(syntax_error(M), _),
-              throw(error(syntax_error(M), _)))
-    ),
-    term_variables(T0, Vars),
-    '$read_options_bind'(Opts, Names, Vars),
-    T = T0.
-
-'$read_options_check'([]).
-'$read_options_check'([O|Os]) :-
-    '$read_option_check'(O),
-    '$read_options_check'(Os).
-'$read_option_check'(O) :- var(O), !, throw(error(instantiation_error, _)).
-'$read_option_check'(variable_names(_)) :- !.
-'$read_option_check'(variables(_)) :- !.
-'$read_option_check'(O) :- throw(error(domain_error(read_option, O), _)).
-
-'$read_options_bind'([], _, _).
-'$read_options_bind'([variable_names(Names)|Os], Names, Vars) :- !, '$read_options_bind'(Os, Names, Vars).
-'$read_options_bind'([variables(Vars)|Os], Names, Vars) :- '$read_options_bind'(Os, Names, Vars).
 
 '$chars_list'(L) :- '$text_list'(L, '$check_char').
 '$check_char'(C) :- var(C), !, throw(error(instantiation_error, _)).
 '$check_char'(C) :- character(C), !.
 '$check_char'(C) :- throw(error(type_error(character, C), _)).
 
-'$blank_chars'([]).
-'$blank_chars'([C|Cs]) :- memberchk(C, [' ', '\t', '\n', '\r']), '$blank_chars'(Cs).
-
 %!  nl is det.
 %!  nl(+Stream) is det.
 nl :- write('\n').
 nl(S) :- write(S, '\n').
-
-%!  writeln(@Term) is det.
-%!  writeln(+Stream, @Term) is det.
-writeln(T) :- write(T), nl.
-writeln(S, T) :- write(S, T), nl(S).
-
-%!  read_line_to_chars(+Stream, -Chars) is det.
-read_line_to_chars(S, Cs) :-
-    read_line_to_atom(S, A),
-    ( A == end_of_file -> Cs = end_of_file ; atom_chars(A, Cs) ).
-
-%!  put_chars(+Chars) is det.
-put_chars(Cs) :- atom_chars(A, Cs), write(A).
-put_chars(S, Cs) :- atom_chars(A, Cs), write(S, A).
 
 %!  atom_codes(?Atom, ?Codes) is det.
 atom_codes(A, Cs) :-
@@ -712,16 +546,6 @@ atom_chars(A, Chars) :-
         '$codes_chars'(Codes, Chars),
         '$$atom_codes'(A, Codes)
     ).
-
-%!  atom_number(?Atom, ?Number) is semidet.
-atom_number(A, N) :-
-    nonvar(A),
-    !,
-    '$$atom_codes'(A, C),
-    '$$number_codes'(N, C).
-atom_number(A, N) :-
-    '$$number_codes'(N, C),
-    '$$atom_codes'(A, C).
 
 %!  number_codes(?Number, ?Codes) is det.
 number_codes(N, Cs) :-
@@ -924,7 +748,6 @@ op(Priority, Type, Name) :-
 
 %!  current_op(?Priority, ?Type, ?Name) is nondet.
 current_op(P, T, N) :- '$$op'(P, T, N).
-
 
 % --- prolog flags ---
 

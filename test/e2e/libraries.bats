@@ -95,3 +95,31 @@ load common
   "
   [[ "$output" == *"['apply.pl', 'dcgs.pl', 'lists.pl']"* ]]
 }
+
+@test "-n keeps error and misc, which the core uses, but not between, charsio or make" {
+  run "$TRILOG" -f -n -e "
+    must_be(integer, 3),
+    forall(true, true),
+    findall(P, ( member(P, [between/3, succ/2, plus/3, read_term_from_chars/3, write_term_to_chars/3, consulted/1, make/0]),
+                 P = N/A, functor(G, N, A),
+                 catch(( G -> true ; true ), E, true),
+                 ( var(E) -> true ; E \\= error(existence_error(procedure, _), _) ) ), Present),
+    writeq(present(Present)),
+    nl.
+  "
+  [[ "$output" == *"present([])"* ]]
+}
+
+@test "the CLI loads between, charsio and make by default" {
+  run "$TRILOG" -f -e "
+    between(1, 3, X),
+    X =:= 3,
+    succ(1, S),
+    read_term_from_chars([f, '(', x, ')'], T, []),
+    consulted(Fs),
+    is_list(Fs),
+    writeq(r(S, T)),
+    nl.
+  "
+  [[ "$output" == *"r(2, f(x))"* ]]
+}
