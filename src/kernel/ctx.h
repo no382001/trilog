@@ -40,6 +40,8 @@ struct trilog {
 
   trilog_io_t hooks;
   bool default_io;
+  size_t gc_fixed;
+  bool gc_debug;
   io_reader_t streams[MAX_OPEN_STREAMS];
 
   pair_visits unify_visits, occurs_check_visits;
@@ -53,7 +55,7 @@ struct trilog {
   jmp_buf gc_oom;
   uint8_t *marked;
   size_t marked_cap;
-  size_t mark_visit_count; // diagnostic only, read by TRILOG_GC_DEBUG
+  size_t mark_visit_count; // diagnostic only, read by gc_debug
   size_t *new_index;
   size_t new_index_cap;
   size_t *trail_new_index;

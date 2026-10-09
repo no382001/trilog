@@ -55,6 +55,8 @@ typedef struct {
   void *alloc_ud;
   // NULL means stdio. Also used to read the boot file.
   const trilog_io_t *io;
+  size_t gc_threshold;
+  bool gc_debug; // one line per collection on the error stream
 } trilog_config_t;
 
 typedef struct {

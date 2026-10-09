@@ -4,7 +4,6 @@
 #include "ctx.h"
 #include "io.h"
 #include "mem.h"
-#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -23,7 +22,8 @@ void heap_init(trilog_t *T) {
 #define X(name, text) atom_intern(T, text);
   WELL_KNOWN_ATOMS(X)
 #undef X
-  assert(T->atom_count == WELL_KNOWN_ATOM_COUNT);
+  if (T->atom_count != WELL_KNOWN_ATOM_COUNT)
+    engine_fatal(T, "duplicate well-known atom\n");
 }
 
 size_t heap_alloc(trilog_t *T, size_t n) {

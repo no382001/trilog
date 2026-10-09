@@ -67,6 +67,8 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   t->alloc_realloc = c.realloc;
   t->alloc_free = c.free;
   t->alloc_ud = c.alloc_ud;
+  t->gc_fixed = c.gc_threshold;
+  t->gc_debug = c.gc_debug;
   t->error = invalid_term;
   t->pending_error_ball = (size_t)-1;
   t->uncaught_ball = (size_t)-1;

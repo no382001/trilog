@@ -229,7 +229,12 @@ int main(int argc, char **argv) {
   resolve_core_path(argv[0], core_path, sizeof core_path);
   if (verbose)
     printf("?- consult('%s').\n", core_path);
-  T = trilog_new(&(trilog_config_t){.boot_path = core_path});
+  const char *gc_threshold = getenv("TRILOG_GC_THRESHOLD");
+  T = trilog_new(&(trilog_config_t){
+      .boot_path = core_path,
+      .gc_threshold = gc_threshold ? strtoul(gc_threshold, NULL, 10) : 0,
+      .gc_debug = getenv("TRILOG_GC_DEBUG") != NULL,
+  });
   if (!T)
     return 1;
   if (!core_only)

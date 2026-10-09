@@ -219,10 +219,7 @@ int gc_heap_exhausted(trilog_t *T) {
 static size_t gc_get_threshold(trilog_t *T) {
   if (T->gc_threshold != 0)
     return T->gc_threshold;
-  const char *env = getenv("TRILOG_GC_THRESHOLD");
-  T->gc_threshold = env ? (size_t)strtoul(env, NULL, 10) : GC_MIN_CELLS;
-  if (T->gc_threshold == 0)
-    T->gc_threshold = GC_MIN_CELLS; // reject a nonsense override
+  T->gc_threshold = T->gc_fixed ? T->gc_fixed : GC_MIN_CELLS;
   return T->gc_threshold;
 }
 
@@ -381,9 +378,7 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
   heap_set_size(T, new_top);
   trail_set_size(T, new_trail_top);
 
-  // grow the threshold with live data, unless a test forces GC every
-  // safepoint via TRILOG_GC_THRESHOLD.
-  if (!getenv("TRILOG_GC_THRESHOLD"))
+  if (!T->gc_fixed)
     T->gc_threshold = new_top * 2 > GC_MIN_CELLS ? new_top * 2 : GC_MIN_CELLS;
 
   // tie capacity to gc_threshold so it can shrink after a big collection.
@@ -392,7 +387,7 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
   if (GC_SHRINK)
     shrink_scratch_to(T, new_top + 1);
 
-  if (getenv("TRILOG_GC_DEBUG")) {
+  if (T->gc_debug) {
     char msg[300];
     snprintf(msg, sizeof msg,
              "gc: heap %zu -> %zu, trail %zu -> %zu, nframes=%zu, "

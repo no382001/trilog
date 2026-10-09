@@ -39,10 +39,12 @@ void mem_free(trilog_t *T, void *p) {
     T->alloc_free(T->alloc_ud, p);
 }
 
-_Noreturn void mem_fail(trilog_t *T) {
-  io_write_err(T, "out of memory\n");
+_Noreturn void engine_fatal(trilog_t *T, const char *msg) {
+  io_write_err(T, msg);
   longjmp(T->fatal_jmp, 1);
 }
+
+_Noreturn void mem_fail(trilog_t *T) { engine_fatal(T, "out of memory\n"); }
 
 _Noreturn void engine_abort(trilog_t *T) {
   T->aborted = true;

@@ -8,5 +8,6 @@ void mem_free(trilog_t *T, void *p);
 // Grows *buf to hold at least need bytes, doubling; *cap tracks its size.
 void mem_reserve(trilog_t *T, void **buf, size_t *cap, size_t need);
 _Noreturn void mem_fail(trilog_t *T);
+_Noreturn void engine_fatal(trilog_t *T, const char *msg);
 _Noreturn void engine_halt(trilog_t *T, int code);
 _Noreturn void engine_abort(trilog_t *T);

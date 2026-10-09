@@ -1,11 +1,11 @@
 #include "term.h"
 #include "arena.h"
 #include "atoms.h"
+#include "chars.h"
 #include "ctx.h"
 #include "heap.h"
 #include "io.h"
 #include "mem.h"
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -189,9 +189,9 @@ static int atom_needs_quote(const char *s) {
   if (!strcmp(s, "[]") || !strcmp(s, "{}") || !strcmp(s, "!") ||
       !strcmp(s, ";"))
     return 0;
-  if (islower((unsigned char)s[0])) {
+  if (ascii_lower((unsigned char)s[0])) {
     for (const char *p = s + 1; *p; p++)
-      if (!isalnum((unsigned char)*p) && *p != '_')
+      if (!ascii_alnum((unsigned char)*p) && *p != '_')
         return 1;
     return 0;
   }

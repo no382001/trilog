@@ -69,7 +69,7 @@ The public API is [`include/trilog.h`](include/trilog.h):
 
 | Function | Use |
 | --- | --- |
-| `trilog_new`, `trilog_free` | create and destroy an interpreter; `trilog_config_t` sets the allocator and I/O |
+| `trilog_new`, `trilog_free` | create and destroy an interpreter; `trilog_config_t` sets the allocator, I/O and GC threshold |
 | `trilog_load_file`, `trilog_load_string` | load Prolog code |
 | `trilog_query` | run a goal, calling back once per answer |
 | `trilog_binding_count`, `trilog_binding_name`, `trilog_binding_value` | read an answer's bindings |

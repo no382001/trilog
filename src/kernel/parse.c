@@ -1,13 +1,13 @@
 #include "parse.h"
 #include "arena.h"
 #include "atoms.h"
+#include "chars.h"
 #include "ctx.h"
 #include "embedded.h"
 #include "heap.h"
 #include "io.h"
 #include "mem.h"
 #include "solve.h"
-#include <ctype.h>
 #include <errno.h>
 #include <setjmp.h>
 #include <stdint.h>
@@ -90,7 +90,7 @@ static int is_symbol_char(int c) {
 
 static void skip_ws(trilog_t *T) {
   for (;;) {
-    while (isspace((unsigned char)*T->P))
+    while (ascii_space((unsigned char)*T->P))
       T->P++;
     if (T->P[0] == '%') {
       while (*T->P && *T->P != '\n')
@@ -109,7 +109,8 @@ static void skip_ws(trilog_t *T) {
 // true if a '.' at P ends a clause (period followed by layout/EOF/%)
 static int at_clause_end(trilog_t *T) {
   return T->P[0] == '.' &&
-         (T->P[1] == '\0' || isspace((unsigned char)T->P[1]) || T->P[1] == '%');
+         (T->P[1] == '\0' || ascii_space((unsigned char)T->P[1]) ||
+          T->P[1] == '%');
 }
 
 // ---- per-clause variable table: reset before each clause/query
@@ -144,7 +145,7 @@ static const char *read_while(trilog_t *T, int (*pred)(int)) {
   return T->tok;
 }
 
-static int is_ident_char(int c) { return isalnum(c) || c == '_'; }
+static int is_ident_char(int c) { return ascii_alnum(c) || c == '_'; }
 
 static const char *read_quoted(trilog_t *T, char quote) {
   T->P++; // opening quote
@@ -262,13 +263,13 @@ static tterm_t *parse_number(trilog_t *T) {
   const char *start = T->P;
   if (*T->P == '-')
     T->P++;
-  while (isdigit((unsigned char)*T->P))
+  while (ascii_digit((unsigned char)*T->P))
     T->P++;
   int is_float = 0;
-  if (T->P[0] == '.' && isdigit((unsigned char)T->P[1])) {
+  if (T->P[0] == '.' && ascii_digit((unsigned char)T->P[1])) {
     is_float = 1;
     T->P++;
-    while (isdigit((unsigned char)*T->P))
+    while (ascii_digit((unsigned char)*T->P))
       T->P++;
   }
   if (*T->P == 'e' || *T->P == 'E') {
@@ -276,7 +277,7 @@ static tterm_t *parse_number(trilog_t *T) {
     T->P++;
     if (*T->P == '+' || *T->P == '-')
       T->P++;
-    while (isdigit((unsigned char)*T->P))
+    while (ascii_digit((unsigned char)*T->P))
       T->P++;
   }
   size_t n = (size_t)(T->P - start);
@@ -319,7 +320,7 @@ static int peek_infix_op(trilog_t *T, size_t *len_out, op_t *out) {
       *len_out = len;
     return found;
   }
-  if (islower((unsigned char)*T->P)) {
+  if (ascii_lower((unsigned char)*T->P)) {
     const char *save = T->P;
     const char *name = read_while(T, is_ident_char);
     int found = find_infix(T, name, out);
@@ -446,17 +447,17 @@ start:
   default:
     break;
   }
-  if (*T->P == '_' || isupper((unsigned char)*T->P)) {
+  if (*T->P == '_' || ascii_upper((unsigned char)*T->P)) {
     v = tt_var(T, vartab_slot(T, read_while(T, is_ident_char)));
     goto produced;
   }
-  if (isdigit((unsigned char)*T->P) ||
-      (*T->P == '-' && isdigit((unsigned char)T->P[1]))) {
+  if (ascii_digit((unsigned char)*T->P) ||
+      (*T->P == '-' && ascii_digit((unsigned char)T->P[1]))) {
     v = parse_number(T);
     goto produced;
   }
   {
-    int lower = islower((unsigned char)*T->P);
+    int lower = ascii_lower((unsigned char)*T->P);
     if (!lower && !is_symbol_char((unsigned char)*T->P))
       perr(T, "unexpected character");
     const char *name = read_name(T, lower ? is_ident_char : is_symbol_char);

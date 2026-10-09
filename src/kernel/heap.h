@@ -61,4 +61,4 @@ size_t trail_size(trilog_t *T);
 void trail_set_size(trilog_t *T, size_t n);
 
 void heap_set_capacity(trilog_t *T, size_t n);
-size_t heap_capacity(trilog_t *T); // diagnostic only, read by TRILOG_GC_DEBUG
+size_t heap_capacity(trilog_t *T); // diagnostic only, read by gc_debug
