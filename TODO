@@ -27,7 +27,7 @@ missing requirements:
 - modules?
 
 performance (release build, cpu ms, median of 5 runs; differences under ~10% are noise):
-                32fad8a   ea9b6a1   atom hash
+                32fad8a   ea9b6a1   2d8aed6
   boot              4.7       9.9       3.4
   nrev 300x200     6752      6809      6705
   queens 8          357       417       380
@@ -36,6 +36,14 @@ performance (release build, cpu ms, median of 5 runs; differences under ~10% are
   msort 50k        2782      2676      2010
   atoms 20k        1571      2547      1089
   gc churn         3817      3584      3670
+
+main (a3536a4, -O2, no asan) vs 2d8aed6 release, cpu ms / peak rss:
+                main            2d8aed6
+  boot           8.9 / 4.9 MB    4.4 / 2.6 MB
+  nrev 300x1    1020 / 237 MB     30 / 2.8 MB
+  queens 8      3078 / 24 MB     354 / 3.1 MB
+  fib 21         543 / 49 MB      37 / 3.1 MB
+  atoms 20k    12389 / 35 MB     963 / 3.6 MB
 
 guidelines:
 - as much logic in prolog as possible
