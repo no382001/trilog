@@ -96,6 +96,7 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   }
   heap_init(t);
   platform_register(t);
+  ops_seed(t);
   if (!consult_file(t, c.boot_path ? c.boot_path : "embedded:boot/core.pl",
                     NULL)) {
     trilog_free(t);

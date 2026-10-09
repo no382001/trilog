@@ -814,9 +814,24 @@ op(Priority, Type, Name) :-
     ( Priority >= 0, Priority =< 1200 -> true
     ; throw(error(domain_error(operator_priority, Priority), op/3))
     ),
+    ( var(Type) -> throw(error(instantiation_error, op/3)) ; true ),
     '$op_class'(Type, Class),
-    ( Name = [_|_] -> Names = Name ; Names = [Name] ),
+    '$op_names'(Name, Names),
     forall(member(N, Names), '$op_one'(Priority, Type, Class, N)).
+
+'$op_names'(Name, _) :- var(Name), !, throw(error(instantiation_error, op/3)).
+'$op_names'(Name, [Name]) :- atom(Name), !.
+'$op_names'(Names, Names) :-
+    '$$skip_list'(Names, _, T),
+    (   var(T) -> throw(error(instantiation_error, op/3))
+    ;   T == [] -> true
+    ;   throw(error(type_error(list, Names), op/3))
+    ),
+    forall(member(N, Names),
+           (   var(N) -> throw(error(instantiation_error, op/3))
+           ;   atom(N) -> true
+           ;   throw(error(type_error(atom, N), op/3))
+           )).
 
 '$op_class'(xfx, infix).
 '$op_class'(xfy, infix).
@@ -833,8 +848,22 @@ op(Priority, Type, Name) :-
 '$op_class_known'(fy).  '$op_class_known'(fx).
 '$op_class_known'(xf).  '$op_class_known'(yf).
 
+'$op_one'(_, _, _, ',') :-
+    !,
+    throw(error(permission_error(modify, operator, ','), op/3)).
 '$op_one'(_, _, _, Name) :-
     ( Name == [] ; Name == {} ),
+    !,
+    throw(error(permission_error(create, operator, Name), op/3)).
+'$op_one'(Priority, _, Class, '|') :-
+    \+ ( Class == infix, ( Priority =:= 0 ; Priority >= 1001 ) ),
+    !,
+    throw(error(permission_error(create, operator, '|'), op/3)).
+'$op_one'(Priority, _, Class, Name) :-
+    Priority > 0,
+    '$op_clash'(Class, Other),
+    '$$op'(_, OldT, Name),
+    '$op_class'(OldT, Other),
     !,
     throw(error(permission_error(create, operator, Name), op/3)).
 '$op_one'(Priority, Type, Class, Name) :-
@@ -849,48 +878,13 @@ op(Priority, Type, Name) :-
     ; true
     ).
 
+% An infix and a postfix operator cannot share a name.
+'$op_clash'(infix, postfix).
+'$op_clash'(postfix, infix).
+
 %!  current_op(?Priority, ?Type, ?Name) is nondet.
 current_op(P, T, N) :- '$$op'(P, T, N).
 
-% Seeds '$$op'/3 with the parser's own hardcoded table
-:- op(1200, xfx, :-).
-:- op(1200, fx, :-).
-:- op(1200, fx, ?-).
-:- op(1100, xfy, ;).
-:- op(1050, xfy, ->).
-:- op(1000, xfy, ',').
-:- op(900, fy, \+).
-:- op(700, xfx, =).
-:- op(700, xfx, \=).
-:- op(700, xfx, ==).
-:- op(700, xfx, \==).
-:- op(700, xfx, is).
-:- op(700, xfx, <).
-:- op(700, xfx, >).
-:- op(700, xfx, =<).
-:- op(700, xfx, >=).
-:- op(700, xfx, =:=).
-:- op(700, xfx, =\=).
-:- op(700, xfx, =..).
-:- op(700, xfx, @<).
-:- op(700, xfx, @>).
-:- op(700, xfx, @=<).
-:- op(700, xfx, @>=).
-:- op(500, yfx, +).
-:- op(500, yfx, -).
-:- op(400, yfx, *).
-:- op(400, yfx, /).
-:- op(400, yfx, mod).
-:- op(400, yfx, //).
-:- op(200, fy, -).
-:- op(200, fy, +).
-:- op(500, yfx, \/).
-:- op(400, yfx, xor).
-:- op(400, yfx, <<).
-:- op(400, yfx, >>).
-:- op(400, yfx, /\).
-:- op(200, fy, \).
-:- op(200, xfy, ^).
 
 % --- prolog flags ---
 

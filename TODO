@@ -9,11 +9,14 @@ correctness:
 - sub_atom/atom_length count bytes, not utf-8 chars (atom_length('Pécs', 5)) I mean how correct should we be?
 - directives run to exhaustion instead of once
 - 7/2 gives 3 (iso: 3.5); floats print as 1e+10 (iso: 1.0e10)
+- syntax conformity (make conformity): 139/363
+- quoted atoms: \a \b \f \v \0, octal \NNN\ and hex \xHH\ escapes, backslash-newline continuation; unknown escapes and raw tabs should be syntax errors
+- the toplevel reads one line per query, not one term; queries cannot span lines
+- printed arguments are separated by ", ", iso writes ","
 
 missing requirements:
 - missing library preds: countall/2, nth0/4, nth1/4, foldl/5,6, acyclic_term/1
 - missing iso builtins: read/1, read_term/2,3, put_char/1, get_char/2, peek_char/1, current_input/1, current_output/1, set_input/1, set_output/1, flush_output/1, open/4, close/2, set_prolog_flag/2, char_conversion/2, current_predicate/1
-- missing iso evaluables: rem, **, ^, sqrt, sin, cos, atan, atan2, exp, log, pi, float_integer_part, float_fractional_part
 - wokwi/ runs on the Pico 2 (rp2350); the full boot/core.pl needs 307 KB live, the RP2040 heap is 258 KB
 - pico 2: building a 100-deep term and round-tripping it through term_to_atom runs out of memory; the prolog heap doubles to 8192 cells between GC points, then asks for 16384, it should be possible to modify the multiplier from the outside
 - quad.pl: chars and dcgs instead of codes and atom_concat chains (#27)
@@ -26,5 +29,5 @@ missing requirements:
 guidelines:
 - as much logic in prolog as possible
 - minimize the interpreter code in C
-- same kind of embeddability goals as on main, we are stuck with linux currently
+- same kind of embeddability goals as on main; builds as a library for linux and the rp2350 (wokwi/)
 - malloc/realloc usage minimized, ideally the memory we can use is up to the user embedding the interpreter

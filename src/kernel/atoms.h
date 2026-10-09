@@ -36,6 +36,21 @@
   X(atom_max, "max")                                                           \
   X(atom_abs, "abs")                                                           \
   X(atom_sign, "sign")                                                         \
+  X(atom_undefined, "undefined")                                               \
+  X(atom_float_overflow, "float_overflow")                                     \
+  X(atom_rem, "rem")                                                           \
+  X(atom_starstar, "**")                                                       \
+  X(atom_caret, "^")                                                           \
+  X(atom_sqrt, "sqrt")                                                         \
+  X(atom_sin, "sin")                                                           \
+  X(atom_cos, "cos")                                                           \
+  X(atom_atan, "atan")                                                         \
+  X(atom_atan2, "atan2")                                                       \
+  X(atom_exp, "exp")                                                           \
+  X(atom_log, "log")                                                           \
+  X(atom_pi, "pi")                                                             \
+  X(atom_float_integer_part, "float_integer_part")                             \
+  X(atom_float_fractional_part, "float_fractional_part")                       \
   X(atom_floor, "floor")                                                       \
   X(atom_ceiling, "ceiling")                                                   \
   X(atom_round, "round")                                                       \

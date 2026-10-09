@@ -6,6 +6,7 @@
 
 bool consult_file(trilog_t *T, const char *path, int32_t *source);
 bool consult_string(trilog_t *T, const char *text);
+void ops_seed(trilog_t *T);
 
 bool parse_query(trilog_t *T, const char *src, tterm_t ***goals_out,
                  int32_t *ngoals_out, int32_t *nvars_out,

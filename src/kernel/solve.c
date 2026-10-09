@@ -628,6 +628,53 @@ static size_t arith_shift_left(trilog_t *T, int64_t a, int64_t b, int *ok) {
   return heap_new_int(T, a * ((int64_t)1 << b));
 }
 
+static size_t arith_eval_error(trilog_t *T, int32_t what, int *ok) {
+  T->pending_error_ball = make_evaluation_error(T, what);
+  *ok = 0;
+  return 0;
+}
+
+static size_t arith_float(trilog_t *T, double v, int *ok) {
+  if (isnan(v))
+    return arith_eval_error(T, atom_undefined, ok);
+  if (isinf(v))
+    return arith_eval_error(T, atom_float_overflow, ok);
+  return heap_new_flt(T, v);
+}
+
+static size_t arith_pow_float(trilog_t *T, double x, double y, int *ok) {
+  if (x == 0.0 && y < 0.0)
+    return arith_eval_error(T, atom_zero_divisor, ok);
+  if (x < 0.0 && y != floor(y))
+    return arith_eval_error(T, atom_undefined, ok);
+  return arith_float(T, pow(x, y), ok);
+}
+
+// Cor.2 integer power: negative exponents only for bases 1 and -1.
+static size_t arith_pow_int(trilog_t *T, size_t a, int64_t x, int64_t y,
+                            int *ok) {
+  if (y < 0) {
+    if (x == 1)
+      return heap_new_int(T, 1);
+    if (x == -1)
+      return heap_new_int(T, y % 2 ? -1 : 1);
+    if (x == 0)
+      return arith_eval_error(T, atom_zero_divisor, ok);
+    T->pending_error_ball = make_type_error(T, "float", a);
+    *ok = 0;
+    return 0;
+  }
+  int64_t acc = 1;
+  while (y > 0) {
+    if ((y & 1) && __builtin_mul_overflow(acc, x, &acc))
+      return arith_int_overflow(T, ok);
+    y >>= 1;
+    if (y > 0 && __builtin_mul_overflow(x, x, &x))
+      return arith_int_overflow(T, ok);
+  }
+  return heap_new_int(T, acc);
+}
+
 static size_t eval_arith(trilog_t *T, size_t r, int *ok) {
   r = heap_deref(T, r);
   if (T->heap[r].tag == TAG_REF) {
@@ -694,6 +741,28 @@ static size_t eval_arith(trilog_t *T, size_t r, int *ok) {
         if (T->heap[a].as.ival == INT64_MIN && T->heap[b].as.ival == -1)
           return arith_int_overflow(T, ok);
         return heap_new_int(T, T->heap[a].as.ival / T->heap[b].as.ival);
+      }
+      if (id == atom_starstar)
+        return arith_pow_float(T, arith_dbl(T, a), arith_dbl(T, b), ok);
+      if (id == atom_caret) {
+        if (mixed)
+          return arith_pow_float(T, arith_dbl(T, a), arith_dbl(T, b), ok);
+        return arith_pow_int(T, a, T->heap[a].as.ival, T->heap[b].as.ival, ok);
+      }
+      if (id == atom_atan2) {
+        double y = arith_dbl(T, a), x = arith_dbl(T, b);
+        if (x == 0.0 && y == 0.0)
+          return arith_eval_error(T, atom_undefined, ok);
+        return arith_float(T, atan2(y, x), ok);
+      }
+      if (id == atom_rem) {
+        int64_t ai, bi;
+        if (!arith_require_int(T, a, &ai, ok) ||
+            !arith_require_int(T, b, &bi, ok))
+          return 0;
+        if (bi == 0)
+          return arith_eval_error(T, atom_zero_divisor, ok);
+        return heap_new_int(T, bi == -1 ? 0 : ai % bi);
       }
       if (id == atom_intdiv || id == atom_mod) {
         int64_t ai, bi;
@@ -775,6 +844,31 @@ static size_t eval_arith(trilog_t *T, size_t r, int *ok) {
       }
       if (id == atom_kw_float)
         return a_flt ? a : heap_new_flt(T, (double)T->heap[a].as.ival);
+      if (id == atom_sqrt || id == atom_log) {
+        double x = arith_dbl(T, a);
+        if (id == atom_sqrt ? x < 0.0 : x <= 0.0)
+          return arith_eval_error(T, atom_undefined, ok);
+        return arith_float(T, id == atom_sqrt ? sqrt(x) : log(x), ok);
+      }
+      if (id == atom_sin || id == atom_cos || id == atom_atan ||
+          id == atom_exp) {
+        double x = arith_dbl(T, a);
+        return arith_float(T,
+                           id == atom_sin    ? sin(x)
+                           : id == atom_cos  ? cos(x)
+                           : id == atom_atan ? atan(x)
+                                             : exp(x),
+                           ok);
+      }
+      if (id == atom_float_integer_part || id == atom_float_fractional_part) {
+        if (!a_flt) {
+          T->pending_error_ball = make_type_error(T, "float", a);
+          *ok = 0;
+          return 0;
+        }
+        double ip, fp = modf(T->heap[a].as.fval, &ip);
+        return heap_new_flt(T, id == atom_float_integer_part ? ip : fp);
+      }
       // casting a double outside [-2^63, 2^63) to int64_t is undefined
       // behavior in C, not just an overflow like +/-/*.
       if ((id == atom_floor || id == atom_ceiling || id == atom_round ||
@@ -805,6 +899,8 @@ static size_t eval_arith(trilog_t *T, size_t r, int *ok) {
     *ok = 0;
     return 0;
   }
+  if (T->heap[r].tag == TAG_ATOM && T->heap[r].as.atom_id == atom_pi)
+    return heap_new_flt(T, 3.14159265358979323846);
   if (T->heap[r].tag == TAG_ATOM) {
     T->pending_error_ball = make_type_error(
         T, "evaluable",

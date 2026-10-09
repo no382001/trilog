@@ -34,20 +34,28 @@ static const op_t OPS[] = {
     {"=..", 700, XFX}, {"@<", 700, XFX},   {"@>", 700, XFX},
     {"@=<", 700, XFX}, {"@>=", 700, XFX},  {"+", 500, YFX},
     {"-", 500, YFX},   {"*", 400, YFX},    {"/", 400, YFX},
-    {"mod", 400, YFX}, {"//", 400, YFX},   {"-", 200, FY},
-    {"+", 200, FY},    {"\\/", 500, YFX},  {"xor", 400, YFX},
-    {"<<", 400, YFX},  {">>", 400, YFX},   {"/\\", 400, YFX},
-    {"\\", 200, FY},   {"^", 200, XFY},
+    {"mod", 400, YFX}, {"rem", 400, YFX},  {"//", 400, YFX},
+    {"**", 200, XFX},  {"-", 200, FY},     {"+", 200, FY},
+    {"\\/", 500, YFX}, {"xor", 400, YFX},  {"<<", 400, YFX},
+    {">>", 400, YFX},  {"/\\", 400, YFX},  {"\\", 200, FY},
+    {"^", 200, XFY},
 };
 #define NOPS (int)(sizeof(OPS) / sizeof(OPS[0]))
 
+// The standard table seeds '$$op'/3, which the parser then reads alone,
+// so op/3 can redefine or remove these.
+// These could be in Prolog, but we want OSoT, maybe fix later
+void ops_seed(trilog_t *T) {
+  static const char *const type_names[] = {"xfx", "xfy", "yfx", "fx", "fy"};
+  for (int i = 0; i < NOPS; i++) {
+    tterm_t *args[3] = {tt_int(T, OPS[i].pri),
+                        tt_atom(T, type_names[OPS[i].assoc]),
+                        tt_atom(T, OPS[i].name)};
+    db_add(T, tt_struct(T, "$$op", 3, args), NULL, 0, 0, 0);
+  }
+}
+
 static int find_infix(trilog_t *T, const char *name, op_t *out) {
-  for (int i = 0; i < NOPS; i++)
-    if ((OPS[i].assoc == XFX || OPS[i].assoc == XFY || OPS[i].assoc == YFX) &&
-        !strcmp(OPS[i].name, name)) {
-      *out = OPS[i];
-      return 1;
-    }
   int pri, assoc_code;
   int32_t id = atom_intern(T, name);
   if (op_lookup_infix(T, id, &pri, &assoc_code)) {
@@ -60,12 +68,6 @@ static int find_infix(trilog_t *T, const char *name, op_t *out) {
 }
 
 static int find_prefix(trilog_t *T, const char *name, op_t *out) {
-  for (int i = 0; i < NOPS; i++)
-    if ((OPS[i].assoc == FX || OPS[i].assoc == FY) &&
-        !strcmp(OPS[i].name, name)) {
-      *out = OPS[i];
-      return 1;
-    }
   int pri, assoc_code;
   int32_t id = atom_intern(T, name);
   if (op_lookup_prefix(T, id, &pri, &assoc_code)) {

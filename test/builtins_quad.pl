@@ -789,3 +789,65 @@ bcapply(G) :- call(G).
 % write_canonical/1
 ?- with_output_to(chars(Cs), write_canonical(f('B c', 1+2))).
    Cs = "f('B c', +(1, 2))".
+
+% op/3 permission and argument errors (8.14.3.3, Cor.2)
+?- catch(op(1000, xfy, ','), error(E, _), true).
+   E = permission_error(modify, operator, ',').
+
+?- catch(op(999, xfy, '|'), error(E, _), true).
+   E = permission_error(create, operator, '|').
+
+?- catch(op(699, xf, >), error(E, _), true).
+   E = permission_error(create, operator, >).
+
+?- catch(op(700, _, foo), error(E, _), true).
+   E = instantiation_error.
+
+?- catch(op(700, xfx, [a, 1]), error(E, _), true).
+   E = type_error(atom, 1).
+
+?- catch(op(700, xfx, f(x)), error(E, _), true).
+   E = type_error(list, f(x)).
+
+?- current_op(P, T, rem).
+   P = 400, T = yfx.
+
+% rem, **, ^ and the float functions
+?- X is -7 rem 2, Y is -7 mod 2.
+   X = -1, Y = 1.
+
+?- catch(_ is 7 rem 0, error(E, _), true).
+   E = evaluation_error(zero_divisor).
+
+?- X is 2 ** 3.
+   X = 8.0.
+
+?- X is 2 ^ 10.
+   X = 1024.
+
+?- catch(_ is 2 ^ -1, error(E, _), true).
+   E = type_error(float, 2).
+
+?- X is 1 ^ -5, Y is -1 ^ -3.
+   X = 1, Y = -1.
+
+?- catch(_ is 2 ^ 63, error(E, _), true).
+   E = evaluation_error(int_overflow).
+
+?- X is sqrt(16), Y is exp(0), Z is log(1).
+   X = 4.0, Y = 1.0, Z = 0.0.
+
+?- catch(_ is sqrt(-1), error(E, _), true).
+   E = evaluation_error(undefined).
+
+?- catch(_ is atan2(0, 0), error(E, _), true).
+   E = evaluation_error(undefined).
+
+?- X is float_integer_part(-2.5), Y is float_fractional_part(-2.5).
+   X = -2.0, Y = -0.5.
+
+?- catch(_ is float_integer_part(2), error(E, _), true).
+   E = type_error(float, 2).
+
+?- X is pi, X > 3.14159, X < 3.1416.
+   X = 3.141592653589793.

@@ -1962,3 +1962,107 @@ PLEOF
   [[ "$output" == *"f({x}, {y}, {})"* ]]
   [[ "$output" == *"{','(a, b)}"* ]]
 }
+
+@test "op/3 raises ISO permission errors for ',', '|' and infix/postfix clashes" {
+  run "$TRILOG" -f -e "
+    catch(op(1000, xfy, ','), error(E1, _), true),
+    catch(op(0, xfy, ','), error(E2, _), true),
+    catch(op(999, xfy, '|'), error(E3, _), true),
+    catch(op(699, xf, >), error(E4, _), true),
+    catch(op(700, _, foo), error(E5, _), true),
+    op(1100, xfy, '|'),
+    writeq(r(E1, E2, E3, E4, E5)),
+    nl.
+  "
+  [[ "$output" == *"r(permission_error(modify, operator, ','), permission_error(modify, operator, ','), permission_error(create, operator, '|'), permission_error(create, operator, >), instantiation_error)"* ]]
+}
+
+@test "rem, **, ^, sqrt, log, exp, trig, pi and float parts evaluate per ISO" {
+  run "$TRILOG" -f -e "
+    A is -7 rem 2,
+    B is 2 ** 3,
+    C is 2 ^ 10,
+    D is sqrt(16),
+    E is float_fractional_part(-2.5),
+    catch(_ is 2 ^ -1, error(E1, _), true),
+    catch(_ is sqrt(-1), error(E2, _), true),
+    catch(_ is 2 ^ 63, error(E3, _), true),
+    catch(_ is exp(1000), error(E4, _), true),
+    ( pi > 3.14159, pi < 3.1416, atan(1) * 4 =:= pi -> P = ok ; P = bad ),
+    write(r(A, B, C, D, E, E1, E2, E3, E4, P)),
+    nl.
+  "
+  [[ "$output" == *"r(-1, 8.0, 1024, 4.0, -0.5, type_error(float, 2), evaluation_error(undefined), evaluation_error(int_overflow), evaluation_error(float_overflow), ok)"* ]]
+}
+
+@test "current_op/3 lists the standard operator table" {
+  run "$TRILOG" -f -e "
+    findall(op(P, T, N), current_op(P, T, N), L),
+    msort(L, S),
+    writeq(S),
+    nl.
+  "
+  [[ "$output" == *"[op(200, fy, +), op(200, fy, -), op(200, fy, \\), op(200, xfx, **), op(200, xfy, ^), op(400, yfx, *), op(400, yfx, /), op(400, yfx, //), op(400, yfx, /\\), op(400, yfx, <<), op(400, yfx, >>), op(400, yfx, mod), op(400, yfx, rem), op(400, yfx, xor), op(500, yfx, +), op(500, yfx, -), op(500, yfx, \\/), op(700, xfx, <), op(700, xfx, =), op(700, xfx, =..), op(700, xfx, =:=), op(700, xfx, =<), op(700, xfx, ==), op(700, xfx, =\\=), op(700, xfx, >), op(700, xfx, >=), op(700, xfx, @<), op(700, xfx, @=<), op(700, xfx, @>), op(700, xfx, @>=), op(700, xfx, \\=), op(700, xfx, \\==), op(700, xfx, is), op(900, fy, \\+), op(1000, xfy, ','), op(1050, xfy, ->), op(1100, xfy, ;), op(1200, fx, :-), op(1200, fx, ?-), op(1200, xfx, -->), op(1200, xfx, :-)]"* ]]
+}
+
+@test "standard operators parse with their priority and associativity" {
+  printf '%s\n' \
+    't((a :- b, c ; d -> e)).' \
+    't(1 - 2 - 3).' \
+    't(2 ^ 3 ^ 4).' \
+    't(1 + 2 * 3).' \
+    't(- - a).' \
+    't(\+ a = b).' \
+    't(a rem b mod c).' \
+    't(2 ** 3).' \
+    't((a --> b, c)).' \
+    't(x is 1 + 2).' \
+    't(a = b).' > "$BATS_TEST_TMPDIR/ops.pl"
+  run "$TRILOG" -f "$BATS_TEST_TMPDIR/ops.pl" -e "
+    forall(t(X), (write_canonical(X), nl)).
+  "
+  [ "${lines[0]}" = ":-(a, ;(','(b, c), ->(d, e)))" ]
+  [ "${lines[1]}" = "-(-(1, 2), 3)" ]
+  [ "${lines[2]}" = "^(2, ^(3, 4))" ]
+  [ "${lines[3]}" = "+(1, *(2, 3))" ]
+  [ "${lines[4]}" = "-(-(a))" ]
+  [ "${lines[5]}" = "\\+(=(a, b))" ]
+  [ "${lines[6]}" = "mod(rem(a, b), c)" ]
+  [ "${lines[7]}" = "**(2, 3)" ]
+  [ "${lines[8]}" = "-->(a, ','(b, c))" ]
+  [ "${lines[9]}" = "is(x, +(1, 2))" ]
+  [ "${lines[10]}" = "=(a, b)" ]
+}
+
+@test "operators declared with op/3 in a file parse the rest of that file" {
+  printf '%s\n' \
+    ':- op(700, xfx, ===).' \
+    ':- op(200, xfy, [&&, ++]).' \
+    't(a === b).' \
+    't(a && b && c).' \
+    't(x ++ y).' > "$BATS_TEST_TMPDIR/userops.pl"
+  run "$TRILOG" -f "$BATS_TEST_TMPDIR/userops.pl" -e "
+    forall(t(X), (write_canonical(X), nl)).
+  "
+  [ "${lines[0]}" = "===(a, b)" ]
+  [ "${lines[1]}" = "&&(a, &&(b, c))" ]
+  [ "${lines[2]}" = "++(x, y)" ]
+}
+
+@test "op/3 can redefine and remove a standard operator (regression)" {
+  # regression: the parser checked a hardcoded copy of the standard table before '$$op'/3.
+  printf '%s\n' \
+    ':- op(300, xfx, +).' \
+    't(1 * 2 + 3).' \
+    ':- op(0, xfx, ==).' \
+    ':- catch(atom_to_term('"'"'x == y'"'"', _, _), error(syntax_error(_), _), assertz(removed)).' > "$BATS_TEST_TMPDIR/redef.pl"
+  run "$TRILOG" -f "$BATS_TEST_TMPDIR/redef.pl" -e "
+    t(X),
+    write_canonical(X),
+    nl,
+    ( removed -> write(removed) ; write(still_an_operator) ),
+    nl.
+  "
+  [ "${lines[0]}" = "*(1, +(2, 3))" ]
+  [ "${lines[1]}" = "removed" ]
+}
