@@ -470,7 +470,7 @@ write_term(S, T, Opts) :-
 
 '$write_option'(O, _, _) :- var(O), !, throw(error(instantiation_error, _)).
 '$write_option'(quoted(B), F0, F) :- '$option_bool'(quoted(B), write_option, V), !, F is F0 \/ V.
-'$write_option'(ignore_ops(B), F, F) :- '$option_bool'(ignore_ops(B), write_option, _), !.
+'$write_option'(ignore_ops(B), F0, F) :- '$option_bool'(ignore_ops(B), write_option, V), !, F is F0 \/ V << 2.
 '$write_option'(numbervars(B), F0, F) :- '$option_bool'(numbervars(B), write_option, V), !, F is F0 \/ V << 1.
 '$write_option'(O, _, _) :- throw(error(domain_error(write_option, O), _)).
 

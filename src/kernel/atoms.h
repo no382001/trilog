@@ -5,6 +5,7 @@
   X(atom_comma, ",")                                                           \
   X(atom_dot, ".")                                                             \
   X(atom_nil, "[]")                                                            \
+  X(atom_curly, "{}")                                                          \
   X(atom_ruleop, ":-")                                                         \
   X(atom_slash, "/")                                                           \
   X(atom_error, "error")                                                       \

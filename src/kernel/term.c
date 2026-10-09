@@ -400,7 +400,7 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
         break;
       }
       if (is_cons(T, r)) {
-        if (try_print_char_string(T, r, emit))
+        if (!(flags & PRINT_IGNORE_OPS) && try_print_char_string(T, r, emit))
           break;
         emit(T, "[");
         print_enter(T, f);
@@ -410,6 +410,13 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
       }
       if ((flags & PRINT_NUMBERVARS) && print_var_name(T, f, emit))
         break;
+      if (arity == 1 && T->heap[f].as.func.atom_id == atom_curly) {
+        emit(T, "{");
+        print_enter(T, f);
+        print_text(T, "}");
+        print_push(T, P_TERM, f + 1);
+        break;
+      }
       print_atom(T, atom_name(T, T->heap[f].as.func.atom_id),
                  flags & PRINT_QUOTED, emit);
       if (arity > 0) {

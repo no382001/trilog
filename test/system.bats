@@ -1932,3 +1932,33 @@ PLEOF
   [[ "$output" == *"f('B c', +(1, 2), -(3), [1])"* ]]
   [[ "$output" == *"=('it\\'s', a)"* ]]
 }
+
+@test "write_canonical/1 output reads back as the same term" {
+  run "$TRILOG" -f -e "
+    Ts = [[a, b], [a|b], '[]', {a, b}, '{}'(x), f(:-, (a :- b)), - 1, -(-(1)), 1 - -1,
+          1.5, -0.0, 'hello world', 'it''s', '\\n', 'B', f(A, B, A), '\$VAR'(1),
+          f(;, '|', ','), \\+ a, a = \\+, [-]],
+    findall(T,
+            ( member(T, Ts),
+              with_output_to(chars(Cs), write_canonical(T)),
+              read_term_from_chars(Cs, T2, []),
+              \\+ ( subsumes_term(T, T2), subsumes_term(T2, T) )
+            ),
+            Bad),
+    length(Ts, N),
+    write(r(N, Bad)),
+    nl.
+  "
+  [[ "$output" == *"r(21, [])"* ]]
+}
+
+@test "curly terms print in curly notation" {
+  run "$TRILOG" -f -e "
+    writeq(f({x}, '{}'(y), {})),
+    nl,
+    write_canonical({a, b}),
+    nl.
+  "
+  [[ "$output" == *"f({x}, {y}, {})"* ]]
+  [[ "$output" == *"{','(a, b)}"* ]]
+}
