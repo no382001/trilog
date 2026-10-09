@@ -156,3 +156,21 @@ PLEOF
   [[ "$result" == *"carrot"* ]]
   rm -f /tmp/trilog_a.pl /tmp/trilog_b.pl
 }
+
+@test "unconsult/1 and consulted/1 accept any spelling of a loaded file's path" {
+  dir="$BATS_TEST_TMPDIR/spell"
+  mkdir -p "$dir/sub"
+  printf 'v(1).\n' > "$dir/sub/f.pl"
+  bin="$(cd "$(dirname "$TRILOG")" && pwd)/$(basename "$TRILOG")"
+  cd "$dir"
+  run "$bin" -f -e "
+    consult('sub/f.pl'),
+    consult('./sub/../sub/f.pl'),
+    findall(X, v(X), L1),
+    unconsult('sub/f.pl'),
+    catch(v(_), error(E, _), true),
+    write(r(L1, E)),
+    nl.
+  "
+  [[ "$output" == *"r([1], existence_error(procedure, /(v, 1)))"* ]]
+}

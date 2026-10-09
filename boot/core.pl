@@ -75,6 +75,44 @@ consult(File) :-
     Time = Time0.
 '$file_time'(_, unknown).
 
+% library(Name) resolves next to the core: lib/Name.pl beside boot/.
+:- '$$loading_file'(F), '$$assertz'('$boot_file'(F)).
+
+%!  ensure_loaded(+File) is det.
+%   File is a file name or library(Name); it is loaded unless already loaded.
+ensure_loaded(Spec) :-
+    '$with_context'('$ensure_loaded'(Spec), ensure_loaded/1).
+
+%!  use_module(+File) is det.
+%   There are no modules, so this is ensure_loaded/1.
+use_module(Spec) :-
+    '$with_context'('$ensure_loaded'(Spec), use_module/1).
+
+'$ensure_loaded'(Spec) :-
+    '$source_file'(Spec, File),
+    (   '$$source_path'(File, Path) -> true
+    ;   throw(error(existence_error(source_sink, Spec), _))
+    ),
+    ( '$consulted'(Path, _) -> true ; consult(Path) ).
+
+'$source_file'(Spec, _) :- var(Spec), !, throw(error(instantiation_error, _)).
+'$source_file'(library(Name), File) :-
+    !,
+    '$must_be_atom'(Name),
+    '$boot_file'(Boot),
+    '$directory'(Boot, Dir),
+    atom_concat(Dir, '/../lib/', D1),
+    atom_concat(D1, Name, D2),
+    atom_concat(D2, '.pl', File).
+'$source_file'(File, File) :- atom(File), !.
+'$source_file'(Spec, _) :- throw(error(domain_error(source_sink, Spec), _)).
+
+'$directory'(Path, Dir) :-
+    (   sub_atom(Path, B, 1, A, '/'), \+ ( sub_atom(Path, _, 1, A1, '/'), A1 < A )
+    ->  sub_atom(Path, 0, B, _, Dir)
+    ;   Dir = '.'
+    ).
+
 %!  consulted(-Files) is det.
 consulted(Files) :-
     findall(Path, '$consulted'(Path, _), Files).
@@ -82,8 +120,9 @@ consulted(Files) :-
 %!  unconsult(+File) is semidet.
 %   Fails if File is not loaded.
 unconsult(File) :-
-    '$$retract'('$consulted'(File, _)),
-    '$$unload'(File).
+    ( atom(File), '$$source_path'(File, Path) -> true ; Path = File ),
+    '$$retract'('$consulted'(Path, _)),
+    '$$unload'(Path).
 
 %!  make is det.
 %   Reconsults every loaded file whose modification time changed. Needs the

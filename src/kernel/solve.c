@@ -1472,6 +1472,19 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     *ok = unify(T, f + 2, heap_new_atom(T, source));
     return 1;
   }
+  if (arity == 2 && id == atom_source_path) {
+    size_t d = heap_deref(T, f + 1);
+    const char *path = T->heap[d].tag == TAG_ATOM
+                           ? source_path(T, atom_name(T, T->heap[d].as.atom_id))
+                           : NULL;
+    *ok = path && unify(T, f + 2, heap_new_atom(T, atom_intern(T, path)));
+    return 1;
+  }
+  if (arity == 1 && id == atom_loading_file) {
+    *ok = T->consulting_atom >= 0 &&
+          unify(T, f + 1, heap_new_atom(T, T->consulting_atom));
+    return 1;
+  }
   if (arity == 1 && id == atom_unload) {
     size_t d = heap_deref(T, f + 1);
     *ok = T->heap[d].tag == TAG_ATOM;

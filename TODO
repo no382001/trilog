@@ -3,7 +3,6 @@ regressions:
 must have:
 
 correctness:
-- consult identifies files by unnormalized path: boot loads boot/../lib/lists.pl, so consult('lib/lists.pl') adds every clause a second time
 - reconsulting a file while one of its predicates still has a choicepoint breaks the logical update view: member(X, [a,b]), consult('lib/lists.pl'), write(X), fail loops on b forever
 - the printer never uses operator syntax: (a,b) prints as ','(a, b), foo/0 as /(foo, 0) (#15 shows /(ex_nihilo, 0))
 - number_codes parses with its own strtoll/strtod, not the parser's number reader, so the number_chars quads test the wrong code (#7)

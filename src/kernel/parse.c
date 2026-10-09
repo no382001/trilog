@@ -614,7 +614,8 @@ static void assemble_clause(trilog_t *T, tterm_t *t, int32_t nvars) {
 // matches the embedded file "lib/lists.pl".
 static void normalize_path(char *path) {
   // The result is never longer than the input, so it is rebuilt in place.
-  size_t r = 0, w = 0;
+  size_t r = 0, w = 0, root = path[0] == '/';
+  w = root;
   while (path[r]) {
     while (path[r] == '/')
       r++;
@@ -624,16 +625,19 @@ static void normalize_path(char *path) {
     size_t k = r - start;
     if (k == 0 || (k == 1 && path[start] == '.'))
       continue;
-    if (k == 2 && path[start] == '.' && path[start + 1] == '.' && w > 0) {
+    if (k == 2 && path[start] == '.' && path[start + 1] == '.' && root &&
+        w == root)
+      continue;
+    if (k == 2 && path[start] == '.' && path[start + 1] == '.' && w > root) {
       size_t last = w;
       while (last > 0 && path[last - 1] != '/')
         last--;
       if (!(w - last == 2 && path[last] == '.' && path[last + 1] == '.')) {
-        w = last > 0 ? last - 1 : 0;
+        w = last > root ? last - 1 : root;
         continue;
       }
     }
-    if (w > 0)
+    if (w > root)
       path[w++] = '/';
     memmove(path + w, path + start, k);
     w += k;
@@ -699,32 +703,66 @@ static char *read_whole_file(trilog_t *T, const char *path) {
   return buf;
 }
 
+static bool file_exists(trilog_t *T, const char *path) {
+  void *h = io_file_open(T, path, "rb");
+  if (!h)
+    return false;
+  io_file_close(T, h);
+  return true;
+}
+
+// Relative paths are made absolute, so one file has one name.
+static bool resolve_disk(trilog_t *T, const char *path, char *out, size_t cap) {
+  if (!file_exists(T, path))
+    return false;
+  char *abs = T->path_tmp;
+  if (path[0] != '/' && io_cwd(T, abs, PATH_CAP)) {
+    size_t n = strlen(abs);
+    snprintf(abs + n, PATH_CAP - n, "/%s", path);
+    path = abs;
+  }
+  if (out != path)
+    snprintf(out, cap, "%s", path);
+  normalize_path(out);
+  return true;
+}
+
 // A relative path consulted from inside a file resolves against that file's
 // directory first, then the current directory, then the embedded libraries.
-static const char *consult_text(trilog_t *T, const char *path, char *resolved,
-                                size_t cap) {
+static bool resolve_source(trilog_t *T, const char *path, char *out,
+                           size_t cap) {
+  path_buffers(T);
   if (!strncmp(path, EMBED_PREFIX, EMBED_PREFIX_LEN))
-    return find_embedded(T, path + EMBED_PREFIX_LEN, resolved, cap);
+    return find_embedded(T, path + EMBED_PREFIX_LEN, out, cap) != NULL;
   const char *slash = T->consulting ? strrchr(T->consulting, '/') : NULL;
   if (path[0] != '/' && slash) {
-    snprintf(resolved, cap, "%.*s/%s", (int)(slash - T->consulting),
-             T->consulting, path);
-    if (!strncmp(resolved, EMBED_PREFIX, EMBED_PREFIX_LEN)) {
-      snprintf(T->path_tmp, PATH_CAP, "%s", resolved + EMBED_PREFIX_LEN);
-      const char *text = find_embedded(T, T->path_tmp, resolved, cap);
-      if (text)
-        return text;
-    } else {
-      char *text = read_whole_file(T, resolved);
-      if (text)
-        return text;
+    snprintf(out, cap, "%.*s/%s", (int)(slash - T->consulting), T->consulting,
+             path);
+    if (!strncmp(out, EMBED_PREFIX, EMBED_PREFIX_LEN)) {
+      snprintf(T->path_tmp, PATH_CAP, "%s", out + EMBED_PREFIX_LEN);
+      if (find_embedded(T, T->path_tmp, out, cap))
+        return true;
+    } else if (resolve_disk(T, out, out, cap)) {
+      return true;
     }
   }
-  snprintf(resolved, cap, "%s", path);
-  char *text = read_whole_file(T, resolved);
-  if (text)
-    return text;
-  return path[0] != '/' ? find_embedded(T, path, resolved, cap) : NULL;
+  if (resolve_disk(T, path, out, cap))
+    return true;
+  return path[0] != '/' && find_embedded(T, path, out, cap);
+}
+
+const char *source_path(trilog_t *T, const char *path) {
+  path_buffers(T);
+  return resolve_source(T, path, T->path_buf, PATH_CAP) ? T->path_buf : NULL;
+}
+
+static const char *consult_text(trilog_t *T, const char *path, char *resolved,
+                                size_t cap) {
+  if (!resolve_source(T, path, resolved, cap))
+    return NULL;
+  if (!strncmp(resolved, EMBED_PREFIX, EMBED_PREFIX_LEN))
+    return find_embedded(T, resolved + EMBED_PREFIX_LEN, resolved, cap);
+  return read_whole_file(T, resolved);
 }
 
 static bool consult_source(trilog_t *T, const char *text, const char *path);

@@ -83,6 +83,8 @@
   X(atom_end_of_file, "end_of_file")                                           \
   X(atom_user_input, "user_input")                                             \
   X(atom_unload, "$$unload")                                                   \
+  X(atom_source_path, "$$source_path")                                         \
+  X(atom_loading_file, "$$loading_file")                                       \
   X(atom_skip_list, "$$skip_list")                                             \
   X(atom_is_static_pred, "$$is_static")                                        \
   X(atom_undynamic, "$$undynamic")                                             \

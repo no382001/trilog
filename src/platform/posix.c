@@ -3,6 +3,9 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
+
+bool platform_cwd(char *buf, size_t cap) { return getcwd(buf, cap) != NULL; }
 
 size_t platform_address_space_limit(void) {
   struct rlimit rl;

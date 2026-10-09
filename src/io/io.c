@@ -1,6 +1,7 @@
 #include "io.h"
 #include "ctx.h"
 #include "mem.h"
+#include "platform.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -23,6 +24,10 @@ static void default_close(void *ud, void *handle) {
 static void default_flush(void *ud, void *handle) {
   (void)ud;
   fflush(handle);
+}
+
+bool io_cwd(trilog_t *T, char *buf, size_t cap) {
+  return T->hooks.open == default_open && platform_cwd(buf, cap);
 }
 
 bool io_set(trilog_t *T, const trilog_io_t *io) {
