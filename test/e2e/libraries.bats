@@ -57,3 +57,41 @@ load common
   "
   [[ "$output" == *"n(2)"* ]]
 }
+
+@test "-n boots the core and the lists it uses, but not apply or DCGs" {
+  run "$TRILOG" -f -n -e "
+    append([1], [2], L),
+    catch(maplist(atom, [a]), error(E2, _), true),
+    catch(phrase(x, []), error(E3, _), true),
+    writeq(r(L, E2, E3)),
+    nl.
+  "
+  [[ "$output" == *"r([1, 2], existence_error(procedure, /(maplist, 2)), existence_error(procedure, /(phrase, 2)))"* ]]
+}
+
+@test "with -n, libraries load on request and DCG files parse after library(dcgs)" {
+  printf ':- ensure_loaded(library(dcgs)).\ngreeting --> [hello], name.\nname --> [world].\n' > "$BATS_TEST_TMPDIR/g.pl"
+  run "$TRILOG" -f -n -e "
+    ensure_loaded(library(apply)),
+    maplist(atom, [a, b]),
+    append([1], [2], L),
+    consult('$BATS_TEST_TMPDIR/g.pl'),
+    ( phrase(greeting, [hello, world]) -> P = parsed ; P = failed ),
+    writeq(r(L, P)),
+    nl.
+  "
+  [[ "$output" == *"r([1, 2], parsed)"* ]]
+}
+
+@test "the CLI loads lists, apply and dcgs by default" {
+  run "$TRILOG" -f -e "
+    append([a], [b], L),
+    maplist(atom, L),
+    consulted(Fs),
+    findall(B, (member(F, Fs), sub_atom(F, _, _, 0, B), member(B, ['lists.pl', 'apply.pl', 'dcgs.pl'])), Bs),
+    msort(Bs, S),
+    writeq(S),
+    nl.
+  "
+  [[ "$output" == *"['apply.pl', 'dcgs.pl', 'lists.pl']"* ]]
+}

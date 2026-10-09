@@ -141,11 +141,10 @@ make :-
 repeat.
 repeat :- repeat.
 
-% --- lists, apply ---
+% --- lists ---
 
 % These load before the op/3 directives below, which need member/2.
 :- consult('../lib/lists.pl').
-:- consult('../lib/apply.pl').
 
 % --- arithmetic ---
 
@@ -941,7 +940,3 @@ current_prolog_flag(Flag, Value) :-
     ->  throw(error(domain_error(prolog_flag, Flag), current_prolog_flag/2))
     ;   throw(error(type_error(atom, Flag), current_prolog_flag/2))
     ).
-
-% --- DCG ---
-
-:- consult('../lib/dcg.pl').
