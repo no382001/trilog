@@ -3,6 +3,7 @@ regressions:
 must have:
 
 correctness:
+- the CLI's five default libraries add about 18 ms to boot (4.4 ms with -n, 22.3 ms by default, 5979680 release); ensure_loaded/consult is slow for small files
 - reconsulting a file while one of its predicates still has a choicepoint breaks the logical update view: member(X, [a,b]), consult('lib/lists.pl'), write(X), fail loops on b forever
 - the printer never uses operator syntax: (a,b) prints as ','(a, b), foo/0 as /(foo, 0) (#15 shows /(ex_nihilo, 0))
 - number_codes parses with its own strtoll/strtod, not the parser's number reader, so the number_chars quads test the wrong code (#7)
@@ -16,12 +17,14 @@ correctness:
 - printed arguments are separated by ", ", iso writes ","
 
 missing requirements:
+- use_module/1 is ensure_loaded/1 under another name and suggests a module system that does not exist; revise it (implement modules, or drop the alias)
 - missing library preds: countall/2, nth0/4, nth1/4, foldl/5,6, acyclic_term/1
 - missing iso builtins: read/1, read_term/2,3, put_char/1, get_char/2, peek_char/1, current_input/1, current_output/1, set_input/1, set_output/1, flush_output/1, open/4, close/2, set_prolog_flag/2, char_conversion/2, current_predicate/1
 - wokwi/ runs on the Pico 2 (rp2350); the full boot/core.pl needs 307 KB live, the RP2040 heap is 258 KB
 - pico 2: building a 100-deep term and round-tripping it through term_to_atom runs out of memory; the prolog heap doubles to 8192 cells between GC points, then asks for 16384, it should be possible to modify the multiplier from the outside
 - quad.pl: chars and dcgs instead of codes and atom_concat chains (#27)
 - fix main-specific test expectations: 32-bit max_integer, last/2 arg order, sub_atom/5 single answer, answer printing (unhandled exception, X = Y)
+- a build without glibc: drop getenv, assert, ctype and errno from the engine, leaving stdio (default I/O), setjmp and libm
 - debug flag, and trace?
 - readline/history in repl
 - modules?

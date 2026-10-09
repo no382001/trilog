@@ -3,9 +3,10 @@ consulted(Files) :-
     findall(Path, '$consulted'(Path, _), Files).
 
 %!  unconsult(+File) is semidet.
-%   Fails if File is not loaded.
-unconsult(File) :-
-    ( atom(File), '$$source_path'(File, Path) -> true ; Path = File ),
+%   File is a file name or library(Name). Fails if it is not loaded.
+unconsult(Spec) :-
+    '$source_file'(Spec, File),
+    ( '$$source_path'(File, Path) -> true ; Path = File ),
     '$$retract'('$consulted'(Path, _)),
     '$$unload'(Path).
 

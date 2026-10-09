@@ -123,3 +123,15 @@ load common
   "
   [[ "$output" == *"r(2, f(x))"* ]]
 }
+
+@test "unconsult(library(Name)) unloads a library, and ensure_loaded/1 loads it again" {
+  run "$TRILOG" -f -e "
+    unconsult(library(apply)),
+    catch(maplist(atom, [a]), error(E, _), true),
+    ensure_loaded(library(apply)),
+    maplist(atom, [a]),
+    writeq(r(E)),
+    nl.
+  "
+  [[ "$output" == *"r(existence_error(procedure, /(maplist, 2)))"* ]]
+}
