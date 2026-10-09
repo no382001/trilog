@@ -118,7 +118,10 @@ QUAD_TIMEOUT := 60
 # Hard cap in KB (1GB) via `ulimit -v`
 QUAD_MEM_LIMIT_KB := 1048576
 
-.PHONY: quad
+.PHONY: quad conformity
+conformity: trilog
+	test/conformity.sh
+
 quad: trilog
 	@for f in test/*_quad.pl; do \
 		[ -f "$$f" ] || continue; \
