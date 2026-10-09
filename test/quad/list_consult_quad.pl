@@ -13,7 +13,7 @@
 
 % --- [file] loads predicates ---
 
-?- ['test/family.pl'].
+?- ['test/quad/files/genealogy.pl'].
    true.
 
 ?- parent(tom, bob).
@@ -32,7 +32,7 @@
 
 % --- re-consulting the same file succeeds ---
 
-?- ['test/family.pl'].
+?- ['test/quad/files/genealogy.pl'].
    true.
 
 ?- parent(tom, bob).
@@ -40,14 +40,14 @@
 
 % --- [f1, f2] loads multiple files ---
 
-?- ['test/family.pl', 'lib/core.pl'].
+?- ['test/quad/files/genealogy.pl', 'test/quad/files/colors.pl'].
    true.
 
 ?- parent(bob, ann).
    true.
 
-?- append([1], [2], L).
-   L = [1, 2].
+?- findall(C, color(C), Cs).
+   Cs = [red, green].
 
 % --- nonexistent file fails ---
 

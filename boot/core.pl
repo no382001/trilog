@@ -60,6 +60,10 @@ halt :- halt(0).
 %!  consult(+File) is semidet.
 %   Loading a file again replaces the clauses its previous load added.
 consult(File) :-
+    (   var(File) -> throw(error(instantiation_error, consult/1))
+    ;   atom(File) -> true
+    ;   throw(error(type_error(atom, File), consult/1))
+    ),
     '$$consult'(File, Path),
     '$file_time'(Path, Time),
     ( '$$retract'('$consulted'(Path, _)) -> true ; true ),

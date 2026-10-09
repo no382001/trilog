@@ -5,7 +5,7 @@
 load common
 
 @test "arithmetic via is/2" {
-  run "$TRILOG" test/family.pl -e "double(21, R)."
+  run "$TRILOG" test/e2e/files/family.pl -e "double(21, R)."
   [[ "$output" == *"R = 42"* ]]
 }
 
@@ -541,7 +541,7 @@ load common
 }
 
 @test "maplist/2,3,4, foldl, include, exclude, partition" {
-  run "$TRILOG" test/family.pl -e "
+  run "$TRILOG" test/e2e/files/family.pl -e "
     maplist(integer,[1,2,3]),
     \\+ maplist(integer,[1,foo,3]),
     maplist(succ,[1,2,3],L1),

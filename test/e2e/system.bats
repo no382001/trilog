@@ -5,14 +5,14 @@
 load common
 
 @test "backtracking enumerates every solution" {
-  run "$TRILOG" test/family.pl -e "choice(W)."
+  run "$TRILOG" test/e2e/files/family.pl -e "choice(W)."
   [[ "$output" == *"W = a"* ]]
   [[ "$output" == *"W = b"* ]]
   [[ "$output" == *"W = c"* ]]
 }
 
 @test "cut prunes remaining choice points" {
-  run "$TRILOG" test/family.pl -e "first_choice(W)."
+  run "$TRILOG" test/e2e/files/family.pl -e "first_choice(W)."
   [ "$(answers)" -eq 1 ]
   [[ "$output" == *"W = a"* ]]
 }
@@ -20,20 +20,20 @@ load common
 @test "cut is scoped to its own clause across a nested call (regression)" {
   # solving q between the call and '!' must not clobber the barrier and
   # let p(2) leak through.
-  run "$TRILOG" test/family.pl -e "p(X)."
+  run "$TRILOG" test/e2e/files/family.pl -e "p(X)."
   [ "$(answers)" -eq 1 ]
   [[ "$output" == *"X = 1"* ]]
   [[ "$output" != *"X = 2"* ]]
 }
 
 @test "cut inside recursion only prunes its own call" {
-  run "$TRILOG" test/family.pl -e "first_gt3([1,3,4,5,6], X)."
+  run "$TRILOG" test/e2e/files/family.pl -e "first_gt3([1,3,4,5,6], X)."
   [ "$(answers)" -eq 1 ]
   [[ "$output" == *"X = 4"* ]]
 }
 
 @test "disjunction tries both branches on backtrack" {
-  run "$TRILOG" test/family.pl -e "(choice(W) ; W=none)."
+  run "$TRILOG" test/e2e/files/family.pl -e "(choice(W) ; W=none)."
   [[ "$output" == *"W = a"* ]]
   [[ "$output" == *"W = none"* ]]
 }
@@ -41,23 +41,23 @@ load common
 @test "if-then commits to the condition's first solution only" {
   # Exactly one solution: Else must be unreachable once Cond succeeds
   # (regression: ';'/2's own cut used to miss this).
-  run "$TRILOG" test/family.pl -e "(choice(W) -> true ; true)."
+  run "$TRILOG" test/e2e/files/family.pl -e "(choice(W) -> true ; true)."
   [ "$(answers)" -eq 1 ]
   [[ "$output" == *"W = a"* ]]
 }
 
 @test "if-then-else takes the else branch on condition failure" {
-  run "$TRILOG" test/family.pl -e "(fail -> W=yes ; W=no)."
+  run "$TRILOG" test/e2e/files/family.pl -e "(fail -> W=yes ; W=no)."
   [[ "$output" == *"W = no"* ]]
 }
 
 @test "negation as failure" {
-  run "$TRILOG" test/family.pl -e "(\\+ parent(ann,tom), W=ok)."
+  run "$TRILOG" test/e2e/files/family.pl -e "(\\+ parent(ann,tom), W=ok)."
   [[ "$output" == *"W = ok"* ]]
 }
 
 @test "once commits to the first solution" {
-  run "$TRILOG" test/family.pl -e "once(choice(W))."
+  run "$TRILOG" test/e2e/files/family.pl -e "once(choice(W))."
   [ "$(answers)" -eq 1 ]
   [[ "$output" == *"W = a"* ]]
 }
@@ -132,14 +132,14 @@ load common
 }
 
 @test "indexing finds the right clause on a bound first argument" {
-  run "$TRILOG" test/family.pl -e "item(three, X)."
+  run "$TRILOG" test/e2e/files/family.pl -e "item(three, X)."
   [[ "$output" == *"X = 3"* ]]
 }
 
 @test "indexing does not break backtracking (regression)" {
   # regression: a stale binding from the clause that just failed used to
   # wrongly rule out every other clause by index.
-  run "$TRILOG" test/family.pl -e "choice(W)."
+  run "$TRILOG" test/e2e/files/family.pl -e "choice(W)."
   [[ "$output" == *"W = a"* ]]
   [[ "$output" == *"W = b"* ]]
   [[ "$output" == *"W = c"* ]]
@@ -149,7 +149,7 @@ load common
   # regression: the index key used to omit predicate identity, so
   # unrelated clauses looked like matches and choice points never freed.
   skip "pre-existing timeout in this sandbox, confirmed unrelated to any change here"
-  run env TRILOG_GC_THRESHOLD=200 timeout 10 "$TRILOG" test/family.pl -e "count(50000)."
+  run env TRILOG_GC_THRESHOLD=200 timeout 10 "$TRILOG" test/e2e/files/family.pl -e "count(50000)."
   [ "$status" -eq 0 ]
 }
 
@@ -214,7 +214,7 @@ load common
 @test "backtracking into Goal through catch/3 finds every solution (regression)" {
   # opt(a) succeeds first, so opt(b)'s later throw needs the catch scope
   # to survive independently of any one attempt.
-  run "$TRILOG" test/family.pl -e "catch(opt(W), bad_b, W=recovered)."
+  run "$TRILOG" test/e2e/files/family.pl -e "catch(opt(W), bad_b, W=recovered)."
   [[ "$output" == *"W = a"* ]]
   [[ "$output" == *"W = recovered"* ]]
 }
@@ -222,7 +222,7 @@ load common
 @test "catch/3 under GC pressure stays correct (regression)" {
   # Correctness under GC pressure, with catch_stack entries as live
   # roots marked/translated/compacted every pass.
-  run env TRILOG_GC_THRESHOLD=200 timeout 15 "$TRILOG" test/family.pl -e "catch(count(20000), _, true)."
+  run env TRILOG_GC_THRESHOLD=200 timeout 15 "$TRILOG" test/e2e/files/family.pl -e "catch(count(20000), _, true)."
   [ "$status" -eq 0 ]
 }
 
@@ -238,24 +238,24 @@ load common
 }
 
 @test "findall/3 collects every solution in order" {
-  run "$TRILOG" test/family.pl -e "findall(X, choice(X), L)."
+  run "$TRILOG" test/e2e/files/family.pl -e "findall(X, choice(X), L)."
   [[ "$output" == *'L = "abc"'* ]]
 }
 
 @test "findall/3 gives an empty list, not failure, for no solutions" {
-  run "$TRILOG" test/family.pl -e "findall(X, choice(nonexistent), L)."
+  run "$TRILOG" test/e2e/files/family.pl -e "findall(X, choice(nonexistent), L)."
   [ "$status" -eq 0 ]
   [[ "$output" == *"L = []"* ]]
 }
 
 @test "findall/3 applies the template, not just the goal's bindings" {
-  run "$TRILOG" test/family.pl -e "findall(Y, (choice(X), Y = pair(X,X)), L)."
+  run "$TRILOG" test/e2e/files/family.pl -e "findall(Y, (choice(X), Y = pair(X,X)), L)."
   [[ "$output" == *"L = [pair(a, a), pair(b, b), pair(c, c)]"* ]]
 }
 
 @test "nested findall/3 does not conflate inner and outer items (regression)" {
   # regression: unqualified '$findall_item' facts let a nested findall sweep up an outer call's leftover items; fixed via a unique id per call.
-  run "$TRILOG" test/family.pl -e "findall(Outer, (choice(_), findall(Inner, inner_choice(Inner), Outer)), L)."
+  run "$TRILOG" test/e2e/files/family.pl -e "findall(Outer, (choice(_), findall(Inner, inner_choice(Inner), Outer)), L)."
   [[ "$output" == *'L = ["abc", "abc", "abc"]'* ]]
 }
 
@@ -460,12 +460,12 @@ load common
 }
 
 @test "GC does not corrupt correctness under a forced low threshold" {
-  run env TRILOG_GC_THRESHOLD=50 "$TRILOG" test/family.pl -e "grandparent(tom, W)."
+  run env TRILOG_GC_THRESHOLD=50 "$TRILOG" test/e2e/files/family.pl -e "grandparent(tom, W)."
   [[ "$output" == *"W = ann"* ]]
-  run env TRILOG_GC_THRESHOLD=50 "$TRILOG" test/family.pl -e "p(X)."
+  run env TRILOG_GC_THRESHOLD=50 "$TRILOG" test/e2e/files/family.pl -e "p(X)."
   [ "$(answers)" -eq 1 ]
   [[ "$output" == *"X = 1"* ]]
-  run env TRILOG_GC_THRESHOLD=50 "$TRILOG" test/family.pl -e "(choice(W) ; W=none)."
+  run env TRILOG_GC_THRESHOLD=50 "$TRILOG" test/e2e/files/family.pl -e "(choice(W) ; W=none)."
   [[ "$output" == *"W = a"* ]]
   [[ "$output" == *"W = none"* ]]
 }
@@ -484,14 +484,14 @@ load common
 @test "cut-discarded garbage is reclaimed, not just accumulated (regression)" {
   # regression: each iteration used to permanently retain one more cell
   # than the last, making GC passes progressively more expensive.
-  run env TRILOG_GC_THRESHOLD=200 timeout 10 "$TRILOG" test/family.pl -e "loop(20000)."
+  run env TRILOG_GC_THRESHOLD=200 timeout 10 "$TRILOG" test/e2e/files/family.pl -e "loop(20000)."
   [ "$status" -eq 0 ]
 }
 
 @test "deep list survives a full mark pass without stack overflow (regression)" {
   # regression: print_term used to recurse once per list element and
   # segfault well before this length.
-  run timeout 10 "$TRILOG" test/family.pl -e "
+  run timeout 10 "$TRILOG" test/e2e/files/family.pl -e "
     count_list(50000, L),
     list_len(L, N).
   "
@@ -558,7 +558,7 @@ EOF
 }
 
 @test "solve/2: a cut after a multi-clause call gives exactly one answer, not one per remaining alternative" {
-  run "$TRILOG" test/family.pl -e "
+  run "$TRILOG" test/e2e/files/family.pl -e "
     first_choice(W),
     write(W).
   "
@@ -593,7 +593,7 @@ EOF
 }
 
 @test "solve/2: findall/3 itself works, having survived every prior cut design's failure mode" {
-  run "$TRILOG" test/family.pl -e "
+  run "$TRILOG" test/e2e/files/family.pl -e "
     findall(X, choice(X), L),
     write(L).
   "
@@ -611,7 +611,7 @@ EOF
 }
 
 @test "solve/2: plain cut-free backtracking is unaffected (regression)" {
-  run "$TRILOG" test/family.pl -e "
+  run "$TRILOG" test/e2e/files/family.pl -e "
     choice(X),
     write(X),
     nl,

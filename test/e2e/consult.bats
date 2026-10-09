@@ -10,7 +10,7 @@ load common
 }
 
 @test "file arg loads clauses and -e can query them" {
-  run "$TRILOG" test/family.pl -e "grandparent(tom, W)."
+  run "$TRILOG" test/e2e/files/family.pl -e "grandparent(tom, W)."
   [ "$status" -eq 0 ]
   [[ "$output" == *"W = ann"* ]]
 }
@@ -124,7 +124,7 @@ PLEOF
 }
 
 @test "positional file arg loads clauses and -e can query them" {
-  run "$TRILOG" test/upstream_family.pl -e "parent(tom,X), write(X)."
+  run "$TRILOG" test/e2e/files/genealogy.pl -e "parent(tom,X), write(X)."
   [ "$status" -eq 0 ]
   [[ "$output" == *"bob"* ]]
 }
@@ -135,7 +135,7 @@ PLEOF
 }
 
 @test "consult and query in one expression" {
-  run "$TRILOG" -e "consult('test/upstream_family.pl'), parent(tom,bob)."
+  run "$TRILOG" -e "consult('test/e2e/files/genealogy.pl'), parent(tom,bob)."
   [ "$status" -eq 0 ]
 }
 
