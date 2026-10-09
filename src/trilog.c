@@ -12,20 +12,9 @@
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 static const trilog_term_t invalid_term = {(size_t)-1};
-
-static void *libc_realloc(void *ud, void *p, size_t n) {
-  (void)ud;
-  return realloc(p, n);
-}
-
-static void libc_free(void *ud, void *p) {
-  (void)ud;
-  free(p);
-}
 
 static trilog_status_t unwound(trilog_t *t) {
   t->heap_top = 0;
@@ -69,10 +58,8 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   trilog_config_t c = config ? *config : (trilog_config_t){0};
   if (!c.realloc != !c.free)
     return NULL;
-  if (!c.realloc) {
-    c.realloc = libc_realloc;
-    c.free = libc_free;
-  }
+  if (!c.realloc && !platform_default_alloc(&c))
+    return NULL;
   trilog_t *t = c.realloc(c.alloc_ud, NULL, sizeof *t);
   if (!t)
     return NULL;

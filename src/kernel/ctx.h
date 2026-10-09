@@ -39,6 +39,7 @@ struct trilog {
   uint32_t atom_slots_cap;
 
   trilog_io_t hooks;
+  bool default_io;
   io_reader_t streams[MAX_OPEN_STREAMS];
 
   pair_visits unify_visits, occurs_check_visits;

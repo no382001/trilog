@@ -2,51 +2,23 @@
 #include "ctx.h"
 #include "mem.h"
 #include "platform.h"
-#include <stdio.h>
 #include <string.h>
 
-static void *default_open(void *ud, const char *path, const char *mode) {
-  (void)ud;
-  return fopen(path, mode);
-}
-static long default_read(void *ud, void *handle, char *buf, size_t n) {
-  (void)ud;
-  return (long)fread(buf, 1, n, handle);
-}
-static long default_write(void *ud, void *handle, const char *buf, size_t n) {
-  (void)ud;
-  return (long)fwrite(buf, 1, n, handle);
-}
-static void default_close(void *ud, void *handle) {
-  (void)ud;
-  fclose(handle);
-}
-static void default_flush(void *ud, void *handle) {
-  (void)ud;
-  fflush(handle);
-}
-
 bool io_cwd(trilog_t *T, char *buf, size_t cap) {
-  return T->hooks.open == default_open && platform_cwd(buf, cap);
+  return T->default_io && platform_cwd(buf, cap);
 }
 
 bool io_set(trilog_t *T, const trilog_io_t *io) {
   trilog_io_t h = io ? *io : (trilog_io_t){0};
   int given = !!h.open + !!h.read + !!h.write + !!h.close;
   if (given == 0) {
-    h.open = default_open;
-    h.read = default_read;
-    h.write = default_write;
-    h.close = default_close;
-    h.in = stdin;
-    h.out = stdout;
-    h.err = stderr;
-    if (!h.flush)
-      h.flush = default_flush;
+    if (!platform_default_io(&h))
+      return false;
   } else if (given != 4) {
     return false;
   }
   T->hooks = h;
+  T->default_io = given == 0;
   return true;
 }
 
