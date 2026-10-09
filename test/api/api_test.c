@@ -3,6 +3,7 @@
 #include <string.h>
 
 static int failures = 0;
+static int checks = 0;
 
 static bool streq(const char *a, const char *b) {
   return a && b && strcmp(a, b) == 0;
@@ -10,8 +11,11 @@ static bool streq(const char *a, const char *b) {
 
 #define CHECK(cond)                                                            \
   do {                                                                         \
-    if (!(cond)) {                                                             \
-      fprintf(stderr, "%s:%d: CHECK failed: %s\n", __FILE__, __LINE__, #cond); \
+    bool ok_ = (cond);                                                         \
+    printf("%sok %d - %s: %s\n", ok_ ? "" : "not ", ++checks, __func__,        \
+           #cond);                                                             \
+    if (!ok_) {                                                                \
+      printf("# %s:%d\n", __FILE__, __LINE__);                                 \
       failures++;                                                              \
     }                                                                          \
   } while (0)
@@ -467,6 +471,7 @@ int main(void) {
   CHECK(u.heap_peak_bytes >= u.heap_peak_cells);
 
   trilog_free(t);
+  printf("1..%d\n", checks);
   if (failures) {
     fprintf(stderr, "api_test: %d check(s) failed\n", failures);
     return 1;

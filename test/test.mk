@@ -9,7 +9,7 @@ API_TEST_BINS = $(API_TESTS:%=_build/%)
 $(API_TEST_BINS): _build/%: $(DEV)/test/api/%.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) $(if $(findstring threads,$*),-pthread) -o $@ $^ -lm
 
-.PHONY: test test-api quad quad-junit syscheck-junit conformity
+.PHONY: test test-api api-junit quad quad-junit syscheck-junit conformity conformity-junit
 test: trilog test-api
 	bats test/e2e/
 
@@ -24,8 +24,16 @@ test-api: $(API_TEST_BINS) examples/embed
 	_build/api_threads_test
 	_build/api_oom_test 2>/dev/null
 
+api-junit: $(API_TEST_BINS) examples/embed
+	@mkdir -p _build/test-results
+	test/api/tap.sh examples/embed $(API_TEST_BINS) | awk -v suite=api -v file=test/api -f test/tap2junit.awk >_build/test-results/api.xml
+
 conformity: trilog
 	test/conformity/conformity.sh
+
+conformity-junit: trilog
+	@mkdir -p _build/test-results
+	test/conformity/conformity.sh -v | awk -v suite=conformity -v file=test/conformity/conformity.txt -f test/tap2junit.awk >_build/test-results/conformity.xml
 
 QUAD_TIMEOUT := 60
 

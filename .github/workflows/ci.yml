@@ -60,6 +60,12 @@ jobs:
       - name: run system tests
         run: make syscheck-junit
 
+      - name: run conformity tests
+        run: make conformity-junit
+
+      - name: run API tests
+        run: make api-junit
+
       - name: upload test results
         id: upload_test_results
         uses: actions/upload-artifact@v4
@@ -78,6 +84,8 @@ jobs:
           reporter: java-junit
           fail-on-error: false
           use-actions-summary: false
+          list-suites: failed
+          list-tests: none
 
       - name: build test summary
         if: always()
@@ -85,6 +93,7 @@ jobs:
           chmod +x test/summarize_results.sh
           test/summarize_results.sh _build/test-results > /tmp/test_summary.md
           cat /tmp/test_summary.md
+          cat /tmp/test_summary.md >> "$GITHUB_STEP_SUMMARY"
           echo "test_reporter url_html output: '${{ steps.test_reporter.outputs.url_html }}'"
           echo "test_reporter conclusion output: '${{ steps.test_reporter.outputs.conclusion }}'"
 

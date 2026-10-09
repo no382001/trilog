@@ -1,5 +1,7 @@
 # trilog
 
+[![CI](https://github.com/no382001/trilog/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/no382001/trilog/actions/workflows/ci.yml?query=branch%3Amain)
+
 A Prolog interpreter aiming to be embeddable.
 
 The name comes from the ABC algorithm in M. H. van Emden's *An Algorithm for Interpreting Prolog Programs* (University of Waterloo, CS-81-28, 1981). ABC is not short for anything. A, B and C are the three labels of a small state machine: go down while there is an untried alternative, come back up and try the next one when there is not, and fail once you have climbed past the root. trilog's solver is built on this algorithm.

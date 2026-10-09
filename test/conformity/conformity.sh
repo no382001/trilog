@@ -5,6 +5,8 @@
 # tests/ulrich). Each test is "number RS query RS expected answer", tests are
 # separated by GS. The query is piped into the toplevel.
 #
+# Prints TAP; -v adds the expected and actual output under each failure.
+#
 # usage: test/conformity/conformity.sh [-v] [test-number...]
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -27,6 +29,7 @@ trim() {
   s="${s%"${s##*[!$'\n\r']}"}"
   printf '%s' "$s"
 }
+
 
 last_line() {
   printf '%s\n' "$1" | sed -e 's/[[:space:]]*$//' | grep -v '^$' | tail -1
@@ -107,16 +110,17 @@ for group in "${groups[@]}"; do
   else
     run "$query"
   fi
+  name="#$num ${query//$'\n'/ ⏎ }"
   if check "$answer"; then
     pass=$((pass + 1))
+    printf 'ok %d - %s\n' "$((pass + fail))" "$name"
   else
     fail=$((fail + 1))
+    printf 'not ok %d - %s\n' "$((pass + fail))" "$name"
     if $verbose; then
-      printf '#%s\n  query:    %s\n  expected: %s\n  stdout:   %s\n  stderr:   %s\n' \
-        "$num" "${query//$'\n'/ ⏎ }" "$answer" "${out//$'\n'/ ⏎ }" "${err//$'\n'/ ⏎ }"
-    else
-      printf 'not ok #%s\n' "$num"
+      printf '# expected: %s\n# stdout:   %s\n# stderr:   %s\n' \
+        "${answer//$'\n'/ ⏎ }" "${out//$'\n'/ ⏎ }" "${err//$'\n'/ ⏎ }"
     fi
   fi
 done
-printf 'conformity: %d passed, %d failed of %d\n' "$pass" "$fail" "$((pass + fail))"
+printf '1..%d\nconformity: %d passed, %d failed of %d\n' "$((pass + fail))" "$pass" "$fail" "$((pass + fail))"

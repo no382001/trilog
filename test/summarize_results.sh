@@ -12,7 +12,7 @@ rows=""
 total=0; passed=0; failed=0; crashed=0
 suite_count=0
 
-for f in "$DIR"/*_quad.xml; do
+for f in "$DIR"/*_quad.xml "$DIR"/conformity.xml "$DIR"/api.xml; do
   [ -f "$f" ] || continue
   suite_count=$((suite_count + 1))
   file=$(grep -oE 'file="[^"]*"' "$f" | head -1 | sed -E 's/file="(.*)"/\1/')
@@ -34,7 +34,7 @@ if [ -f "$DIR/report.xml" ]; then
 fi
 
 chart=$(printf '%s' "$rows" | awk -F'|' 'NF && $2 > 0 {
-  name = $1; sub(/^test\/(quad|e2e)\//, "", name); sub(/_quad\.pl$/, "", name); sub(/\/\*\.bats$/, "", name); sub(/^\*\.bats$/, "e2e", name)
+  name = $1; sub(/^test\/(quad|e2e)\//, "", name); sub(/_quad\.pl$/, "", name); sub(/\/\*\.bats$/, "", name); sub(/^\*\.bats$/, "e2e", name); sub(/^test\/conformity\/.*/, "conformity", name); sub(/^test\/api$/, "api", name)
   printf "%d|%s\n", int(100 * $3 / $2), name
 }' | sort -t'|' -k1,1n -k2,2)
 
