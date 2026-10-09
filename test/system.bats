@@ -2154,3 +2154,52 @@ print(':- ' + ', '.join(['true'] * 1000) + ', assertz(dir_ran).')
   run "$TRILOG" -f -e "$query."
   [[ "$output" == *"s(999)"* ]]
 }
+
+@test "the interactive toplevel prompts with ?- (#3)" {
+  command -v script >/dev/null || skip "no script(1)"
+  run bash -c "{ echo 'X = 1.'; sleep 0.3; printf '\004'; } | timeout 5 script -qc '$TRILOG -f' /dev/null 2>&1 | tr -d '\r'"
+  [[ "$output" == *"?- "* ]]
+  [[ "$output" == *"X = 1."* ]]
+}
+
+@test "answers end with . and each further answer starts with ;, false. is indented (#8)" {
+  run "$TRILOG" -f -e "member(X, [a, b, c])."
+  [[ "$output" == *"   X = a"$'\n'";  X = b"$'\n'";  X = c."* ]]
+  run "$TRILOG" -f -e "fail."
+  [ "$output" = "   false." ]
+}
+
+@test "double-quoted text is a list of chars (#11)" {
+  run "$TRILOG" -f -e "
+    Xs = \"abc\",
+    ( Xs == [a, b, c] -> R1 = chars ; R1 = not_chars ),
+    [C|Cs] = \"hello\",
+    writeq(r(R1, C, Cs)),
+    nl.
+  "
+  [[ "$output" == *"r(chars, h, \"ello\")"* ]]
+}
+
+@test "writeq('\\n') prints the escape, not a raw newline (#12)" {
+  run "$TRILOG" -f -e "writeq('\\n'), nl, writeq(f('a\\nb')), nl."
+  [ "${lines[0]}" = "'\\n'" ]
+  [ "${lines[1]}" = "f('a\\nb')" ]
+}
+
+@test "false/0 exists and fails without an error (#19)" {
+  run "$TRILOG" -f -e "( false -> R = succeeded ; R = failed ), write(R), nl."
+  [[ "$output" == *"failed"* ]]
+  [[ "$output" != *"existence_error"* ]]
+}
+
+@test "integer flags are integers, not atoms (#23)" {
+  run "$TRILOG" -f -e "
+    current_prolog_flag(max_integer, Max),
+    current_prolog_flag(min_integer, Min),
+    ( integer(Max), integer(Min), Max > 0, Min < 0 -> R = integers ; R = not_integers ),
+    current_prolog_flag(max_arity, A),
+    write(r(R, A)),
+    nl.
+  "
+  [[ "$output" == *"r(integers, unbounded)"* ]]
+}
