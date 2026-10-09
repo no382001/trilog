@@ -1951,8 +1951,8 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       *ok = unify(T, f + 1, heap_new_int(T, iv));
       return 1;
     }
-    char *fend;
-    double dv = strtod(buf, &fend);
+    const char *fend;
+    double dv = platform_parse_float(buf, &fend);
     *ok =
         (*fend == '\0' && fend != buf) && unify(T, f + 1, heap_new_flt(T, dv));
     return 1;

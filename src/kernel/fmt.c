@@ -1,6 +1,6 @@
 #include "fmt.h"
 #include "chars.h"
-#include <stdio.h>
+#include "platform.h"
 #include <string.h>
 
 typedef struct {
@@ -100,8 +100,8 @@ size_t fmt_v(char *buf, size_t cap, const char *f, va_list ap) {
       break;
     case 'g': {
       char tmp[32];
-      int n = snprintf(tmp, sizeof tmp, "%g", va_arg(ap, double));
-      put_str(&o, tmp, n < 0 ? 0 : (size_t)n);
+      size_t n = platform_format_float(tmp, sizeof tmp, va_arg(ap, double));
+      put_str(&o, tmp, n < sizeof tmp ? n : sizeof tmp - 1);
       break;
     }
     default:
