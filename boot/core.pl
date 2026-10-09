@@ -148,6 +148,9 @@ number(X) :- float(X).
 atomic(X) :- atom(X).
 atomic(X) :- number(X).
 
+%!  ground(@Term) is semidet.
+ground(T) :- term_variables(T, []).
+
 %!  callable(@Term) is semidet.
 callable(X) :- atom(X).
 callable(X) :- compound(X).
@@ -386,7 +389,7 @@ with_output_to(atom(A), Goal) :-
     -> '$$capture_stop'(A)
     ;  '$$capture_stop'(_), fail
     ).
-with_output_to(codes(Cs), Goal) :- with_output_to(atom(A), Goal), atom_codes(A, Cs).
+with_output_to(codes(Cs), Goal) :- with_output_to(atom(A), Goal), '$$atom_codes'(A, Cs).
 with_output_to(chars(Cs), Goal) :- with_output_to(atom(A), Goal), atom_chars(A, Cs).
 
 '$stream_alias'(user_output, 0).
@@ -501,15 +504,10 @@ read_term_from_chars(Cs, T, Opts) :-
 '$read_options_bind'([variable_names(Names)|Os], Names, Vars) :- !, '$read_options_bind'(Os, Names, Vars).
 '$read_options_bind'([variables(Vars)|Os], Names, Vars) :- '$read_options_bind'(Os, Names, Vars).
 
-'$chars_list'(L) :- var(L), !, throw(error(instantiation_error, _)).
-'$chars_list'([]) :- !.
-'$chars_list'([C|L]) :-
-    !,
-    (   var(C) -> throw(error(instantiation_error, _))
-    ;   character(C) -> '$chars_list'(L)
-    ;   throw(error(type_error(character, C), _))
-    ).
-'$chars_list'(L) :- throw(error(type_error(list, L), _)).
+'$chars_list'(L) :- '$text_list'(L, '$check_char').
+'$check_char'(C) :- var(C), !, throw(error(instantiation_error, _)).
+'$check_char'(C) :- character(C), !.
+'$check_char'(C) :- throw(error(type_error(character, C), _)).
 
 '$blank_chars'([]).
 '$blank_chars'([C|Cs]) :- memberchk(C, [' ', '\t', '\n', '\r']), '$blank_chars'(Cs).
@@ -533,70 +531,204 @@ read_line_to_chars(S, Cs) :-
 put_chars(Cs) :- atom_chars(A, Cs), write(A).
 put_chars(S, Cs) :- atom_chars(A, Cs), write(S, A).
 
+%!  atom_codes(?Atom, ?Codes) is det.
+atom_codes(A, Cs) :-
+    '$with_context'('$atom_codes'(A, Cs), atom_codes/2).
+'$atom_codes'(A, Cs) :-
+    (   nonvar(A)
+    ->  '$must_be_atom'(A),
+        '$$atom_codes'(A, Cs0),
+        Cs = Cs0
+    ;   '$codes_list'(Cs),
+        '$$atom_codes'(A, Cs)
+    ).
+
 %!  char_code(?Char, ?Code) is det.
-char_code(Char, Code) :- atom_codes(Char, [Code]).
+char_code(Char, Code) :-
+    '$with_context'('$char_code'(Char, Code), char_code/2).
+'$char_code'(Char, Code) :-
+    (   nonvar(Char)
+    ->  ( character(Char) -> true ; throw(error(type_error(character, Char), _)) ),
+        ( var(Code) -> true ; integer(Code) -> true ; throw(error(type_error(integer, Code), _)) ),
+        '$$atom_codes'(Char, [Code])
+    ;   var(Code)
+    ->  throw(error(instantiation_error, _))
+    ;   '$codes_list'([Code]),
+        '$$atom_codes'(Char, [Code])
+    ).
 
 %!  get_char(-Char) is det.
 get_char(Char) :- get_code(C), (C == -1 -> Char = end_of_file ; char_code(Char, C)).
 
-%!  atom_length(+Atom, -Length) is det.
-atom_length(A, L) :- atom_codes(A, C), length(C, L).
+%!  atom_length(+Atom, ?Length) is det.
+atom_length(A, L) :-
+    '$with_context'('$atom_length'(A, L), atom_length/2).
+'$atom_length'(A, L) :-
+    '$must_be_atom'(A),
+    (   var(L) -> true
+    ;   integer(L) -> ( L >= 0 -> true ; throw(error(domain_error(not_less_than_zero, L), _)) )
+    ;   throw(error(type_error(integer, L), _))
+    ),
+    '$$atom_codes'(A, Cs),
+    length(Cs, L).
 
 %!  atom_concat(?Atom1, ?Atom2, ?Atom3) is nondet.
 %   Nondet split falls out of append/3's own backtracking.
 atom_concat(A, B, C) :-
+    '$with_context'('$atom_concat_check'(A, B, C), atom_concat/3),
+    '$atom_concat'(A, B, C).
+'$atom_concat_check'(A, B, C) :-
+    '$can_be_atom'(A),
+    '$can_be_atom'(B),
+    '$can_be_atom'(C),
+    (   var(C), ( var(A) ; var(B) )
+    ->  throw(error(instantiation_error, _))
+    ;   true
+    ).
+'$atom_concat'(A, B, C) :-
     nonvar(A),
     nonvar(B),
     !,
-    atom_codes(A, CA),
-    atom_codes(B, CB),
+    '$$atom_codes'(A, CA),
+    '$$atom_codes'(B, CB),
     append(CA, CB, CC),
-    atom_codes(C, CC).
-atom_concat(A, B, C) :-
-    atom_codes(C, CC),
+    '$$atom_codes'(C, CC).
+'$atom_concat'(A, B, C) :-
+    '$$atom_codes'(C, CC),
     append(CA, CB, CC),
-    atom_codes(A, CA),
-    atom_codes(B, CB).
+    '$$atom_codes'(A, CA),
+    '$$atom_codes'(B, CB).
 
 %!  sub_atom(+Atom, ?Before, ?Length, ?After, ?Sub) is nondet.
 sub_atom(Atom, Before, Length, After, Sub) :-
-    atom_codes(Atom, Codes),
+    '$with_context'('$sub_atom_check'(Atom, Before, Length, After, Sub), sub_atom/5),
+    '$$atom_codes'(Atom, Codes),
     append(BC, RestC, Codes),
     length(BC, Before),
     append(SC, AC, RestC),
     length(SC, Length),
     length(AC, After),
-    atom_codes(Sub, SC).
+    '$$atom_codes'(Sub, SC).
+'$sub_atom_check'(Atom, Before, Length, After, Sub) :-
+    '$must_be_atom'(Atom),
+    '$can_be_atom'(Sub),
+    '$can_be_integer'(Before),
+    '$can_be_integer'(Length),
+    '$can_be_integer'(After).
 
 %!  atom_chars(?Atom, ?Chars) is det.
 atom_chars(A, Chars) :-
-    nonvar(A),
-    !,
-    atom_codes(A, Codes),
-    maplist(char_code, Chars, Codes).
-atom_chars(A, Chars) :-
-    maplist(char_code, Chars, Codes),
-    atom_codes(A, Codes).
+    '$with_context'('$atom_chars'(A, Chars), atom_chars/2).
+'$atom_chars'(A, Chars) :-
+    (   nonvar(A)
+    ->  '$must_be_atom'(A),
+        '$$atom_codes'(A, Codes),
+        '$codes_chars'(Codes, Chars)
+    ;   '$chars_list'(Chars),
+        '$codes_chars'(Codes, Chars),
+        '$$atom_codes'(A, Codes)
+    ).
 
 %!  atom_number(?Atom, ?Number) is semidet.
 atom_number(A, N) :-
     nonvar(A),
     !,
-    atom_codes(A, C),
-    number_codes(N, C).
+    '$$atom_codes'(A, C),
+    '$$number_codes'(N, C).
 atom_number(A, N) :-
-    number_codes(N, C),
-    atom_codes(A, C).
+    '$$number_codes'(N, C),
+    '$$atom_codes'(A, C).
+
+%!  number_codes(?Number, ?Codes) is det.
+number_codes(N, Cs) :-
+    '$with_context'('$number_codes'(N, Cs), number_codes/2).
+'$number_codes'(N, Cs) :-
+    (   nonvar(N)
+    ->  '$must_be_number'(N),
+        '$text_list_bound'(Cs, '$check_code'),
+        (   '$complete_list'(Cs)
+        ->  '$parse_number'(Cs, N)
+        ;   '$$number_codes'(N, Cs0),
+            Cs = Cs0
+        )
+    ;   '$codes_list'(Cs),
+        '$parse_number'(Cs, N)
+    ).
 
 %!  number_chars(?Number, ?Chars) is det.
 number_chars(N, Chars) :-
-    nonvar(N),
-    !,
-    number_codes(N, Codes),
-    maplist(char_code, Chars, Codes).
-number_chars(N, Chars) :-
-    maplist(char_code, Chars, Codes),
-    number_codes(N, Codes).
+    '$with_context'('$number_chars'(N, Chars), number_chars/2).
+'$number_chars'(N, Chars) :-
+    (   nonvar(N)
+    ->  '$must_be_number'(N),
+        '$text_list_bound'(Chars, '$check_char'),
+        (   '$complete_list'(Chars)
+        ->  '$codes_chars'(Codes, Chars),
+            '$parse_number'(Codes, N)
+        ;   '$$number_codes'(N, Codes),
+            '$codes_chars'(Codes, Chars)
+        )
+    ;   '$chars_list'(Chars),
+        '$codes_chars'(Codes, Chars),
+        '$parse_number'(Codes, N)
+    ).
+
+'$parse_number'(Codes, N) :-
+    (   '$$number_codes'(N0, Codes)
+    ->  N = N0
+    ;   throw(error(syntax_error(illegal_number), _))
+    ).
+
+'$codes_chars'([], []).
+'$codes_chars'([Code|Codes], [Char|Chars]) :-
+    '$$atom_codes'(Char, [Code]),
+    '$codes_chars'(Codes, Chars).
+
+'$must_be_atom'(A) :- var(A), !, throw(error(instantiation_error, _)).
+'$must_be_atom'(A) :- atom(A), !.
+'$must_be_atom'(A) :- throw(error(type_error(atom, A), _)).
+
+'$must_be_number'(N) :- number(N), !.
+'$must_be_number'(N) :- throw(error(type_error(number, N), _)).
+
+'$can_be_atom'(A) :- ( var(A) ; atom(A) ), !.
+'$can_be_atom'(A) :- throw(error(type_error(atom, A), _)).
+
+'$can_be_integer'(I) :- ( var(I) ; integer(I) ), !.
+'$can_be_integer'(I) :- throw(error(type_error(integer, I), _)).
+
+'$codes_list'(L) :- '$text_list'(L, '$check_code').
+'$check_code'(C) :- var(C), !, throw(error(instantiation_error, _)).
+'$check_code'(C) :- integer(C), C >= 0, C =< 1114111, !.
+'$check_code'(C) :- throw(error(representation_error(character_code), _)).
+
+% Walks the elements before the tail first, so a bad element in a partial list
+% is reported before the missing tail.
+'$text_list'(L, Check) :-
+    '$$skip_list'(L, _, Tail),
+    (   var(Tail) -> true
+    ;   Tail == [] -> true
+    ;   throw(error(type_error(list, L), _))
+    ),
+    '$text_elements'(L, Check),
+    ( var(Tail) -> throw(error(instantiation_error, _)) ; true ).
+'$text_list_bound'(L, Check) :-
+    '$$skip_list'(L, _, Tail),
+    (   var(Tail) -> true
+    ;   Tail == [] -> true
+    ;   throw(error(type_error(list, L), _))
+    ),
+    '$text_elements'(L, '$check_bound'(Check)).
+'$complete_list'(L) :- '$$skip_list'(L, _, T), T == [], ground(L).
+
+'$check_bound'(_, C) :- var(C), !.
+'$check_bound'(Check, C) :- call(Check, C).
+
+'$text_elements'(L, _) :- var(L), !.
+'$text_elements'([], _) :- !.
+'$text_elements'([C|L], Check) :-
+    call(Check, C),
+    '$text_elements'(L, Check).
 
 %!  retractall(+Head) is det.
 %   an unknown predicate is created as dynamic.

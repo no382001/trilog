@@ -1070,10 +1070,10 @@ answers() {
   succeeded
 }
 
-@test "runaway allocation throws a catchable resource_error(memory) instead of dying (regression)" {
+@test "number_chars/2 on a cyclic list throws a catchable error instead of dying (regression)" {
   # regression: the heap grew until GC's scratch arrays failed to allocate, killing the process.
   run bash -c "ulimit -v 524288; timeout 60 $TRILOG -e \"L = ['1'|L], catch(number_chars(_, L), error(E, _), true), write(caught(E)), nl.\""
-  [[ "$output" == *"caught(resource_error(memory))"* ]]
+  [[ "$output" == *"caught(representation_error(cyclic_term))"* ]]
 }
 
 @test "printing a tail-cyclic list terminates (regression)" {
@@ -1796,4 +1796,26 @@ PLEOF
   [[ "$output" == *"f(A, B, A, C)"* ]]
   [[ "$output" == *"f('\$VAR'(0), '\$VAR'(1), '\$VAR'(0), '\$VAR'(2))"* ]]
   [[ "$output" == *"End = 3"* ]]
+}
+
+@test "text builtins and arg/3 raise ISO argument errors" {
+  run "$TRILOG" -f -e "
+    catch(atom_chars(f(a), _), error(E1, C1), true),
+    catch(atom_chars(_, iso), error(E2, _), true),
+    catch(atom_length(atom, '4'), error(E3, _), true),
+    catch(sub_atom('Banana', a, 2, _, _), error(E4, _), true),
+    catch(char_code(ab, _), error(E5, _), true),
+    catch(atom_codes(_, [-1]), error(E6, _), true),
+    catch(number_codes(_, [51, 120]), error(E7, _), true),
+    catch(arg(a, f(x), _), error(E8, _), true),
+    number_chars(1, ['0', '1']).
+  "
+  [[ "$output" == *"E1 = type_error(atom, f(a)), C1 = /(atom_chars, 2)"* ]]
+  [[ "$output" == *"E2 = type_error(list, iso)"* ]]
+  [[ "$output" == *"E3 = type_error(integer, '4')"* ]]
+  [[ "$output" == *"E4 = type_error(integer, a)"* ]]
+  [[ "$output" == *"E5 = type_error(character, ab)"* ]]
+  [[ "$output" == *"E6 = representation_error(character_code)"* ]]
+  [[ "$output" == *"E7 = syntax_error(illegal_number)"* ]]
+  [[ "$output" == *"E8 = type_error(integer, a)"* ]]
 }

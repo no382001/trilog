@@ -11,11 +11,10 @@ correctness:
 
 missing requirements:
 - missing library preds: countall/2, nth0/4, nth1/4, foldl/5,6, acyclic_term/1
-- missing iso builtins: read/1, read_term/2,3, write_canonical/1, print/1, put_char/1, get_char/2, peek_char/1, current_input/1, current_output/1, set_input/1, set_output/1, flush_output/1, open/4, close/2, keysort/2, set_prolog_flag/2, char_conversion/2, current_predicate/1, subsumes_term/2, ground/1
+- missing iso builtins: read/1, read_term/2,3, write_canonical/1, print/1, put_char/1, get_char/2, peek_char/1, current_input/1, current_output/1, set_input/1, set_output/1, flush_output/1, open/4, close/2, keysort/2, set_prolog_flag/2, char_conversion/2, current_predicate/1, subsumes_term/2
 - missing iso evaluables: rem, **, ^, sqrt, sin, cos, atan, atan2, exp, log, pi, float_integer_part, float_fractional_part
 - port wokwi/ to trilog.h (is it still possible? it should be w/o the libs)
 - is_list([a|_]) succeeds, should fail
-- arg(a, f(x), _) fails, iso: type_error(integer, a)
 - length(L, -1) fails and length(L, a) raises type_error(evaluable, a/0); want domain_error(not_less_than_zero, -1) and type_error(integer, a)
 - number_chars_quad runs out of memory, 12/71 pass (#7)
 - quad.pl: chars and dcgs instead of codes and atom_concat chains (#27)

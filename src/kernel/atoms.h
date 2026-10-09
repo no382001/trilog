@@ -67,6 +67,7 @@
   X(atom_end_of_file, "end_of_file")                                           \
   X(atom_user_input, "user_input")                                             \
   X(atom_unload, "$$unload")                                                   \
+  X(atom_skip_list, "$$skip_list")                                             \
   X(atom_is_static_pred, "$$is_static")                                        \
   X(atom_undynamic, "$$undynamic")                                             \
   X(atom_prolog_flags, "$$prolog_flags")                                       \
@@ -92,8 +93,8 @@
   X(atom_functor, "functor")                                                   \
   X(atom_arg, "arg")                                                           \
   X(atom_univ, "=..")                                                          \
-  X(atom_atom_codes, "atom_codes")                                             \
-  X(atom_number_codes, "number_codes")                                         \
+  X(atom_atom_codes, "$$atom_codes")                                           \
+  X(atom_number_codes, "$$number_codes")                                       \
   X(atom_mode_read, "read")                                                    \
   X(atom_mode_write, "write")                                                  \
   X(atom_mode_append, "append")                                                \

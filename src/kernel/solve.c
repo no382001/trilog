@@ -1642,7 +1642,11 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       *ok = 0;
       return 1;
     }
-    if (T->heap[n_d].tag != TAG_INT || T->heap[term].tag != TAG_STR) {
+    if (T->heap[n_d].tag != TAG_INT)
+      T->pending_error_ball = make_type_error(T, "integer", n_d);
+    else if (T->heap[term].tag != TAG_STR)
+      T->pending_error_ball = make_type_error(T, "compound", term);
+    if (T->pending_error_ball != (size_t)-1) {
       *ok = 0;
       return 1;
     }
@@ -1653,6 +1657,29 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       return 1;
     }
     *ok = unify(T, f + 3, tf + (size_t)n);
+    return 1;
+  }
+  if (arity == 3 && id == atom_skip_list) {
+    size_t cell = heap_deref(T, f + 1);
+    size_t tortoise = (size_t)-1;
+    int64_t n = 0, power = 1, lam = 0;
+    while (T->heap[cell].tag == TAG_STR) {
+      size_t cf = T->heap[cell].as.ptr;
+      if (T->heap[cf].as.func.arity != 2 ||
+          T->heap[cf].as.func.atom_id != atom_dot)
+        break;
+      if (cf == tortoise)
+        break; // cyclic: Tail is a list cell on the cycle
+      if (lam == power) {
+        tortoise = cf;
+        power *= 2;
+        lam = 0;
+      }
+      lam++;
+      n++;
+      cell = heap_deref(T, cf + 2);
+    }
+    *ok = unify(T, f + 2, heap_new_int(T, n)) && unify(T, f + 3, cell);
     return 1;
   }
   if (arity == 2 && id == atom_univ) {
