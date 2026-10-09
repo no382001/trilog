@@ -1819,3 +1819,39 @@ PLEOF
   [[ "$output" == *"E7 = syntax_error(illegal_number)"* ]]
   [[ "$output" == *"E8 = type_error(integer, a)"* ]]
 }
+
+@test "a term nested 100000 deep in its first argument works under a 512 KB C stack (regression)" {
+  # regression: unify, compare, copy, assert, print and parse recursed in C once per level.
+  run bash -c "ulimit -s 512; $TRILOG -e \"
+    assertz(nest(_, A, g(A, x))),
+    numlist(1, 100000, Ns),
+    foldl(nest, Ns, x, T),
+    foldl(nest, Ns, x, T2),
+    T = T2,
+    T == T2,
+    copy_term(T, C),
+    assertz(deep(C)),
+    deep(D),
+    D == T,
+    term_to_atom(T, At),
+    atom_to_term(At, T3, _),
+    T3 == T,
+    write(deep_ok),
+    nl.
+  \""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"deep_ok"* ]]
+}
+
+@test "printing a cyclic term stops at the cycle (regression)" {
+  # regression: without the old 4 KB text cap, term_to_atom/2 of a cyclic term grew without bound.
+  run timeout 10 "$TRILOG" -e "
+    X = f(X, Y),
+    Y = [a|Y],
+    term_to_atom(X, A),
+    write(A),
+    nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"f(..., [a|...])"* ]]
+}

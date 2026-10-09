@@ -81,7 +81,7 @@ size_t heap_new_struct(trilog_t *T, int32_t functor_id, int32_t arity,
   T->heap[base].as.func.arity = arity;
   for (int32_t i = 0; i < arity; i++) {
     T->heap[base + 1 + i].tag = TAG_REF;
-    T->heap[base + 1 + i].as.ref = arg_idx[i];
+    T->heap[base + 1 + i].as.ref = arg_idx ? arg_idx[i] : base + 1 + (size_t)i;
   }
   size_t str = heap_alloc(T, 1);
   T->heap[str].tag = TAG_STR;

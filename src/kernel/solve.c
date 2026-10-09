@@ -890,8 +890,9 @@ static char *codes_text(trilog_t *T, size_t list, size_t max_len,
 }
 
 // Recurses into every argument but the last and loops on that one.
-static int term_compare_rec(trilog_t *T, size_t a, size_t b) {
-  for (;;) {
+// 0: equal so far, or arguments pushed.
+static int compare_step(trilog_t *T, size_t a, size_t b) {
+  {
     a = heap_deref(T, a);
     b = heap_deref(T, b);
     if (a == b)
@@ -942,17 +943,28 @@ static int term_compare_rec(trilog_t *T, size_t a, size_t b) {
       }
       if (pair_visits_seen(T, &T->compare_visits, af, bf))
         return 0; // already being compared, so equal as rational trees
-      for (int32_t i = 1; i < aa; i++) {
-        int c = term_compare_rec(T, af + (size_t)i, bf + (size_t)i);
-        if (c != 0)
-          return c;
+      for (int32_t i = aa; i >= 1; i--) {
+        wstack_push(T, af + (size_t)i);
+        wstack_push(T, bf + (size_t)i);
       }
-      // Loop on the last argument, so a list's spine costs no C stack.
-      a = af + (size_t)aa;
-      b = bf + (size_t)aa;
-      continue;
+      return 0;
     }
     }
+  }
+}
+
+static int term_compare_rec(trilog_t *T, size_t a, size_t b) {
+  size_t wbase = T->wsp;
+  for (;;) {
+    int c = compare_step(T, a, b);
+    if (c != 0) {
+      T->wsp = wbase;
+      return c;
+    }
+    if (T->wsp == wbase)
+      return 0;
+    b = T->wstack[--T->wsp];
+    a = T->wstack[--T->wsp];
   }
 }
 
@@ -1006,15 +1018,10 @@ static int resolve_write_target(trilog_t *T, size_t target, int *kind_out,
 }
 
 static void tta_emit(trilog_t *T, const char *str) {
-  int len = (int)strlen(str);
-  int rem = CAPTURE_BUF_SIZE - T->tta_pos - 1;
-  if (len > rem)
-    len = rem;
-  if (len > 0) {
-    memcpy(T->tta_buf + T->tta_pos, str, (size_t)len);
-    T->tta_pos += len;
-    T->tta_buf[T->tta_pos] = '\0';
-  }
+  size_t len = strlen(str);
+  mem_reserve(T, &T->scratch, &T->scratch_cap, T->tta_pos + len + 1);
+  memcpy((char *)T->scratch + T->tta_pos, str, len + 1);
+  T->tta_pos += len;
 }
 
 bool foreign_register(trilog_t *T, const char *name, const char *types,
@@ -1466,9 +1473,11 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       return 1;
     }
     T->capture_sp--;
-    int start = T->capture_starts[T->capture_sp];
-    size_t result = heap_new_atom(T, atom_intern(T, T->capture_buf + start));
-    T->capture_buf[start] = '\0'; // pop this level's slice back off the arena
+    size_t start = T->capture_starts[T->capture_sp];
+    size_t result = heap_new_atom(
+        T, atom_intern(T, T->capture_buf ? T->capture_buf + start : ""));
+    if (T->capture_buf)
+      T->capture_buf[start] = '\0';
     T->capture_pos = start;
     *ok = unify(T, f + 1, result);
     return 1;
@@ -1535,10 +1544,11 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     size_t atom_arg = heap_deref(T, f + 2);
     if (T->heap[term_arg].tag != TAG_REF) {
       T->tta_pos = 0;
-      T->tta_buf[0] = '\0';
+      mem_reserve(T, &T->scratch, &T->scratch_cap, 1);
+      ((char *)T->scratch)[0] = '\0';
       print_term_via(T, term_arg, PRINT_QUOTED,
                      tta_emit); // quoted, so it round-trips
-      *ok = unify(T, atom_arg, heap_new_atom(T, atom_intern(T, T->tta_buf)));
+      *ok = unify(T, atom_arg, heap_new_atom(T, atom_intern(T, T->scratch)));
       return 1;
     }
     if (T->heap[atom_arg].tag != TAG_ATOM) {

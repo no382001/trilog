@@ -1,6 +1,7 @@
 #pragma once
 #include "heap.h"
 #include "io.h"
+#include "mem.h"
 #include "solve.h"
 #include "streams.h"
 #include "trilog.h"
@@ -10,7 +11,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define CAPTURE_BUF_SIZE 4096
 #define CAPTURE_STACK_MAX 32
 #define MAX_CVARS 512
 
@@ -44,7 +44,6 @@ struct trilog {
   size_t *occurs_marks;
   size_t occurs_len, occurs_cap;
 
-  int print_depth;
   int template_cyclic;
   size_t *template_marks;
   size_t template_marks_len, template_marks_cap;
@@ -82,6 +81,8 @@ struct trilog {
   char *path_buf, *path_tmp; // consult path scratch, PATH_CAP bytes each
   void *scratch;             // builtin scratch; builtins do not nest
   size_t scratch_cap;
+  size_t *wstack;
+  size_t wsp, wstack_cap; // cap in bytes
   const char *consulting; // path of the file being consulted
   int32_t consulting_atom;
 
@@ -111,12 +112,11 @@ struct trilog {
   int query_depth;
   pair_visits compare_visits;
   void *file_target;
-  char capture_buf[CAPTURE_BUF_SIZE];
-  int capture_pos;
-  int capture_starts[CAPTURE_STACK_MAX];
+  char *capture_buf; // a slice per nesting
+  size_t capture_cap, capture_pos;
+  size_t capture_starts[CAPTURE_STACK_MAX];
   int capture_sp;
-  char tta_buf[CAPTURE_BUF_SIZE];
-  int tta_pos;
+  size_t tta_pos; // in scratch
 
   bool in_query;
   bool in_callback;
@@ -126,3 +126,10 @@ struct trilog {
   char *format_buf;
   size_t format_cap, format_len;
 };
+
+static inline void wstack_push(trilog_t *T, size_t x) {
+  if ((T->wsp + 1) * sizeof(size_t) > T->wstack_cap)
+    mem_reserve(T, (void **)&T->wstack, &T->wstack_cap,
+                (T->wsp + 1) * sizeof(size_t));
+  T->wstack[T->wsp++] = x;
+}

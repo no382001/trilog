@@ -199,71 +199,6 @@ static void pstack_push(trilog_t *T, tterm_t *t) {
   T->pstack[T->psp++] = t;
 }
 
-static tterm_t *parse_expr(trilog_t *T, int max_prec);
-static tterm_t *parse_arg(trilog_t *T) {
-  return parse_expr(T, 999);
-} // args stop below ','
-
-// Parses "(args)" after a functor name into name(args).
-static tterm_t *parse_compound(trilog_t *T, const char *name) {
-  T->P++; // '('
-  skip_ws(T);
-  size_t base = T->psp;
-  int32_t n = 0;
-  for (;;) {
-    if (n >= MAX_ARITY)
-      perr(T, "too many arguments");
-    pstack_push(T, parse_arg(T));
-    n++;
-    skip_ws(T);
-    if (*T->P != ',')
-      break;
-    T->P++;
-    skip_ws(T);
-  }
-  if (*T->P != ')')
-    perr(T, "expected ')'");
-  T->P++;
-  tterm_t *t = tt_struct(T, name, n, T->pstack + base);
-  T->psp = base;
-  return t;
-}
-
-static tterm_t *parse_list(trilog_t *T) {
-  T->P++; // '['
-  skip_ws(T);
-  if (*T->P == ']') {
-    T->P++;
-    return tt_atom(T, "[]");
-  }
-  size_t base = T->psp;
-  pstack_push(T, parse_arg(T));
-  skip_ws(T);
-  tterm_t *tail = tt_atom(T, "[]");
-  while (*T->P == ',') {
-    T->P++;
-    skip_ws(T);
-    pstack_push(T, parse_arg(T));
-    skip_ws(T);
-  }
-  if (*T->P == '|') {
-    T->P++;
-    skip_ws(T);
-    tail = parse_arg(T);
-    skip_ws(T);
-  }
-  if (*T->P != ']')
-    perr(T, "expected ']'");
-  T->P++;
-  tterm_t *acc = tail;
-  for (size_t i = T->psp; i-- > base;) {
-    tterm_t *cons[2] = {T->pstack[i], acc};
-    acc = tt_struct(T, ".", 2, cons);
-  }
-  T->psp = base;
-  return acc;
-}
-
 static tterm_t *parse_string(trilog_t *T) {
   const char *buf = read_quoted(T, '"');
   tterm_t *acc = tt_atom(T, "[]");
@@ -359,94 +294,6 @@ static tterm_t *parse_number(trilog_t *T) {
   return tt_int(T, v);
 }
 
-static tterm_t *parse_primary(trilog_t *T) {
-  skip_ws(T);
-  if (*T->P == '\0')
-    perr(T, "unexpected end of input");
-  const char *name;
-
-  if (*T->P == '(') {
-    T->P++;
-    skip_ws(T);
-    tterm_t *t = parse_expr(T, 1200);
-    skip_ws(T);
-    if (*T->P != ')')
-      perr(T, "expected ')'");
-    T->P++;
-    return t;
-  }
-  if (*T->P == '[')
-    return parse_list(T);
-  if (*T->P == '{') {
-    T->P++;
-    skip_ws(T);
-    if (*T->P == '}') {
-      T->P++;
-      return tt_atom(T, "{}");
-    }
-    tterm_t *t = parse_expr(T, 1200);
-    skip_ws(T);
-    if (*T->P != '}')
-      perr(T, "expected '}'");
-    T->P++;
-    tterm_t *args[1] = {t};
-    return tt_struct(T, "{}", 1, args);
-  }
-  if (*T->P == '"')
-    return parse_string(T);
-  if (*T->P == '!') {
-    T->P++;
-    return tt_atom(T, "!");
-  }
-  if (*T->P == ';') {
-    T->P++;
-    return tt_atom(T, ";");
-  }
-  if (*T->P == '\'') {
-    name = atom_name(T, atom_intern(T, read_quoted(T, '\'')));
-    skip_ws(T);
-    if (*T->P == '(')
-      return parse_compound(T, name);
-    return tt_atom(T, name);
-  }
-  if (*T->P == '_' || isupper((unsigned char)*T->P))
-    return tt_var(T, vartab_slot(T, read_while(T, is_ident_char)));
-  if (isdigit((unsigned char)*T->P))
-    return parse_number(T);
-  if (*T->P == '-' && isdigit((unsigned char)T->P[1]))
-    return parse_number(T);
-
-  if (islower((unsigned char)*T->P)) {
-    name = read_name(T, is_ident_char);
-    if (*T->P == '(')
-      return parse_compound(T, name);
-    op_t pre, dummy;
-    int have_pre = find_prefix(T, name, &pre);
-    if (have_pre && *T->P != '\0' && !at_clause_end(T) && *T->P != ')' &&
-        *T->P != ',' && *T->P != ']' && *T->P != '|' &&
-        !find_infix(T, name, &dummy)) {
-      tterm_t *arg = parse_expr(T, pre.assoc == FY ? pre.pri : pre.pri - 1);
-      return tt_struct(T, name, 1, &arg);
-    }
-    return tt_atom(T, name);
-  }
-  if (is_symbol_char((unsigned char)*T->P)) {
-    name = read_name(T, is_symbol_char);
-    if (*T->P == '(')
-      return parse_compound(T, name);
-    op_t pre;
-    int have_pre = find_prefix(T, name, &pre);
-    if (have_pre && *T->P != '\0' && !at_clause_end(T) && *T->P != ')' &&
-        *T->P != ',' && *T->P != ']' && *T->P != '|') {
-      tterm_t *arg = parse_expr(T, pre.assoc == FY ? pre.pri : pre.pri - 1);
-      return tt_struct(T, name, 1, &arg);
-    }
-    return tt_atom(T, name);
-  }
-  perr(T, "unexpected character");
-  return NULL; // unreachable
-}
-
 // tries to read an infix operator name at the current position without
 // consuming it if it doesn't turn out to be one; returns 0 if none.
 static int peek_infix_op(trilog_t *T, size_t *len_out, op_t *out) {
@@ -485,21 +332,226 @@ static int peek_infix_op(trilog_t *T, size_t *len_out, op_t *out) {
   return 0;
 }
 
-static tterm_t *parse_expr(trilog_t *T, int max_prec) {
-  tterm_t *left = parse_primary(T);
-  for (;;) {
-    size_t len;
-    op_t op;
-    if (!peek_infix_op(T, &len, &op) || op.pri > max_prec)
-      break;
-    int right_max = (op.assoc == XFY) ? op.pri : op.pri - 1;
-    T->P += len;
-    skip_ws(T);
-    tterm_t *right = parse_expr(T, right_max);
-    tterm_t *args[2] = {left, right};
-    left = tt_struct(T, op.name, 2, args);
+// Frames: (kind, a, b, c).
+enum {
+  K_DONE,
+  K_INFIX, // a = prec
+  K_RIGHT, // a = prec, b = op, c = left
+  K_PAREN,
+  K_BRACE,
+  K_ARGS,   // a = name, b = base, c = argc
+  K_LIST,   // b = base
+  K_TAIL,   // b = base
+  K_PREFIX, // a = op
+};
+
+static void frame_push(trilog_t *T, size_t kind, size_t a, size_t b, size_t c) {
+  wstack_push(T, kind);
+  wstack_push(T, a);
+  wstack_push(T, b);
+  wstack_push(T, c);
+}
+
+#define PTR(p) ((size_t)(uintptr_t)(p))
+#define TERM(x) ((tterm_t *)(uintptr_t)(x))
+#define NAME(x) ((const char *)(uintptr_t)(x))
+
+static void expect(trilog_t *T, char c, const char *msg) {
+  skip_ws(T);
+  if (*T->P != c)
+    perr(T, msg);
+  T->P++;
+}
+
+static tterm_t *build_list(trilog_t *T, size_t base, tterm_t *tail) {
+  tterm_t *acc = tail;
+  for (size_t i = T->psp; i-- > base;) {
+    tterm_t *cons[2] = {T->pstack[i], acc};
+    acc = tt_struct(T, ".", 2, cons);
   }
-  return left;
+  T->psp = base;
+  return acc;
+}
+
+static int prefix_applies(trilog_t *T) {
+  return *T->P != '\0' && !at_clause_end(T) && *T->P != ')' && *T->P != ',' &&
+         *T->P != ']' && *T->P != '|';
+}
+
+static tterm_t *parse_expr(trilog_t *T, int max_prec) {
+  size_t wbase = T->wsp;
+  int prec = max_prec;
+  tterm_t *v;
+  frame_push(T, K_DONE, 0, 0, 0);
+
+start:
+  frame_push(T, K_INFIX, (size_t)prec, 0, 0);
+  skip_ws(T);
+  if (*T->P == '\0')
+    perr(T, "unexpected end of input");
+  switch (*T->P) {
+  case '(':
+    T->P++;
+    skip_ws(T);
+    frame_push(T, K_PAREN, 0, 0, 0);
+    prec = 1200;
+    goto start;
+  case '[':
+    T->P++;
+    skip_ws(T);
+    if (*T->P == ']') {
+      T->P++;
+      v = tt_atom(T, "[]");
+      goto produced;
+    }
+    frame_push(T, K_LIST, 0, T->psp, 0);
+    prec = 999;
+    goto start;
+  case '{':
+    T->P++;
+    skip_ws(T);
+    if (*T->P == '}') {
+      T->P++;
+      v = tt_atom(T, "{}");
+      goto produced;
+    }
+    frame_push(T, K_BRACE, 0, 0, 0);
+    prec = 1200;
+    goto start;
+  case '"':
+    v = parse_string(T);
+    goto produced;
+  case '!':
+    T->P++;
+    v = tt_atom(T, "!");
+    goto produced;
+  case ';':
+    T->P++;
+    v = tt_atom(T, ";");
+    goto produced;
+  case '\'': {
+    const char *name = atom_name(T, atom_intern(T, read_quoted(T, '\'')));
+    skip_ws(T);
+    if (*T->P == '(')
+      goto compound_name;
+    v = tt_atom(T, name);
+    goto produced;
+  compound_name:
+    T->P++;
+    skip_ws(T);
+    frame_push(T, K_ARGS, PTR(name), T->psp, 0);
+    prec = 999;
+    goto start;
+  }
+  default:
+    break;
+  }
+  if (*T->P == '_' || isupper((unsigned char)*T->P)) {
+    v = tt_var(T, vartab_slot(T, read_while(T, is_ident_char)));
+    goto produced;
+  }
+  if (isdigit((unsigned char)*T->P) ||
+      (*T->P == '-' && isdigit((unsigned char)T->P[1]))) {
+    v = parse_number(T);
+    goto produced;
+  }
+  {
+    int lower = islower((unsigned char)*T->P);
+    if (!lower && !is_symbol_char((unsigned char)*T->P))
+      perr(T, "unexpected character");
+    const char *name = read_name(T, lower ? is_ident_char : is_symbol_char);
+    if (*T->P == '(') {
+      T->P++;
+      skip_ws(T);
+      frame_push(T, K_ARGS, PTR(name), T->psp, 0);
+      prec = 999;
+      goto start;
+    }
+    op_t pre, dummy;
+    if (find_prefix(T, name, &pre) && prefix_applies(T) &&
+        !(lower && find_infix(T, name, &dummy))) {
+      frame_push(T, K_PREFIX, PTR(name), 0, 0);
+      prec = pre.assoc == FY ? pre.pri : pre.pri - 1;
+      goto start;
+    }
+    v = tt_atom(T, name);
+    goto produced;
+  }
+
+produced:
+  for (;;) {
+    size_t c = T->wstack[--T->wsp];
+    size_t b = T->wstack[--T->wsp];
+    size_t a = T->wstack[--T->wsp];
+    size_t kind = T->wstack[--T->wsp];
+    switch (kind) {
+    case K_DONE:
+      T->wsp = wbase;
+      return v;
+    case K_RIGHT: {
+      tterm_t *args[2] = {TERM(c), v};
+      v = tt_struct(T, NAME(b), 2, args);
+    }
+      // fall through
+    case K_INFIX: {
+      size_t len;
+      op_t op;
+      if (!peek_infix_op(T, &len, &op) || op.pri > (int)a)
+        continue;
+      T->P += len;
+      skip_ws(T);
+      frame_push(T, K_RIGHT, a, PTR(op.name), PTR(v));
+      prec = op.assoc == XFY ? op.pri : op.pri - 1;
+      goto start;
+    }
+    case K_PAREN:
+      expect(T, ')', "expected ')'");
+      continue;
+    case K_BRACE: {
+      expect(T, '}', "expected '}'");
+      tterm_t *args[1] = {v};
+      v = tt_struct(T, "{}", 1, args);
+      continue;
+    }
+    case K_ARGS:
+      pstack_push(T, v);
+      c++;
+      skip_ws(T);
+      if (*T->P == ',') {
+        if (c >= MAX_ARITY)
+          perr(T, "too many arguments");
+        T->P++;
+        skip_ws(T);
+        frame_push(T, K_ARGS, a, b, c);
+        prec = 999;
+        goto start;
+      }
+      expect(T, ')', "expected ')'");
+      v = tt_struct(T, NAME(a), (int32_t)c, T->pstack + b);
+      T->psp = b;
+      continue;
+    case K_LIST:
+      pstack_push(T, v);
+      skip_ws(T);
+      if (*T->P == ',' || *T->P == '|') {
+        frame_push(T, *T->P == ',' ? K_LIST : K_TAIL, 0, b, 0);
+        T->P++;
+        skip_ws(T);
+        prec = 999;
+        goto start;
+      }
+      expect(T, ']', "expected ']'");
+      v = build_list(T, b, tt_atom(T, "[]"));
+      continue;
+    case K_TAIL:
+      expect(T, ']', "expected ']'");
+      v = build_list(T, b, v);
+      continue;
+    case K_PREFIX:
+      v = tt_struct(T, NAME(a), 1, &v);
+      continue;
+    }
+  }
 }
 
 // ---- clause assembly ----

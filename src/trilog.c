@@ -31,6 +31,8 @@ static trilog_status_t unwound(trilog_t *t) {
   t->heap_top = 0;
   t->trail_top = 0;
   t->occurs_len = 0;
+  t->wsp = 0;
+  t->psp = 0;
   t->template_marks_len = 0;
   t->template_cyclic = 0;
   t->sp = 0;
@@ -40,7 +42,6 @@ static trilog_status_t unwound(trilog_t *t) {
   t->capture_sp = 0;
   t->capture_pos = 0;
   t->tta_pos = 0;
-  t->print_depth = 0;
   t->solution_rename = NULL;
   t->pending_error_ball = (size_t)-1;
   t->uncaught_ball = (size_t)-1;
@@ -121,6 +122,8 @@ void trilog_free(trilog_t *t) {
   mem_free(t, t->path_buf);
   mem_free(t, t->path_tmp);
   mem_free(t, t->scratch);
+  mem_free(t, t->wstack);
+  mem_free(t, t->capture_buf);
   mem_free(t, t->consulted_decls);
   mem_free(t, t->dynamic_decls);
   mem_free(t, t->foreign);

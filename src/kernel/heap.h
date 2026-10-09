@@ -37,6 +37,7 @@ size_t heap_new_var(trilog_t *T);
 size_t heap_new_atom(trilog_t *T, int32_t atom_id);
 size_t heap_new_int(trilog_t *T, int64_t v);
 size_t heap_new_flt(trilog_t *T, double v);
+// NULL arg_idx: unbound arguments.
 size_t heap_new_struct(trilog_t *T, int32_t functor_id, int32_t arity,
                        size_t *arg_idx);
 

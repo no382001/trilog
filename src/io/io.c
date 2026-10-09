@@ -1,5 +1,6 @@
 #include "io.h"
 #include "ctx.h"
+#include "mem.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -45,15 +46,11 @@ bool io_set(trilog_t *T, const trilog_io_t *io) {
 }
 
 static void capture_append(trilog_t *T, const char *str) {
-  int len = (int)strlen(str);
-  int rem = CAPTURE_BUF_SIZE - T->capture_pos - 1;
-  if (len > rem)
-    len = rem;
-  if (len > 0) {
-    memcpy(T->capture_buf + T->capture_pos, str, (size_t)len);
-    T->capture_pos += len;
-    T->capture_buf[T->capture_pos] = '\0';
-  }
+  size_t len = strlen(str);
+  mem_reserve(T, (void **)&T->capture_buf, &T->capture_cap,
+              T->capture_pos + len + 1);
+  memcpy(T->capture_buf + T->capture_pos, str, len + 1);
+  T->capture_pos += len;
 }
 
 static void io_write(trilog_t *T, void *handle, const char *str) {
