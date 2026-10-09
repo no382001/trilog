@@ -6,7 +6,7 @@ CFLAGS = -Wall -Wextra -std=c11 -O2
 CPPFLAGS = -Iinclude -Isrc/kernel -Isrc/io -Isrc/platform -I_build -MMD -MP
 
 PLATFORM ?= posix
-KERNEL_SRCS = src/kernel/heap.c src/kernel/unify.c src/kernel/term.c src/kernel/solve.c \
+KERNEL_SRCS = src/kernel/fmt.c src/kernel/heap.c src/kernel/unify.c src/kernel/term.c src/kernel/solve.c \
               src/kernel/parse.c src/kernel/arena.c src/kernel/gc.c src/kernel/mem.c
 IO_SRCS = src/io/io.c src/io/streams.c
 LIB_SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c src/platform/$(PLATFORM).c src/platform/libc.c

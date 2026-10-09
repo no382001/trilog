@@ -146,6 +146,10 @@ typedef bool (*trilog_fn)(trilog_t *t, void *ud, const trilog_value_t *in,
 bool trilog_register(trilog_t *t, const char *name, const char *sig,
                      trilog_fn fn, void *ud);
 
+// From inside a registered fn, raises error(Formal, Name/Arity), where Formal
+// is the Prolog text of formal after formatting; elsewhere it does nothing.
+// The format takes %% %c %s %.*s, %d and %u with no, l, ll or z length, and
+// %g. Always returns false, so fn can end with `return trilog_error(...)`.
 bool trilog_error(trilog_t *t, const char *formal, ...);
 
 // Calls fn every `every` steps; returning false makes the running call

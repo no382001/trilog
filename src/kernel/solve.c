@@ -2,6 +2,7 @@
 #include "arena.h"
 #include "atoms.h"
 #include "ctx.h"
+#include "fmt.h"
 #include "gc.h"
 #include "heap.h"
 #include "io.h"
@@ -10,11 +11,9 @@
 #include "platform.h"
 #include "streams.h"
 #include "unify.h"
-#include <errno.h>
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -1918,13 +1917,13 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     size_t a = heap_deref(T, f + 1);
     if (T->heap[a].tag == TAG_INT) {
       char buf[32];
-      snprintf(buf, sizeof buf, "%lld", (long long)T->heap[a].as.ival);
+      fmt(buf, sizeof buf, "%lld", (long long)T->heap[a].as.ival);
       *ok = unify(T, f + 2, codes_from_cstr(T, buf));
       return 1;
     }
     if (T->heap[a].tag == TAG_FLT) {
       char buf[64];
-      snprintf(buf, sizeof buf, "%g", T->heap[a].as.fval);
+      fmt(buf, sizeof buf, "%g", T->heap[a].as.fval);
       *ok = unify(T, f + 2, codes_from_cstr(T, buf));
       return 1;
     }
@@ -1936,11 +1935,11 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       *ok = 0;
       return 1;
     }
-    char *end;
-    errno = 0;
-    int64_t iv = strtoll(buf, &end, 10);
+    const char *end;
+    int64_t iv;
+    bool fits = parse_int(buf, &end, &iv);
     if (*end == '\0' && end != buf) {
-      if (errno == ERANGE) {
+      if (!fits) {
         size_t args[1] = {heap_new_atom(
             T, atom_intern(T, iv > 0 ? "max_integer" : "min_integer"))};
         T->pending_error_ball = make_error(
@@ -1952,8 +1951,10 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       *ok = unify(T, f + 1, heap_new_int(T, iv));
       return 1;
     }
-    double dv = strtod(buf, &end);
-    *ok = (*end == '\0' && end != buf) && unify(T, f + 1, heap_new_flt(T, dv));
+    char *fend;
+    double dv = strtod(buf, &fend);
+    *ok =
+        (*fend == '\0' && fend != buf) && unify(T, f + 1, heap_new_flt(T, dv));
     return 1;
   }
   return 0;

@@ -1,12 +1,12 @@
 #include "gc.h"
 #include "ctx.h"
+#include "fmt.h"
 #include "heap.h"
 #include "io.h"
 #include "mem.h"
 #include "platform.h"
 #include <setjmp.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -389,13 +389,13 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
 
   if (T->gc_debug) {
     char msg[300];
-    snprintf(msg, sizeof msg,
-             "gc: heap %zu -> %zu, trail %zu -> %zu, nframes=%zu, "
-             "mark_visits=%zu, threshold=%zu, "
-             "heap_cap=%zu, new_index_cap=%zu\n",
-             old_top, new_top, old_trail_top, new_trail_top, nframes,
-             T->mark_visit_count, T->gc_threshold, heap_capacity(T),
-             T->new_index_cap);
+    fmt(msg, sizeof msg,
+        "gc: heap %zu -> %zu, trail %zu -> %zu, nframes=%zu, "
+        "mark_visits=%zu, threshold=%zu, "
+        "heap_cap=%zu, new_index_cap=%zu\n",
+        old_top, new_top, old_trail_top, new_trail_top, nframes,
+        T->mark_visit_count, T->gc_threshold, heap_capacity(T),
+        T->new_index_cap);
     io_write_err(T, msg);
   }
 }

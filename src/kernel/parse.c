@@ -4,14 +4,13 @@
 #include "chars.h"
 #include "ctx.h"
 #include "embedded.h"
+#include "fmt.h"
 #include "heap.h"
 #include "io.h"
 #include "mem.h"
 #include "solve.h"
-#include <errno.h>
 #include <setjmp.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -80,7 +79,7 @@ static int find_prefix(trilog_t *T, const char *name, op_t *out) {
 // ---- input cursor and error handling ----
 
 static void perr(trilog_t *T, const char *msg) {
-  snprintf(T->err_msg, sizeof(T->err_msg), "%s near \"%.20s\"", msg, T->P);
+  fmt(T->err_msg, sizeof(T->err_msg), "%s near \"%.20s\"", msg, T->P);
   longjmp(T->err_jmp, 1);
 }
 
@@ -288,9 +287,8 @@ static tterm_t *parse_number(trilog_t *T) {
   buf[n] = '\0';
   if (is_float)
     return tt_flt(T, strtod(buf, NULL));
-  errno = 0;
-  long long v = strtoll(buf, NULL, 10);
-  if (errno == ERANGE)
+  int64_t v;
+  if (!parse_int(buf, NULL, &v))
     perr(T, "integer literal out of range");
   return tt_int(T, v);
 }
@@ -663,11 +661,11 @@ static const char *find_embedded(trilog_t *T, const char *path, char *resolved,
                                  size_t cap) {
   char *key = T->path_tmp;
   if (key != path)
-    snprintf(key, PATH_CAP, "%s", path);
+    fmt(key, PATH_CAP, "%s", path);
   normalize_path(key);
   for (const embedded_file *e = embedded_files; e->path; e++)
     if (!strcmp(e->path, key)) {
-      snprintf(resolved, cap, EMBED_PREFIX "%s", e->path);
+      fmt(resolved, cap, EMBED_PREFIX "%s", e->path);
       return e->data;
     }
   return NULL;
@@ -719,11 +717,11 @@ static bool resolve_disk(trilog_t *T, const char *path, char *out, size_t cap) {
   char *abs = T->path_tmp;
   if (path[0] != '/' && io_cwd(T, abs, PATH_CAP)) {
     size_t n = strlen(abs);
-    snprintf(abs + n, PATH_CAP - n, "/%s", path);
+    fmt(abs + n, PATH_CAP - n, "/%s", path);
     path = abs;
   }
   if (out != path)
-    snprintf(out, cap, "%s", path);
+    fmt(out, cap, "%s", path);
   normalize_path(out);
   return true;
 }
@@ -737,10 +735,9 @@ static bool resolve_source(trilog_t *T, const char *path, char *out,
     return find_embedded(T, path + EMBED_PREFIX_LEN, out, cap) != NULL;
   const char *slash = T->consulting ? strrchr(T->consulting, '/') : NULL;
   if (path[0] != '/' && slash) {
-    snprintf(out, cap, "%.*s/%s", (int)(slash - T->consulting), T->consulting,
-             path);
+    fmt(out, cap, "%.*s/%s", (int)(slash - T->consulting), T->consulting, path);
     if (!strncmp(out, EMBED_PREFIX, EMBED_PREFIX_LEN)) {
-      snprintf(T->path_tmp, PATH_CAP, "%s", out + EMBED_PREFIX_LEN);
+      fmt(T->path_tmp, PATH_CAP, "%s", out + EMBED_PREFIX_LEN);
       if (find_embedded(T, T->path_tmp, out, cap))
         return true;
     } else if (resolve_disk(T, out, out, cap)) {

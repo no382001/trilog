@@ -1,6 +1,7 @@
 #include "trilog.h"
 #include "arena.h"
 #include "ctx.h"
+#include "fmt.h"
 #include "heap.h"
 #include "io.h"
 #include "mem.h"
@@ -11,7 +12,6 @@
 #include "version.h"
 #include <setjmp.h>
 #include <stdarg.h>
-#include <stdio.h>
 #include <string.h>
 
 static const trilog_term_t invalid_term = {(size_t)-1};
@@ -227,13 +227,11 @@ bool trilog_error(trilog_t *t, const char *formal, ...) {
     return false;
   va_list ap;
   va_start(ap, formal);
-  int n = vsnprintf(NULL, 0, formal, ap);
+  size_t n = fmt_v(NULL, 0, formal, ap);
   va_end(ap);
-  if (n < 0)
-    return false;
-  mem_reserve(t, &t->scratch, &t->scratch_cap, (size_t)n + 1);
+  mem_reserve(t, &t->scratch, &t->scratch_cap, n + 1);
   va_start(ap, formal);
-  vsnprintf(t->scratch, (size_t)n + 1, formal, ap);
+  fmt_v(t->scratch, n + 1, formal, ap);
   va_end(ap);
   t->foreign_error = foreign_error_ball(t, t->scratch);
   return false;

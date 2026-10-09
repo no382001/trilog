@@ -3,10 +3,10 @@
 #include "atoms.h"
 #include "chars.h"
 #include "ctx.h"
+#include "fmt.h"
 #include "heap.h"
 #include "io.h"
 #include "mem.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -304,10 +304,9 @@ static int print_var_name(trilog_t *T, size_t f, emit_fn emit) {
   int64_t i = T->heap[n].as.ival;
   char buf[32];
   if (i / 26)
-    snprintf(buf, sizeof buf, "%c%lld", 'A' + (int)(i % 26),
-             (long long)(i / 26));
+    fmt(buf, sizeof buf, "%c%lld", 'A' + (int)(i % 26), (long long)(i / 26));
   else
-    snprintf(buf, sizeof buf, "%c", 'A' + (int)(i % 26));
+    fmt(buf, sizeof buf, "%c", 'A' + (int)(i % 26));
   emit(T, buf);
   return 1;
 }
@@ -375,7 +374,7 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
     r = heap_deref(T, a);
     switch (T->heap[r].tag) {
     case TAG_REF:
-      snprintf(buf, sizeof buf, "_G%zu", r);
+      fmt(buf, sizeof buf, "_G%zu", r);
       emit(T, buf);
       break;
     case TAG_ATOM:
@@ -383,11 +382,11 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
                  emit);
       break;
     case TAG_INT:
-      snprintf(buf, sizeof buf, "%lld", (long long)T->heap[r].as.ival);
+      fmt(buf, sizeof buf, "%lld", (long long)T->heap[r].as.ival);
       emit(T, buf);
       break;
     case TAG_FLT:
-      snprintf(buf, sizeof buf, "%g", T->heap[r].as.fval);
+      fmt(buf, sizeof buf, "%g", T->heap[r].as.fval);
       if (!strpbrk(buf, ".eEnN")) // 2.0, not 2
         strncat(buf, ".0", sizeof buf - strlen(buf) - 1);
       emit(T, buf);

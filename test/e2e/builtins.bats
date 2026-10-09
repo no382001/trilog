@@ -735,3 +735,13 @@ load common
   result=$(printf "with_output_to(atom(X), write(hello)), write(X).\n" | "$TRILOG" 2>&1)
   [[ "$result" == *"hello"* ]]
 }
+
+@test "integer text: number_codes/2, printing and '\$VAR' names match the saved output" {
+  run "$TRILOG" -n test/e2e/files/number_text.pl -e "main."
+  [ "$output" == "$(cat test/e2e/files/number_text.expected)" ]
+}
+
+@test "a parse error quotes at most 20 characters of the rest of the input" {
+  run bash -c "printf 'X = f(99999999999999999999, abcdefghijklmnopqrstuvwxyz).\n' | $TRILOG -n"
+  [[ "$output" == *'integer literal out of range near ", abcdefghijklmnopqr"'* ]]
+}
