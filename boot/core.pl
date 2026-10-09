@@ -791,8 +791,6 @@ abolish(PI) :-
     ( atom(Name) -> true ; throw(error(type_error(atom, Name), abolish/1)) ),
     ( integer(Arity) -> true ; throw(error(type_error(integer, Arity), abolish/1)) ),
     ( Arity >= 0 -> true ; throw(error(domain_error(not_less_than_zero, Arity), abolish/1)) ),
-    current_prolog_flag(max_arity, MaxArity),
-    ( Arity =< MaxArity -> true ; throw(error(representation_error(max_arity), abolish/1)) ),
     functor(Head, Name, Arity),
     retractall(Head),
     '$$undynamic'(Name, Arity).

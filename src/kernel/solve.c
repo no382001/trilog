@@ -21,7 +21,6 @@
 
 // real cap enforced by functor/3 and =../2 below;
 // current_prolog_flag(max_arity, V) reports this exact number.
-#define MAX_ARITY 255
 
 static uint32_t pred_hash_slot(int32_t pred_id, int32_t pred_arity) {
   uint32_t h = (uint32_t)pred_id * 2654435761u + (uint32_t)pred_arity * 40503u;
@@ -160,11 +159,6 @@ static size_t make_domain_error(trilog_t *T, const char *domain,
   size_t args[2] = {heap_new_atom(T, atom_intern(T, domain)), culprit};
   return make_error(
       T, heap_new_struct(T, atom_intern(T, "domain_error"), 2, args));
-}
-static size_t make_representation_error(trilog_t *T, const char *what) {
-  size_t args[1] = {heap_new_atom(T, atom_intern(T, what))};
-  return make_error(
-      T, heap_new_struct(T, atom_intern(T, "representation_error"), 1, args));
 }
 static size_t make_syntax_error(trilog_t *T) {
   size_t args[1] = {heap_new_atom(T, atom_intern(T, T->err_msg))};
@@ -1525,15 +1519,16 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     return 1;
   }
   if (arity == 1 && id == atom_prolog_flags) {
-    // real values - this engine's actual int64_t arithmetic and
-    // MAX_ARITY, not borrowed numbers.
+    // real values - this engine's actual int64_t arithmetic, not borrowed
+    // numbers.
     size_t flags[][2] = {
         {heap_new_atom(T, atom_flag_bounded), heap_new_atom(T, atom_true)},
         {heap_new_atom(T, atom_flag_max_integer), heap_new_int(T, INT64_MAX)},
         {heap_new_atom(T, atom_flag_min_integer), heap_new_int(T, INT64_MIN)},
         {heap_new_atom(T, atom_flag_integer_rounding_function),
          heap_new_atom(T, atom_toward_zero)},
-        {heap_new_atom(T, atom_flag_max_arity), heap_new_int(T, MAX_ARITY)},
+        {heap_new_atom(T, atom_flag_max_arity),
+         heap_new_atom(T, atom_intern(T, "unbounded"))},
         {heap_new_atom(T, atom_flag_double_quotes),
          heap_new_atom(T, atom_chars_kw)},
         {heap_new_atom(T, atom_intern(T, "unknown")),
@@ -1746,8 +1741,8 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       T->pending_error_ball = make_type_error(T, "atomic", name_d);
     else if (ar > 0 && T->heap[name_d].tag != TAG_ATOM)
       T->pending_error_ball = make_type_error(T, "atom", name_d);
-    else if (ar > MAX_ARITY)
-      T->pending_error_ball = make_representation_error(T, "max_arity");
+    else if ((uint64_t)ar > gc_max_live(T) || ar > INT32_MAX)
+      T->pending_error_ball = make_resource_error(T, "memory");
     if (T->pending_error_ball != (size_t)-1) {
       *ok = 0;
       return 1;
@@ -1757,7 +1752,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       return 1;
     }
     mem_reserve(T, &T->scratch, &T->scratch_cap, (size_t)ar * sizeof(size_t));
-    size_t *args = T->scratch; // ar <= MAX_ARITY, checked above
+    size_t *args = T->scratch;
     for (int64_t i = 0; i < ar; i++)
       args[i] = heap_new_var(T);
     *ok = unify(
@@ -1857,8 +1852,8 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     while (T->heap[cur].tag == TAG_STR &&
            T->heap[T->heap[cur].as.ptr].as.func.atom_id == atom_dot &&
            T->heap[T->heap[cur].as.ptr].as.func.arity == 2) {
-      if (ne == MAX_ARITY) {
-        T->pending_error_ball = make_representation_error(T, "max_arity");
+      if (ne == INT32_MAX) {
+        T->pending_error_ball = make_resource_error(T, "memory");
         return 1;
       }
       mem_reserve(T, &T->scratch, &T->scratch_cap, (ne + 1) * sizeof(size_t));

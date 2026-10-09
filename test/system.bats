@@ -307,20 +307,20 @@ answers() {
   run "$TRILOG" -e "
     E = error(X, _),
     findall(X, ( member(L, [[foo|bar], 4, [], [3,1], [a(b),1], [f(a)]]), catch(_ =.. L, E, true) ), Xs),
-    length(Args, 300), catch(_ =.. [f|Args], error(R, _), true),
-    write(Xs), nl, write(R), nl.
+    length(Args, 300), T =.. [f|Args], functor(T, _, A),
+    write(Xs), nl, write(arity(A)), nl.
   "
   [[ "$output" == *"[type_error(list, [foo|bar]), type_error(list, 4), domain_error(non_empty_list, []), type_error(atom, 3), type_error(atom, a(b)), type_error(atomic, f(a))]"* ]]
-  [[ "$output" == *"representation_error(max_arity)"* ]]
+  [[ "$output" == *"arity(300)"* ]]
 }
 
 @test "functor/3 raises the ISO errors instead of failing silently (regression)" {
   run "$TRILOG" -e "
     E = error(X, _),
-    findall(X, ( member(N-A, [foo-a, 1.5-1, foo(a)-1, foo-(-1), foo-256]), catch(functor(_, N, A), E, true) ), Xs),
+    findall(X, ( member(N-A, [foo-a, 1.5-1, foo(a)-1, foo-(-1)]), catch(functor(_, N, A), E, true) ), Xs),
     write(Xs), nl.
   "
-  [[ "$output" == *"[type_error(integer, a), type_error(atom, 1.5), type_error(atomic, foo(a)), domain_error(not_less_than_zero, -1), representation_error(max_arity)]"* ]]
+  [[ "$output" == *"[type_error(integer, a), type_error(atom, 1.5), type_error(atomic, foo(a)), domain_error(not_less_than_zero, -1)]"* ]]
 }
 
 @test "startup under a tiny memory cap reports out of memory instead of crashing (regression)" {
@@ -2082,4 +2082,28 @@ PLEOF
     nl.
   "
   [[ "$output" == *"r(same, 5000, same, same, distinct)"* ]]
+}
+
+@test "compound arity is unbounded: functor/3, arg/3, =../2, the parser and abolish/1 (#26)" {
+  run "$TRILOG" -f -e "
+    functor(T, f, 5000),
+    arg(5000, T, z),
+    T =.. [_|As],
+    length(As, N1),
+    length(L, 20000),
+    T2 =.. [g|L],
+    functor(T2, _, N2),
+    functor(T3, h, 1000),
+    T3 =.. [h|As3],
+    maplist(=(a), As3),
+    term_to_atom(T3, At),
+    atom_to_term(At, T4, _),
+    ( T4 == T3 -> R1 = same ; R1 = different ),
+    current_prolog_flag(max_arity, M),
+    catch(functor(_, f, 1000000000), error(E, _), true),
+    abolish(foo/1000),
+    write(r(N1, N2, R1, M, E)),
+    nl.
+  "
+  [[ "$output" == *"r(5000, 20000, same, unbounded, resource_error(memory))"* ]]
 }

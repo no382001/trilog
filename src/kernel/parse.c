@@ -15,7 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_ARITY 255
+#define MAX_BODY_GOALS 255
 
 typedef enum { XFX, XFY, YFX, FX, FY } assoc_t;
 typedef struct {
@@ -520,8 +520,6 @@ produced:
       c++;
       skip_ws(T);
       if (*T->P == ',') {
-        if (c >= MAX_ARITY)
-          perr(T, "too many arguments");
         T->P++;
         skip_ws(T);
         frame_push(T, K_ARGS, a, b, c);
@@ -564,13 +562,13 @@ static tterm_t **flatten_conj(trilog_t *T, tterm_t *t, int32_t *n_out) {
   int32_t n = 0;
   while (t->tag == T_STR && t->as.str.arity == 2 &&
          t->as.str.atom_id == atom_comma) {
-    if (n >= MAX_ARITY)
+    if (n >= MAX_BODY_GOALS)
       perr(T, "clause body too long");
     pstack_push(T, t->as.str.args[0]);
     n++;
     t = t->as.str.args[1];
   }
-  if (n >= MAX_ARITY)
+  if (n >= MAX_BODY_GOALS)
     perr(T, "clause body too long");
   pstack_push(T, t);
   n++;

@@ -200,7 +200,7 @@ static size_t compact_trail(trilog_t *T, size_t old_trail_top) {
 #define GC_MAX_LIVE_CELLS ((size_t)64 << 20)
 #endif
 
-static size_t gc_max_live(trilog_t *T) {
+size_t gc_max_live(trilog_t *T) {
   if (T->gc_max == 0) {
     T->gc_max = GC_MAX_LIVE_CELLS;
     size_t limit = platform_address_space_limit();
