@@ -12,7 +12,7 @@ API_TEST_BINS = $(API_TESTS:%=_build/%)
 $(API_TEST_BINS): _build/%: $(DEV)/test/api/%.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) $(if $(findstring threads,$*),-pthread) -o $@ $^ -lm
 
-.PHONY: test test-api api-junit quad quad-junit syscheck-junit conformity conformity-junit
+.PHONY: known-failures test test-api api-junit quad quad-junit syscheck-junit conformity conformity-junit
 test: trilog test-api
 	bats test/e2e/
 
@@ -30,6 +30,10 @@ test-api: $(API_TEST_BINS) examples/embed
 api-junit: $(API_TEST_BINS) examples/embed
 	@mkdir -p $(RESULTS)
 	test/api/tap.sh examples/embed $(API_TEST_BINS) | awk -v suite=api -v file=test/api -f test/tap2junit.awk >$(RESULTS)/api.xml
+
+# Run every suite into RESULTS first.
+known-failures:
+	test/regressions.py --update $(RESULTS)
 
 conformity: trilog
 	test/conformity/conformity.sh

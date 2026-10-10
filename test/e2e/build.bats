@@ -4,6 +4,12 @@
 
 load common
 
+freestanding_symbols() {
+  printf '%s\n' memcpy memmove memset strlen strcmp strncmp strchr strrchr strncat strpbrk \
+    setjmp _setjmp longjmp sin cos atan atan2 exp log pow sqrt fabs floor ceil round trunc modf \
+    trilog_format_float trilog_parse_float _GLOBAL_OFFSET_TABLE_
+}
+
 @test "the release build runs from an empty directory, its libraries baked in" {
   run make -s -C "$BATS_TEST_DIRNAME/../.." release
   [ "$status" -eq 0 ]
@@ -38,9 +44,7 @@ load common
   run make -s -C "$root" PLATFORM=freestanding release
   [ "$status" -eq 0 ]
   lib="$root/_build/release-no_posix-nolibc/libtrilog.a"
-  printf '%s\n' memcpy memmove memset strlen strcmp strncmp strchr strrchr strncat strpbrk \
-    setjmp _setjmp longjmp sin cos atan atan2 exp log pow sqrt fabs floor ceil round trunc modf \
-    trilog_format_float trilog_parse_float >"$BATS_TEST_TMPDIR/allowed"
+  freestanding_symbols >"$BATS_TEST_TMPDIR/allowed"
   run bash -c "nm -u '$lib' | awk '{print \$2}' | sort -u | grep -vxF -f '$BATS_TEST_TMPDIR/allowed'"
   [ -z "$output" ] || { echo "unexpected: $output"; false; }
   run cc -std=c11 -Wall -Wextra -I"$root/include" "$root/test/api/api_freestanding_test.c" "$lib" -lm \
@@ -54,9 +58,10 @@ load common
 @test "the freestanding build turns off stack protection and fortify, which Ubuntu's gcc enables by default (regression)" {
   root="$BATS_TEST_DIRNAME/../.."
   run make -s -C "$root" PLATFORM=freestanding REL=_build/release-freestanding-hardened \
-    "CFLAGS=-Wall -Wextra -std=c11 -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=3" release
+    "CFLAGS=-Wall -Wextra -std=c11 -O2 -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=3" release
   [ "$status" -eq 0 ]
-  run bash -c "nm -u '$root/_build/release-freestanding-hardened/libtrilog.a' | grep -E '__stack_chk|_chk\$'"
+  freestanding_symbols >"$BATS_TEST_TMPDIR/allowed"
+  run bash -c "nm -u '$root/_build/release-freestanding-hardened/libtrilog.a' | awk '{print \$2}' | sort -u | grep -vxF -f '$BATS_TEST_TMPDIR/allowed'"
   [ -z "$output" ] || { echo "unexpected: $output"; false; }
 }
 

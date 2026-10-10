@@ -1,0 +1,376 @@
+between_quad	between(1+1,2,I)
+between_quad	between(1, I, 0)
+between_quad	between(1, c, 0)
+between_quad	between(I, -1, 0)
+between_quad	between(I, I, 0)
+builtins_quad	X is "hello"
+builtins_quad	current_prolog_flag(max_integer, V)
+builtins_quad	current_prolog_flag(min_integer, V)
+call_nth_quad	call_nth(( N = 1 ; N = 2 ), Nth)
+call_nth_quad	call_nth(1, 0)
+call_nth_quad	call_nth(N = -1, N)
+call_nth_quad	call_nth(N = 1, N)
+call_nth_quad	call_nth(V, 0)
+call_nth_quad	call_nth(false, Nth)
+call_nth_quad	call_nth(inex, 0)
+call_nth_quad	call_nth(length(L,N), 3)
+call_nth_quad	call_nth(repeat, -1)
+call_nth_quad	call_nth(repeat, 0)
+call_nth_quad	call_nth(repeat, Nth)
+call_nth_quad	call_nth(repeat,1+1)
+call_nth_quad	call_nth(true, 0)
+call_nth_quad	call_nth(true, 1.0)
+call_nth_quad	call_nth(true, Nth)
+call_nth_quad	call_nth(true, non_integer)
+conformity	#10 writeq('a\ ⏎  b'). % "a\\\n b"
+conformity	#101 a = '\141\'.
+conformity	#102 a = '\141'.
+conformity	#103 X = '\141\141'.
+conformity	#104 X = '\9'.
+conformity	#105 X = '\N'.
+conformity	#106 X = '\\' .
+conformity	#108 a = '\x61\'.
+conformity	#11 writeq('\ ').
+conformity	#117 integer(0'').
+conformity	#119 op(100,xfx,''). ⏎ functor(0 ''1,F, A).
+conformity	#12 writeq('\ '). % "\\\t"
+conformity	#120 op(100,xfx,''). ⏎ functor(0''1, F, A).
+conformity	#122 op(100,xfx,'1'). ⏎ functor(2'1'y, F, A).
+conformity	#123 X =0'\x41\ .
+conformity	#124 X =0'\x41\.
+conformity	#125 X =0'\x1\.
+conformity	#126 X = 0'\ ⏎ .\
+conformity	#127 X is 16'mod'2.
+conformity	#128 X is 37'mod'2.
+conformity	#130 X is 1'+'1.
+conformity	#132 op(100,fx,' op'). ⏎ writeq(' op' '1').
+conformity	#133 op(100,fx,' op'). ⏎ writeq(' op'[]).
+conformity	#135 writeq(-(1)).
+conformity	#137 writeq(- (a*b)).
+conformity	#138 writeq(\ (a*b)).
+conformity	#139 writeq(-((a,b))).
+conformity	#14 writeq('\a').
+conformity	#140 writeq(-a).
+conformity	#147 op(9,fy,fy),op(9,yf,yf). ⏎ write_canonical(fy 1 yf).
+conformity	#148 op(9,fy,fy),op(9,yf,yf). ⏎ write_canonical(fy yf).
+conformity	#149 op(9,fy,fy),op(9,yf,yf). ⏎ writeq(fy(yf(1))).
+conformity	#15 writeq('\7\').
+conformity	#150 op(9,fy,fy),op(9,yf,yf). ⏎ writeq(yf(fy(1))).
+conformity	#151 op(9,fy,fy),op(9,yfx,yfx). ⏎ write_canonical(fy 1 yfx 2).
+conformity	#152 op(9,fy,fy),op(9,yfx,yfx). ⏎ writeq(fy(yfx(1,2))).
+conformity	#153 op(9,fy,fy),op(9,yfx,yfx). ⏎ writeq(yfx(fy (1),2)).
+conformity	#154 op(9,yf,yf),op (9,xfy,xfy). ⏎ write_canonical(1 xfy 2 yf).
+conformity	#155 op(9,yf,yf),op (9,xfy,xfy). ⏎ writeq(xfy(1,yf(2))).
+conformity	#156 op(9,yf,yf),op (9,xfy,xfy). ⏎ writeq(yf(xfy (1,2))).
+conformity	#16 writeq('\ca').
+conformity	#160 op(9,fy,f),op(9,yf,f). ⏎ write_canonical(0 f f).
+conformity	#161 op(9,fy,f),op(9,yf,f). ⏎ write_canonical ⏎ (f f).
+conformity	#163 op(9,fy,p),op(9,xfy,p). ⏎ write_canonical(1 p p p 2).
+conformity	#164 op(7,fy,p),op(9,yfx,p). ⏎ write_canonical(1 p p p 2).
+conformity	#169 op(0,xfy,.),op(9,yf,.). ⏎ writeq(.(.)).
+conformity	#17 writeq('\e').
+conformity	#170 set_prolog_flag(double_quotes,chars).
+conformity	#171 set_prolog_flag(double_quotes,chars). ⏎ writeq("a").
+conformity	#172 X is 10.0** -323, writeq(X).
+conformity	#174 -1 = -0x1.
+conformity	#175 T = t(0b1,0o1,0x1).
+conformity	#176 X is 0b1mod 2.
+conformity	#177 0'\t=0'	. % horiz. tab
+conformity	#18 writeq('\033\').
+conformity	#181 op(1105,xfy,'|'). ⏎ writeq((a-->b,c|d)).
+conformity	#182 writeq(-(-1)).
+conformity	#183 writeq(-(1^2)).
+conformity	#184 writeq(-(-)).
+conformity	#185 writeq(-[-]).
+conformity	#188 writeq(-p(c)).
+conformity	#189 writeq(-{}).
+conformity	#19 char_code('\e',C).
+conformity	#190 writeq(-{a}).
+conformity	#191 writeq(-(-a)).
+conformity	#192 writeq(-(-(-a))).
+conformity	#194 op(0,xfy,.),writeq((.)+(.)).
+conformity	#196 op(100,xf,''). ⏎ writeq(0 '').
+conformity	#197 op(100,xf,''). ⏎ writeq(0'').
+conformity	#200 op(900, fy, [$]). ⏎ write_canonical($a+b).
+conformity	#201 op(9,fy,f),op(9,yf,f). ⏎ writeq(f(f(0))).
+conformity	#202 op(9,fy,f),op(9,yf,f). ⏎ write_canonical(f 0 f).
+conformity	#204 op(9,xf,e). ⏎ writeq(1e).
+conformity	#205 op(100,xf,''). ⏎ (0 '') = ''(X).
+conformity	#207 op(100,xf,f). ⏎ writeq(0'f'f').
+conformity	#208 op(100,xf,'f '). ⏎ writeq(0 'f ').
+conformity	#209 op(100,xf,f). ⏎ writeq(0'ff).
+conformity	#21 char_code('\d',C).
+conformity	#210 X = 0'\.
+conformity	#211 X = 0'\. .
+conformity	#212 X is 1'\ ⏎ +'1.
+conformity	#213 X is 0'\ ⏎ +'1.
+conformity	#214 X is 0'\
+conformity	#215 op(100,yfx,~). ⏎ writeq(-(1~2~3)).
+conformity	#216 writeq(-(-(1))).
+conformity	#218 writeq(-(1*2)).
+conformity	#219 op(999,xfy,'|'). ⏎ [a|[]]=[a].
+conformity	#22 writeq('\u1').
+conformity	#220 op(9,xf,e). ⏎ writeq(1.0e).
+conformity	#222 writeq((-)-(-)).
+conformity	#223 writeq(((:-):-(:-))).
+conformity	#224 \ .
+conformity	#225 char_code(C,0), writeq(C).
+conformity	#226 write_canonical(_+_).
+conformity	#227 write_canonical(B+B).
+conformity	#228 writeq(0'\z).
+conformity	#229 set_prolog_flag(double_quotes,chars). ⏎ writeq("\z").
+conformity	#230 char_code('\^',X).
+conformity	#231 writeq(0'\c).
+conformity	#232 writeq(0'\ ).
+conformity	#234 op(400,fx,f). ⏎ writeq(f/*.*/(1,2)).
+conformity	#235 op(400,fx,f). ⏎ writeq(1 = f).
+conformity	#236 write_canonical(a- - -b).
+conformity	#238 op(699,xf,>). ⏎ writeq(>(>(a),b)).
+conformity	#241 writeq('\d').
+conformity	#248 op(100,yfx,~). ⏎ writeq(- (1~2)).
+conformity	#249 op(100,yfx,~). ⏎ writeq(1~2).
+conformity	#250 writeq('\0\').
+conformity	#251 op(9,yfx,[bop,bo,b,op,xor]). ⏎ writeq(0bop 2).
+conformity	#252 op(9,yfx,[bop,bo,b,op,xor]). ⏎ writeq(0bo 2).
+conformity	#253 op(9,yfx,[bop,bo,b,op,xor]). ⏎ writeq(0b 2).
+conformity	#254 op(9,yfx,[bop,bo,b,op,xor]). ⏎ writeq(0op 2).
+conformity	#255 op(9,yfx,[bop,bo,b,op,xor]). ⏎ writeq(0xor 2).
+conformity	#256 op(100,xf,f). ⏎ writeq(0f).
+conformity	#257 writeq([+{a},+[]]).
+conformity	#258 op(100,xfy,.). ⏎ writeq(ok).% ⏎ 1 = X.
+conformity	#259 X = 0'\ ⏎ +'/*'. %*/1.
+conformity	#260 writeq(-(a^2)).
+conformity	#262 op(100,xfx,'1'). ⏎ functor(2 '1'y, F, A).
+conformity	#263 op(9,yfx,[bop,bo,b,op,xor]). ⏎ writeq(0 bop 2).
+conformity	#266 op(9,yf,[b2,o8]). ⏎ writeq(0b2).
+conformity	#267 op(9,yf,[b2,o8]). ⏎ writeq(0o8).
+conformity	#269 writeq('\b\r\f\t\n').
+conformity	#27 writeq((*)=(*)).
+conformity	#270 get_char(C). %a
+conformity	#271 get_char(C).%a
+conformity	#274 op(20,fx,--),writeq(--(a)).
+conformity	#276 writeq(0xamod 2).
+conformity	#277 writeq(+1^2).
+conformity	#278 op(9,xfy,.), writeq(-[1]).
+conformity	#279 op(9,xf,'$VAR'), ⏎ writeq(- '$VAR'(0)).
+conformity	#28 writeq([:-,-]).
+conformity	#280 writeq(00'+'1).
+conformity	#283 op(100,xfy,.). ⏎ writeq(-[1]).
+conformity	#284 writeq('\^J').
+conformity	#288 (- 1^2) = ^(-1,2).
+conformity	#290 op(1105,xfy,'|'). ⏎ writeq([(a|b)]).
+conformity	#291 writeq([(a,b)]).
+conformity	#292 writeq(1= \\).
+conformity	#296 op(9,xf,'$VAR'), ⏎ writeq('$VAR'(0)).
+conformity	#298 writeq([a,b|c]).
+conformity	#299 (\+ (a,b)) = \+(T).
+conformity	#3 )
+conformity	#30 writeq(a*(b+c)).
+conformity	#300 set_prolog_flag(double_quotes,chars). ⏎ writeq("\0\").
+conformity	#301 writeq('\0\').
+conformity	#304 op(300,fy,~). writeq(~ (a=b)). 
+conformity	#305 writeq(\ (a=b)).
+conformity	#306 writeq(+ (a=b)).
+conformity	#309 writeq({a,b}).
+conformity	#31 writeq(f(;,'|',';;')).
+conformity	#312 writeq('\u0021').
+conformity	#314 writeq("\u0021").
+conformity	#315 writeq('\x21\').
+conformity	#316 writeq('\x0021\').
+conformity	#317 op(1105,xfy,'|'). ⏎ writeq([a,(b,c)|[]]).
+conformity	#318 writeq(+((1*2)^3)).
+conformity	#319 op(9,fy,fy),op(9,yf,yf). ⏎ writeq(yf(fy(yf(fy(1))))).
+conformity	#32 writeq([.,.(.,.,.)]).
+conformity	#320 writeq([a|\+2]).
+conformity	#322 op(1105,xfy,'|'). ⏎ write_canonical((a|b;c)).
+conformity	#323 op(1105,xfy,'|'). ⏎ write_canonical((a;b|c)).
+conformity	#327 writeq(-((1*2)^3)).
+conformity	#328 op(0,fy,-). ⏎ writeq([-]).
+conformity	#329 write_canonical(;(a)).
+conformity	#33 writeq((a :- b,c)).
+conformity	#331 write_canonical(;(a,b)).
+conformity	#332 writeq(1 is _).
+conformity	#333 op(9,fx,.),writeq(.(' ')).
+conformity	#335 op(9,yf,.>). ⏎ write_canonical(a.> .>).
+conformity	#336 op(9,yf,.>). ⏎ writeq(((a).>).>).
+conformity	#337 writeq([.|1]).
+conformity	#338 writeq(-'-'2).
+conformity	#34 write_canonical([a]).
+conformity	#341 op(699,xf,>.). ⏎ writeq(>(>.(a),b)).
+conformity	#342 op(699,xf,>.). ⏎ write_canonical(a>. >b).
+conformity	#343 op(699,xf,>.). ⏎ write_canonical(a>. =b).
+conformity	#344 op(699,xf,>.). ⏎ write_canonical((a>.,b)).
+conformity	#345 op(699,xf,>.). ⏎ write_canonical(a>.).
+conformity	#346 op(699,xf,>). ⏎ write_canonical ⏎ (a>b).
+conformity	#349 write_canonical((-,(1))).
+conformity	#35 writeq('/*').
+conformity	#355 op(9,xf,'$VAR'), ⏎ writeq('$VAR'(-1)).
+conformity	#359 writeq({a:-b}).
+conformity	#36 writeq('/**').
+conformity	#364 writeq(-0.0).
+conformity	#4 .
+conformity	#42 op(1,xf,xf1). ⏎ 1xf1 = xf1(1).
+conformity	#45 op(100,xfx,.). ⏎ functor(3 .2,F,A). 
+conformity	#47 float(1E9).
+conformity	#48 integer(1e).
+conformity	#49 op(9,xf,e9). ⏎ 1e9 = e9(1).
+conformity	#5 writeq('	'). % horiz. tab
+conformity	#50 op(9,xf,e). ⏎ 1e-9 = -(e(1),9).
+conformity	#51 op(9,xf,e). ⏎ 1.0e- 9 = -(e(1.0),9).
+conformity	#52 op(9,xfy,e). ⏎ 1.2e 3 = e(X,Y).
+conformity	#53 writeq(1.0e100).
+conformity	#55 op(1,yf,yf1). ⏎ {-1 yf1}={yf1(X)}.
+conformity	#56 integer(- 1).
+conformity	#57 integer('-'1).
+conformity	#58 integer('-' 1).
+conformity	#59 integer(- /*.*/1).
+conformity	#61 integer('-'/*.*/1).
+conformity	#64 op(0,fy,-). ⏎ integer(- 1).
+conformity	#7 writeq('\ ⏎ '). % "\\\n"
+conformity	#73 op(999,xfy,'|'). ⏎ X=[a|b].
+conformity	#76 :- = :- .
+conformity	#77 - = - .
+conformity	#78 * = * .
+conformity	#8 writeq('\ ⏎ a'). % "\\\na"
+conformity	#82 (- -) = -(-).
+conformity	#83 (- - -) = -(-(-)).
+conformity	#84 (- - - -) = -(-(-(-))).
+conformity	#85 {:- :- c} = {:-(:-,c)}.
+conformity	#86 {- = - 1}={(-(=)) - 1}.
+conformity	#87 write_canonical((- = - 1)).
+conformity	#88 write_canonical((- = -1)).
+conformity	#89 write_canonical((-;)).
+conformity	#9 writeq('a\ ⏎ b'). % "a\\\nb"
+conformity	#92 [:- -c] = [(:- -c)].
+conformity	#95 {1} = {}(1).
+conformity	#96 write_canonical({1}).
+conformity	#97 '[]'(1) = [ ](X).
+core_quad	X = Y, X == Y
+core_quad	catch(throw(foo), bar, true)
+core_quad	last(X, [a, b, c])
+countall_quad	countall(G_0, N)
+countall_quad	countall(false, -1)
+countall_quad	countall(false, non_integer)
+float_quad	atom_number(X, 3.5)
+iso_quad	';'('->'(','(!, fail), true), true)
+iso_quad	'='(X,Y)
+iso_quad	(foo = Foo, nonvar(Foo))
+iso_quad	(insect(X), abolish(insect/1))
+iso_quad	(number_chars(X, [' ', '0', 'b', '1', '1', '1']), number_...
+iso_quad	(number_chars(X, [' ', '0', 'o', '1', '1', '1']), number_...
+iso_quad	(number_chars(X, [' ', '0', 'x', '1', '1', '1']), number_...
+iso_quad	abolish(bar/1)
+iso_quad	asserta((atom(_) :- true))
+iso_quad	assertz((atom(_) :- true))
+iso_quad	atom_chars('Pécs', L)
+iso_quad	atom_chars(A, ['P','é','c','s'])
+iso_quad	atom_codes('Pécs', C)
+iso_quad	atom_codes(A, [0'P,0'é,0'c,0's])
+iso_quad	atom_concat(T1, T2, 'Pécs')
+iso_quad	atom_length('Bartók Béla', L)
+iso_quad	atom_length(atom, N)
+iso_quad	bagof(X,(X=Y;X=Z),S)
+iso_quad	call((1; true))
+iso_quad	call((fail, 1))
+iso_quad	catch(foo(5),test(Y), true)
+iso_quad	copy_term(X+X+_Y,A+B+B)
+iso_quad	findall(X,X=1,[A|1])
+iso_quad	number_chars(A, ['0','''',a])
+iso_quad	number_chars(A, ['0',x,f])
+iso_quad	number_chars(X, [' ', '0', 'b', '1', '1'])
+iso_quad	number_chars(X, [' ', '0', 'o', '1', '1'])
+iso_quad	number_chars(X, [' ', '0', 'x', '1', '1'])
+iso_quad	number_codes(A, [0'0,0'x,0'f])
+iso_quad	number_codes(A,[0'0,39,0'a])
+iso_quad	retract((atom(X) :- X =='[]'))
+iso_quad	retract((legs(X, Y) :- Z))
+iso_quad	retract((legs(_X, _Y) :- _Z))
+iso_quad	setof(X, X^(true; 4),_L)
+iso_quad	setof(X, my_member(X,[V,U,f(U),f(V)]), [a,b,f(b),f(a)])
+iso_quad	setof(X,X=1,[A|1])
+iso_quad	setof(X,my_member(X,[f(b,U), f(c,V)]), [f(b,a),f(c,a)])
+iso_quad	sub_atom('Bartók Béla', 4, 2, A, S)
+iso_quad	sub_atom('Bartók Béla', 4, L, 5, S)
+iso_quad	sub_atom('Bartók Béla', B, 2, 5, S)
+iso_quad	sub_atom('Pécs',B,2,A,S)
+member_quad	member(X, X)
+member_quad	member(X, [_Y, _Z|nonlist])
+nth_quad	nth0(-1, Es, E)
+nth_quad	nth0(0, [A,B|non_list], E)
+nth_quad	nth0(N, [[]|Es], Es)
+nth_quad	nth0(non_integer, Es, E)
+number_chars_quad	L=['1'|L], number_chars(N,L)
+number_chars_quad	number_chars(1+1,"2")
+number_chars_quad	number_chars(1,"a")
+number_chars_quad	number_chars(1,1)
+number_chars_quad	number_chars(1,[' ',[]])
+number_chars_quad	number_chars(1,[0])
+number_chars_quad	number_chars(1,[[]])
+number_chars_quad	number_chars(1,[[]|2])
+number_chars_quad	number_chars(1,[[]|_])
+number_chars_quad	number_chars(1,[])
+number_chars_quad	number_chars(1,[_,[]])
+number_chars_quad	number_chars(1,[_|2])
+number_chars_quad	number_chars(1,[a|2])
+number_chars_quad	number_chars(N," 0'a")
+number_chars_quad	number_chars(N,"%\n1")
+number_chars_quad	number_chars(N,"'+'1")
+number_chars_quad	number_chars(N,"'-'1")
+number_chars_quad	number_chars(N,"'\\\n-' 3")
+number_chars_quad	number_chars(N,"+ 1")
+number_chars_quad	number_chars(N,"+1")
+number_chars_quad	number_chars(N,"- /**/1")
+number_chars_quad	number_chars(N,"- 1")
+number_chars_quad	number_chars(N,"-/**/1")
+number_chars_quad	number_chars(N,"/**/1")
+number_chars_quad	number_chars(N,"0'")
+number_chars_quad	number_chars(N,"0'.")
+number_chars_quad	number_chars(N,"0'\\7")
+number_chars_quad	number_chars(N,"0'\\7\\")
+number_chars_quad	number_chars(N,"0'\\n")
+number_chars_quad	number_chars(N,"0'\n")
+number_chars_quad	number_chars(N,"0X1")
+number_chars_quad	number_chars(N,"0b11")
+number_chars_quad	number_chars(N,"0o11")
+number_chars_quad	number_chars(N,"0x1")
+number_chars_quad	number_chars(N,"0x11")
+number_chars_quad	number_chars(N,"1.0e")
+number_chars_quad	number_chars(N,"1.0ee")
+number_chars_quad	number_chars(N,"1E1")
+number_chars_quad	number_chars(N,"1e1")
+number_chars_quad	number_chars(N,"3 ")
+number_chars_quad	number_chars(N,"3.")
+number_chars_quad	number_chars(N,'1')
+number_chars_quad	number_chars(N,['0'|_])
+number_chars_quad	number_chars(N,['1.1'])
+number_chars_quad	number_chars(N,['11'])
+number_chars_quad	number_chars(N,[1|_])
+number_chars_quad	number_chars(N,[49])
+number_chars_quad	number_chars(N,[X])
+number_chars_quad	number_chars(N,[X|2])
+number_chars_quad	number_chars(N,[])
+number_chars_quad	number_chars(N,[a|a])
+number_chars_quad	number_chars(V,[1|2])
+number_chars_quad	number_chars([],1)
+select_quad	select(E, Xs, Xs)
+select_quad	select(X, [Y|nonlist], Xs)
+solver_quad	sub_atom(abcabc, B, _, _, abc)
+stdlib_quad	countall(between(1,10,_), N)
+stdlib_quad	countall(fail, N)
+stdlib_quad	countall(member(_, []), N)
+stdlib_quad	countall(member(_, [a,b,c]), N)
+stdlib_quad	foldl(foldl5_add, [1,2,3], [10,20,30], 0, S)
+stdlib_quad	foldl(foldl6_add, [1,2], [10,20], [100,200], 0, S)
+stdlib_quad	nth0(0, [1,2,3], E, Rest)
+stdlib_quad	nth0(1, [1,2,3], E, Rest)
+stdlib_quad	nth1(2, [1,2,3], E, Rest)
+strings_quad	last(X, "hello")
+succ_quad	current_prolog_flag(max_integer, MI), succ(MI, 0)
+succ_quad	current_prolog_flag(max_integer, MI), succ(MI, 1)
+succ_quad	current_prolog_flag(max_integer, MI), succ(MI, MI)
+succ_quad	current_prolog_flag(max_integer, MI), succ(MI, S)
+succ_quad	succ(-1, S)
+succ_quad	succ(1, 1+1)
+succ_quad	succ(X, 0)
+succ_quad	succ(X, S)
+succ_quad	succ(X, X)
