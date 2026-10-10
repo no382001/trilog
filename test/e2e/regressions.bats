@@ -26,6 +26,8 @@ load common
   [[ "$output" == *"N = 9"* ]]
   run "$TRILOG" -f -e "catch(current_prolog_flag(1, _), error(E, _), true)."
   [[ "$output" == *"E = type_error(atom, 1)"* ]]
+  run "$TRILOG" -f -e "catch(current_prolog_flag(invalid_flag_atom, _), error(E, _), true)."
+  [[ "$output" == *"E = domain_error(prolog_flag, invalid_flag_atom)"* ]]
 }
 
 @test "key a prints all answers; stopping early prints ; ... . (#28)" {
@@ -38,14 +40,41 @@ load common
   [[ "$output" == *"X = 1"$'\n'";  ... ."* ]]
 }
 
+@test "space asks for the next answer, like ; (#8)" {
+  command -v script >/dev/null || skip "no script(1)"
+  run bash -c "{ echo 'member(X, [1,2,3]).'; sleep 0.3; printf ' '; sleep 0.3; printf '\004'; } \
+    | timeout 5 script -qc '$TRILOG -f' /dev/null 2>&1 | tr -d '\r'"
+  [[ "$output" == *"X = 1"$'\n'";  X = 2"$'\n'";  ... ."* ]]
+}
+
+@test "calling an undefined predicate raises existence_error, not failure (#15)" {
+  run "$TRILOG" -f -e "catch(ex_nihilo, error(E, _), true)."
+  [[ "$output" == *"E = existence_error(procedure, /(ex_nihilo, 0))"* ]]
+  run "$TRILOG" -f -e "ex_nihilo."
+  [[ "$output" == *"uncaught exception: error(existence_error(procedure, /(ex_nihilo, 0))"* ]]
+  [[ "$output" != *"false."* ]]
+}
+
+@test "-f skips ~/.trilog, and trilog program.pl loads the program (#22)" {
+  echo 'init_marker.' >"$BATS_TEST_TMPDIR/.trilog"
+  run env HOME="$BATS_TEST_TMPDIR" "$TRILOG" -e "( catch(init_marker, _, fail) -> R = loaded ; R = skipped )."
+  [[ "$output" == *"R = loaded"* ]]
+  run env HOME="$BATS_TEST_TMPDIR" "$TRILOG" -f -e "( catch(init_marker, _, fail) -> R = loaded ; R = skipped )."
+  [[ "$output" == *"R = skipped"* ]]
+  run env HOME="$BATS_TEST_TMPDIR" "$TRILOG" -f test/e2e/files/family.pl -e "parent(tom, X)."
+  [[ "$output" == *"X = bob"* ]]
+}
+
 @test "errors name the predicate that raised them in their context (#4)" {
   run "$TRILOG" -f -e "
-    catch(X is Y, error(_, C1), true),
-    catch(functor(_, _, _), error(_, C2), true),
+    catch(X is Y, error(E1, C1), true),
+    catch(functor(_, _, _), error(E2, C2), true),
     catch(sort(a, _), error(_, C3), true),
     catch(assertz(_), error(_, C4), true),
     catch(compare(foo, a, b), error(_, C5), true).
   "
+  [[ "$output" == *"E1 = instantiation_error"* ]]
+  [[ "$output" == *"E2 = instantiation_error"* ]]
   [[ "$output" == *"C1 = /(is, 2)"* ]]
   [[ "$output" == *"C2 = /(functor, 3)"* ]]
   [[ "$output" == *"C3 = /(sort, 2)"* ]]
@@ -64,8 +93,8 @@ load common
   "
   [[ "$output" == *"Cs = \"f('A b', [x|y])\""* ]]
   [[ "$output" == *"T = f('A b', [x|y])"* ]]
-  [[ "$output" == *"G = g(_G"* ]]
-  [[ "$output" == *"Ns = [=('X', _G"* ]]
+  [[ "$output" == *"G = g(_A, _B, _A)"* ]]
+  [[ "$output" == *"Ns = [=('X', _C)], Vs = [_C, _D]"* ]]
   [[ "$output" == *"NV = 2"* ]]
   [[ "$output" == *"E = syntax_error("* ]]
   [[ "$output" == *"C = /(read_from_chars, 2)"* ]]
@@ -142,4 +171,20 @@ load common
     nl.
   "
   [[ "$output" == *"r(integers, unbounded)"* ]]
+}
+
+@test "answers hide _, leave out unbound variables and name fresh ones _A, _B (regression)" {
+  answer() { run "$TRILOG" -f -e "$1"; [ "$output" = "   $2" ] || { echo "$1 => $output"; false; }; }
+  answer "catch(X is Y, error(E, _), true)." "E = instantiation_error."
+  answer "_ = 1." "true."
+  answer "X = 1, _ = 2." "X = 1."
+  answer "X = f(_)." "X = f(_A)."
+  answer "X = f(_, _)." "X = f(_A, _B)."
+  answer "length(L, 2)." "L = [_A, _B]."
+  answer "X = f(Y)." "X = f(Y)."
+  answer "X = _, Y = X." "X = Y."
+  answer "X = Y, Z = f(Y)." "X = Y, Z = f(Y)."
+  answer "X = f(_), _A = 1." "X = f(_B), _A = 1."
+  answer "X = f(A, _), A = g(_)." "X = f(g(_A), _B), A = g(_A)."
+  answer "X = '\$VAR'(1)." "X = '\$VAR'(1)."
 }

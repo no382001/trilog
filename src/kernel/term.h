@@ -38,6 +38,10 @@ typedef void (*emit_fn)(trilog_t *T, const char *s);
 enum { PRINT_QUOTED = 1, PRINT_NUMBERVARS = 2, PRINT_IGNORE_OPS = 4 };
 void print_term_via(trilog_t *T, size_t r, int flags, emit_fn emit);
 
+void answer_names_reset(trilog_t *T);
+void answer_name_claim(trilog_t *T, size_t ref, const char *name);
+const char *answer_name(trilog_t *T, size_t ref);
+
 tterm_t *heap_to_template(trilog_t *T, size_t r, int32_t *nvars_out);
 
 int heap_terms_to_templates(trilog_t *T, size_t *terms, int32_t n,

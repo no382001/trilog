@@ -114,6 +114,8 @@ void trilog_free(trilog_t *t) {
     }
   mem_free(t, t->db);
   mem_free(t, t->tok);
+  mem_free(t, t->answer_vars);
+  mem_free(t, t->answer_index);
   mem_free(t, t->pstack);
   mem_free(t, t->path_buf);
   mem_free(t, t->path_tmp);
@@ -297,11 +299,15 @@ trilog_status_t trilog_query(trilog_t *t, const char *goal,
   return TRILOG_ERROR;
 }
 
+static bool is_binding(trilog_t *t, int32_t v) {
+  return query_binding(t, v) != (size_t)-1 && strcmp(t->varnames[v], "_") != 0;
+}
+
 static int32_t binding_slot(trilog_t *t, int i) {
   if (!t->in_callback || i < 0)
     return -1;
   for (int32_t v = 0; v < t->nvars; v++)
-    if (query_binding(t, v) != (size_t)-1 && i-- == 0)
+    if (is_binding(t, v) && i-- == 0)
       return v;
   return -1;
 }
@@ -311,7 +317,7 @@ int trilog_binding_count(trilog_t *t) {
     return 0;
   int n = 0;
   for (int32_t v = 0; v < t->nvars; v++)
-    if (query_binding(t, v) != (size_t)-1)
+    if (is_binding(t, v))
       n++;
   return n;
 }
@@ -417,6 +423,45 @@ size_t trilog_format(trilog_t *t, trilog_term_t term, int flags, char *buf,
   t->format_cap = cap;
   t->format_len = 0;
   print_term_via(t, r, (flags & TRILOG_FORMAT_QUOTED) != 0, format_emit);
+  if (cap > 0)
+    buf[t->format_len < cap ? t->format_len : cap - 1] = '\0';
+  return t->format_len;
+}
+
+size_t trilog_format_answer(trilog_t *t, char *buf, size_t cap) {
+  t->format_buf = buf;
+  t->format_cap = cap;
+  t->format_len = 0;
+  if (t->in_callback) {
+    answer_names_reset(t);
+    for (int32_t v = 0; v < t->nvars; v++) {
+      size_t r = is_binding(t, v) ? heap_deref(t, query_binding(t, v)) : 0;
+      if (is_binding(t, v) && t->heap[r].tag == TAG_REF)
+        answer_name_claim(t, r, t->varnames[v]);
+    }
+    bool any = false;
+    for (int32_t v = 0; v < t->nvars; v++) {
+      if (!is_binding(t, v))
+        continue;
+      size_t r = heap_deref(t, query_binding(t, v));
+      const char *alias = t->heap[r].tag == TAG_REF ? answer_name(t, r) : NULL;
+      if (alias == t->varnames[v])
+        continue;
+      format_emit(t, any ? ", " : "");
+      format_emit(t, t->varnames[v]);
+      format_emit(t, " = ");
+      if (alias)
+        format_emit(t, alias);
+      else {
+        t->answer_naming = true;
+        print_term_via(t, r, PRINT_QUOTED, format_emit);
+        t->answer_naming = false;
+      }
+      any = true;
+    }
+    if (!any)
+      format_emit(t, "true");
+  }
   if (cap > 0)
     buf[t->format_len < cap ? t->format_len : cap - 1] = '\0';
   return t->format_len;

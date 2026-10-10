@@ -338,6 +338,95 @@ static void print_enter(trilog_t *T, size_t f) {
   print_push(T, P_EXIT, f);
 }
 
+static size_t answer_slot(trilog_t *T, size_t ref) {
+  size_t mask = T->answer_slots - 1;
+  size_t i = (ref * 2654435761u) & mask;
+  while (T->answer_index[i] &&
+         T->answer_vars[T->answer_index[i] - 1].ref != ref)
+    i = (i + 1) & mask;
+  return i;
+}
+
+void answer_names_reset(trilog_t *T) {
+  T->answer_len = 0;
+  T->answer_fresh = 0;
+  if (T->answer_slots)
+    memset(T->answer_index, 0, T->answer_slots * sizeof *T->answer_index);
+}
+
+static answer_var_t *answer_find(trilog_t *T, size_t ref) {
+  if (!T->answer_slots)
+    return NULL;
+  uint32_t k = T->answer_index[answer_slot(T, ref)];
+  return k ? &T->answer_vars[k - 1] : NULL;
+}
+
+static void answer_rehash(trilog_t *T, size_t slots) {
+  mem_reserve(T, (void **)&T->answer_index, &T->answer_index_cap,
+              slots * sizeof *T->answer_index);
+  T->answer_slots = slots;
+  memset(T->answer_index, 0, slots * sizeof *T->answer_index);
+  for (size_t i = 0; i < T->answer_len; i++)
+    T->answer_index[answer_slot(T, T->answer_vars[i].ref)] = (uint32_t)i + 1;
+}
+
+static answer_var_t *answer_add(trilog_t *T, size_t ref) {
+  if (T->answer_len >= UINT32_MAX - 1)
+    mem_fail(T);
+  mem_reserve(T, (void **)&T->answer_vars, &T->answer_vars_cap,
+              (T->answer_len + 1) * sizeof *T->answer_vars);
+  if ((T->answer_len + 1) * 2 > T->answer_slots)
+    answer_rehash(T, T->answer_slots ? T->answer_slots * 2 : 64);
+  answer_var_t *a = &T->answer_vars[T->answer_len];
+  *a = (answer_var_t){.ref = ref, .fresh = -1};
+  T->answer_index[answer_slot(T, ref)] = (uint32_t)++T->answer_len;
+  return a;
+}
+
+void answer_name_claim(trilog_t *T, size_t ref, const char *name) {
+  answer_var_t *a = answer_find(T, ref);
+  (a ? a : answer_add(T, ref))->name = name;
+}
+
+const char *answer_name(trilog_t *T, size_t ref) {
+  answer_var_t *a = answer_find(T, ref);
+  return a ? a->name : NULL;
+}
+
+static void fresh_name(int k, char *buf, size_t cap) {
+  if (k / 26)
+    fmt(buf, cap, "_%c%d", 'A' + k % 26, k / 26);
+  else
+    fmt(buf, cap, "_%c", 'A' + k % 26);
+}
+
+static bool is_query_name(trilog_t *T, const char *name) {
+  for (int32_t v = 0; v < T->nvars; v++)
+    if (!strcmp(T->varnames[v], name))
+      return true;
+  return false;
+}
+
+static void print_answer_var(trilog_t *T, size_t r, emit_fn emit) {
+  char buf[32];
+  answer_var_t *a = answer_find(T, r);
+  if (a && a->name) {
+    emit(T, a->name);
+    return;
+  }
+  if (!a) {
+    for (;; T->answer_fresh++) {
+      fresh_name(T->answer_fresh, buf, sizeof buf);
+      if (!is_query_name(T, buf))
+        break;
+    }
+    a = answer_add(T, r);
+    a->fresh = T->answer_fresh++;
+  }
+  fresh_name(a->fresh, buf, sizeof buf);
+  emit(T, buf);
+}
+
 static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
   size_t wbase = T->wsp, mbase = T->template_marks_len;
   print_push(T, P_TERM, r);
@@ -374,8 +463,12 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
     r = heap_deref(T, a);
     switch (T->heap[r].tag) {
     case TAG_REF:
-      fmt(buf, sizeof buf, "_G%zu", r);
-      emit(T, buf);
+      if (T->answer_naming)
+        print_answer_var(T, r, emit);
+      else {
+        fmt(buf, sizeof buf, "_G%zu", r);
+        emit(T, buf);
+      }
       break;
     case TAG_ATOM:
       print_atom(T, atom_name(T, T->heap[r].as.atom_id), flags & PRINT_QUOTED,

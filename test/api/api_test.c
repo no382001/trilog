@@ -37,6 +37,33 @@ static bool collect(trilog_t *t, void *ud, bool has_more) {
   return c->stop_after == 0 || c->count < c->stop_after;
 }
 
+typedef struct {
+  int bindings;
+  size_t len;
+  char text[64];
+} answer;
+
+static bool keep_answer(trilog_t *t, void *ud, bool has_more) {
+  (void)has_more;
+  answer *a = ud;
+  a->bindings = trilog_binding_count(t);
+  a->len = trilog_format_answer(t, a->text, sizeof a->text);
+  return false;
+}
+
+static void test_answers(trilog_t *t) {
+  answer a = {0};
+  CHECK(trilog_query(t, "X = f(_), _ = 1, Y = X, Z = _", keep_answer, &a) ==
+        TRILOG_TRUE);
+  CHECK(a.bindings == 3);
+  CHECK(streq(a.text, "X = f(_A), Y = f(_A)"));
+  CHECK(a.len == strlen("X = f(_A), Y = f(_A)"));
+  CHECK(trilog_query(t, "true", keep_answer, &a) == TRILOG_TRUE);
+  CHECK(streq(a.text, "true"));
+  char small[4];
+  CHECK(trilog_format_answer(t, small, sizeof small) == 0 && !small[0]);
+}
+
 static void test_solutions(trilog_t *t) {
   CHECK(trilog_load_string(t, "p(1). p(two). p(\"x y\").\n"
                               "q(X) :- p(X), X \\== two.\n") == TRILOG_TRUE);
@@ -457,6 +484,7 @@ int main(void) {
   }
 
   test_solutions(t);
+  test_answers(t);
   test_terms(t);
   test_errors(t);
   test_directives(t);

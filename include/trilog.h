@@ -90,7 +90,8 @@ typedef bool (*trilog_solution_fn)(trilog_t *t, void *ud, bool has_more);
 trilog_status_t trilog_query(trilog_t *t, const char *goal,
                              trilog_solution_fn on_solution, void *ud);
 
-// Read the bindings of the current solution, in order of first appearance.
+// Read the bindings of the current solution, in order of first appearance;
+// anonymous variables (_) are not bindings.
 int trilog_binding_count(trilog_t *t);
 const char *trilog_binding_name(trilog_t *t, int i);
 trilog_term_t trilog_binding_value(trilog_t *t, int i);
@@ -116,6 +117,11 @@ enum { TRILOG_FORMAT_QUOTED = 1 };
 // return >= cap means the text was cut short.
 size_t trilog_format(trilog_t *t, trilog_term_t term, int flags, char *buf,
                      size_t cap);
+
+// Writes the current solution as a toplevel shows it, like trilog_format:
+// "X = f(_A), Y = X", or "true" when there is nothing to show. Valid only in
+// a solution callback.
+size_t trilog_format_answer(trilog_t *t, char *buf, size_t cap);
 
 void trilog_usage(trilog_t *t, trilog_usage_t *out);
 

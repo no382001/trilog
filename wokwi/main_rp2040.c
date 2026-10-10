@@ -110,13 +110,11 @@ static bool on_solution(trilog_t *t, void *ud, bool has_more) {
   answer_state *st = ud;
   printf("%s", st->any ? "\n;  " : "   ");
   st->any = true;
-  int n = trilog_binding_count(t);
-  for (int i = 0; i < n; i++) {
-    printf("%s%s = ", i ? ", " : "", trilog_binding_name(t, i));
-    print_term(trilog_binding_value(t, i));
-  }
-  if (n == 0)
-    printf("%s", "true");
+  char buf[256];
+  size_t n = trilog_format_answer(t, buf, sizeof buf);
+  printf("%s", buf);
+  if (n >= sizeof buf)
+    printf("%s", "...");
   if (!has_more) {
     printf("%s", ".\n");
     st->closed = true;

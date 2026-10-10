@@ -15,6 +15,12 @@
 
 struct chunk;
 
+typedef struct {
+  size_t ref;
+  const char *name; // NULL: fresh, printed as _A, _B, ...
+  int fresh;
+} answer_var_t;
+
 struct trilog {
   void *(*alloc_realloc)(void *ud, void *p, size_t n);
   void (*alloc_free)(void *ud, void *p);
@@ -138,6 +144,12 @@ struct trilog {
   trilog_term_t error;
   char *format_buf;
   size_t format_cap, format_len;
+  answer_var_t *answer_vars;
+  size_t answer_vars_cap, answer_len;
+  uint32_t *answer_index; // open addressing over answer_vars, 0 is empty
+  size_t answer_index_cap, answer_slots;
+  int answer_fresh;
+  bool answer_naming;
 };
 
 static inline void wstack_push(trilog_t *T, size_t x) {

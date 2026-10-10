@@ -8,9 +8,14 @@
 
 static trilog_t *T;
 
-static void print_term(FILE *out, trilog_term_t term) {
+static size_t format_term(trilog_term_t *term, char *buf, size_t cap) {
+  return term ? trilog_format(T, *term, TRILOG_FORMAT_QUOTED, buf, cap)
+              : trilog_format_answer(T, buf, cap);
+}
+
+static void print_formatted(FILE *out, trilog_term_t *term) {
   char small[256];
-  size_t n = trilog_format(T, term, TRILOG_FORMAT_QUOTED, small, sizeof small);
+  size_t n = format_term(term, small, sizeof small);
   if (n < sizeof small) {
     fputs(small, out);
     return;
@@ -20,9 +25,13 @@ static void print_term(FILE *out, trilog_term_t term) {
     fputs("...", out);
     return;
   }
-  trilog_format(T, term, TRILOG_FORMAT_QUOTED, big, n + 1);
+  format_term(term, big, n + 1);
   fputs(big, out);
   free(big);
+}
+
+static void print_term(FILE *out, trilog_term_t term) {
+  print_formatted(out, &term);
 }
 
 static void print_uncaught(void) {
@@ -42,13 +51,8 @@ static bool toplevel_solution(trilog_t *t, void *ud, bool has_more) {
   toplevel_state *st = ud;
   fputs(st->any_found ? "\n;  " : "   ", stdout);
   st->any_found = true;
-  int n = trilog_binding_count(t);
-  for (int i = 0; i < n; i++) {
-    printf("%s%s = ", i ? ", " : "", trilog_binding_name(t, i));
-    print_term(stdout, trilog_binding_value(t, i));
-  }
-  if (n == 0)
-    fputs("true", stdout);
+  (void)t;
+  print_formatted(stdout, NULL);
   if (has_more) {
     if (st->all)
       return true;

@@ -74,7 +74,7 @@ The public API is [`include/trilog.h`](include/trilog.h):
 | `trilog_query` | run a goal, calling back once per answer |
 | `trilog_binding_count`, `trilog_binding_name`, `trilog_binding_value` | read an answer's bindings |
 | `trilog_term_type`, `trilog_get_int`, `trilog_get_float`, `trilog_get_atom`, `trilog_get_functor`, `trilog_get_arg` | inspect a term |
-| `trilog_format` | write a term as text |
+| `trilog_format`, `trilog_format_answer` | write a term, or the current answer as the toplevel shows it, as text |
 | `trilog_error_term`, `trilog_halt_code` | why a query stopped |
 | `trilog_register`, `trilog_error` | define a predicate in C, and raise an error from it |
 | `trilog_set_io` | replace the I/O hooks |
