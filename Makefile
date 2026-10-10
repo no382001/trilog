@@ -11,7 +11,7 @@ LIBC ?= 1
 ifeq ($(PLATFORM),freestanding)
   override PLATFORM := no_posix
   override LIBC := 0
-  override CFLAGS += -ffreestanding
+  override CFLAGS += -ffreestanding -fno-stack-protector -U_FORTIFY_SOURCE
 endif
 KERNEL_SRCS = src/kernel/fmt.c src/kernel/heap.c src/kernel/unify.c src/kernel/term.c src/kernel/solve.c \
               src/kernel/parse.c src/kernel/arena.c src/kernel/gc.c src/kernel/mem.c

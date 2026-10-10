@@ -51,6 +51,15 @@ load common
   [[ "$output" != *"not ok"* ]]
 }
 
+@test "the freestanding build turns off stack protection and fortify, which Ubuntu's gcc enables by default (regression)" {
+  root="$BATS_TEST_DIRNAME/../.."
+  run make -s -C "$root" PLATFORM=freestanding REL=_build/release-freestanding-hardened \
+    "CFLAGS=-Wall -Wextra -std=c11 -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=3" release
+  [ "$status" -eq 0 ]
+  run bash -c "nm -u '$root/_build/release-freestanding-hardened/libtrilog.a' | grep -E '__stack_chk|_chk\$'"
+  [ -z "$output" ] || { echo "unexpected: $output"; false; }
+}
+
 @test "floats print without trailing zeros even when the embedder's %g keeps them, as pico-sdk printf does (regression)" {
   root="$BATS_TEST_DIRNAME/../.."
   run make -s -C "$root" PLATFORM=freestanding release
