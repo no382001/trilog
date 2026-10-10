@@ -1,8 +1,6 @@
 #pragma once
-// The trilog embedding API. Hosts include only this header.
-//
-// Interpreters share no state: any number may exist,
-// and each may be used by one thread at a time.
+// Interpreters share no state: any number may exist, and each may be used by
+// one thread at a time.
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -13,9 +11,8 @@ extern "C" {
 
 typedef struct trilog trilog_t;
 
-// A term owned by the interpreter.
-// Handles from a solution callback are valid only during that callback;
-// the error term is valid until the next call that runs Prolog code.
+// Handles from a solution callback are valid only during that callback; the
+// error term is valid until the next call that runs Prolog code.
 typedef struct {
   size_t ref;
 } trilog_term_t;
@@ -40,6 +37,7 @@ typedef enum {
 typedef struct {
   void *(*open)(void *ud, const char *path, const char *mode); // NULL: failed
   long (*read)(void *ud, void *handle, char *buf, size_t n); // 0 at end of file
+  // Returns the bytes taken, which may be fewer than n; 0 or less is an error.
   long (*write)(void *ud, void *handle, const char *buf, size_t n);
   void (*close)(void *ud, void *handle);
   void (*flush)(void *ud, void *handle); // optional
@@ -71,8 +69,8 @@ typedef struct {
   size_t arena_bytes; // clauses, atom names and parsed source
 } trilog_usage_t;
 
-// Accepts a NULL config. Returns NULL if booting fails, if only one of the
-// allocator hooks is set, or if the I/O hooks are an incomplete set.
+// A NULL config or hook uses the default, which a freestanding build lacks.
+// Returns NULL if booting fails or the allocator or I/O hooks are incomplete.
 trilog_t *trilog_new(const trilog_config_t *config);
 void trilog_free(trilog_t *t);
 
@@ -114,10 +112,8 @@ bool trilog_get_arg(trilog_t *t, trilog_term_t term, int i, trilog_term_t *out);
 
 enum { TRILOG_FORMAT_QUOTED = 1 };
 
-// Writes the term as text, like snprintf:
-// the result is always terminated when cap > 0,
-// and the return value is the full length,
-// so a return >= cap means the text was cut short.
+// Like snprintf: terminated when cap > 0, and returns the full length, so a
+// return >= cap means the text was cut short.
 size_t trilog_format(trilog_t *t, trilog_term_t term, int flags, char *buf,
                      size_t cap);
 

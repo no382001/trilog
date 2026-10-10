@@ -1,4 +1,4 @@
-TRILOG="./trilog"
+TRILOG="${TRILOG:-./trilog}"
 
 succeeded() {
   [[ "$output" != *"   false."* && "$output" != *"uncaught exception"* && "$output" != *"parse error"* ]]
@@ -10,4 +10,8 @@ answers() {
   else
     echo 0
   fi
+}
+
+posix_only() {
+  [[ "${TRILOG_PLATFORM:-posix}" == posix ]] || skip "needs the POSIX platform"
 }

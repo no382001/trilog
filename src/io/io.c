@@ -30,10 +30,20 @@ static void capture_append(trilog_t *T, const char *str) {
   T->capture_pos += len;
 }
 
-static void io_write(trilog_t *T, void *handle, const char *str) {
+static bool write_all(trilog_t *T, void *handle, const char *str) {
   size_t n = strlen(str);
-  if (n > 0)
-    T->hooks.write(T->hooks.userdata, handle, str, n);
+  while (n > 0) {
+    long k = T->hooks.write(T->hooks.userdata, handle, str, n);
+    if (k <= 0)
+      return false;
+    str += k;
+    n -= (size_t)k;
+  }
+  return true;
+}
+
+static void io_write(trilog_t *T, void *handle, const char *str) {
+  write_all(T, handle, str);
 }
 
 void io_write_str(trilog_t *T, const char *str) {
@@ -82,8 +92,7 @@ void io_file_close(trilog_t *T, void *handle) {
     T->hooks.close(T->hooks.userdata, handle);
 }
 bool io_file_write(trilog_t *T, void *handle, const char *str) {
-  size_t n = strlen(str);
-  return T->hooks.write(T->hooks.userdata, handle, str, n) == (long)n;
+  return write_all(T, handle, str);
 }
 
 long io_file_read(trilog_t *T, void *handle, char *buf, size_t n) {

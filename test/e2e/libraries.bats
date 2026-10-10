@@ -47,6 +47,7 @@ load common
 }
 
 @test "consulting a loaded file by another path does not add its clauses twice (regression)" {
+  posix_only
   # regression: boot loads boot/../lib/lists.pl, and consult('lib/lists.pl') counted as a different file.
   run "$TRILOG" -f -e "
     consult('lib/lists.pl'),

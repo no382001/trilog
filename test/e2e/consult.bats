@@ -103,6 +103,7 @@ PLEOF
 }
 
 @test "make/0 reconsults files that changed since they were loaded" {
+  posix_only
   printf "v(old).\n" > "$BATS_TEST_TMPDIR/m.pl"
   touch -t 202001010000 "$BATS_TEST_TMPDIR/m.pl"
   run "$TRILOG" -f "$BATS_TEST_TMPDIR/m.pl" -e "

@@ -49,6 +49,7 @@ load common
 }
 
 @test "get_time_ms/1 returns a non-negative integer, monotonic across two calls" {
+  posix_only
   run "$TRILOG" -e "
     get_time_ms(T0),
     (between(1,200000,_), fail; true),

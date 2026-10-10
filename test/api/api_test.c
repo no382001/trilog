@@ -341,6 +341,8 @@ static long vfs_read(void *ud, void *handle, char *buf, size_t n) {
 static long vfs_write(void *ud, void *handle, const char *buf, size_t n) {
   host *h = ud;
   sink *k = handle == &h->out ? &h->out : handle == &h->err ? &h->err : NULL;
+  if (n > 5)
+    n = 5;
   if (!k || k->len + n >= sizeof k->out)
     return -1;
   memcpy(k->out + k->len, buf, n);

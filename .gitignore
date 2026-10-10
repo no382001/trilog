@@ -1,5 +1,6 @@
 _build/
 trilog
+trilog-hostile
 examples/embed
 wokwi/build/
 wokwi/core_embed.h

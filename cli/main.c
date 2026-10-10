@@ -1,3 +1,4 @@
+#include "host.h"
 #include "terminal.h"
 #include "trilog.h"
 #include <ctype.h>
@@ -230,11 +231,13 @@ int main(int argc, char **argv) {
   if (verbose)
     printf("?- consult('%s').\n", core_path);
   const char *gc_threshold = getenv("TRILOG_GC_THRESHOLD");
-  T = trilog_new(&(trilog_config_t){
+  trilog_config_t config = {
       .boot_path = core_path,
       .gc_threshold = gc_threshold ? strtoul(gc_threshold, NULL, 10) : 0,
       .gc_debug = getenv("TRILOG_GC_DEBUG") != NULL,
-  });
+  };
+  host_config(&config);
+  T = trilog_new(&config);
   if (!T)
     return 1;
   if (!core_only)

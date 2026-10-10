@@ -287,7 +287,7 @@ static tterm_t *parse_number(trilog_t *T) {
   memcpy(buf, start, n);
   buf[n] = '\0';
   if (is_float)
-    return tt_flt(T, platform_parse_float(buf, NULL));
+    return tt_flt(T, trilog_parse_float(buf, NULL));
   int64_t v;
   if (!parse_int(buf, NULL, &v))
     perr(T, "integer literal out of range");

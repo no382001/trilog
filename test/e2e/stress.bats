@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-TRILOG="./trilog"
+TRILOG="${TRILOG:-./trilog}"
 STATS_FILE="/tmp/trilog_stress_stats"
 
 setup() {

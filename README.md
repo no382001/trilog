@@ -4,7 +4,7 @@
 
 A Prolog interpreter aiming to be embeddable.
 
-The name comes from the ABC algorithm in M. H. van Emden's *An Algorithm for Interpreting Prolog Programs* (University of Waterloo, CS-81-28, 1981). ABC is not short for anything. A, B and C are the three labels of a small state machine: go down while there is an untried alternative, come back up and try the next one when there is not, and fail once you have climbed past the root. trilog's solver is built on this algorithm.
+Tri as in three, is a play on the 3 states of the the stack machine that is the ABC algorithm in M. H. van Emden's *An Algorithm for Interpreting Prolog Programs* (University of Waterloo, CS-81-28, 1981). ABC is not short for anything. A, B and C are the three labels: go down while there is an untried alternative, come back up and try the next one when there is not, and fail once you have climbed past the root. trilog's solver is built on this algorithm.
 
 ## Contents
 
@@ -83,14 +83,15 @@ The public API is [`include/trilog.h`](include/trilog.h):
 
 [`examples/embed.c`](examples/embed.c) uses `trilog_register` and `trilog_set_yield`.
 
-The library builds for two platforms:
+The library builds three ways:
 
 | Build | Command | Notes |
 | --- | --- | --- |
 | POSIX | `make release` | the default |
-| no POSIX | `make PLATFORM=no_posix release` | no `get_time_ms/1` or `file_mtime/2`, so `make/0` raises `existence_error`; relative file names are not made absolute, so one file loaded under two spellings counts as two |
+| no POSIX | `make PLATFORM=no_posix release` | needs a C library but no POSIX; no `get_time_ms/1` or `file_mtime/2`, so `make/0` raises `existence_error`; relative file names are not made absolute |
+| freestanding | `make PLATFORM=freestanding release` | no C library, for kernels and firmware; builds only `libtrilog.a` |
 
-Both builds currently need glibc: stdio, stdlib, string, `setjmp` and math (`-lm`), plus `getenv`, `<ctype.h>`, `errno` and `assert`. The default allocator and I/O use `malloc` and stdio; `trilog_config_t` replaces them, but stdio stays linked.
+The freestanding build has no default allocator or I/O, so `trilog_new` needs both in `trilog_config_t`. It calls only `mem*`, `str*`, `setjmp`, `longjmp` and libm, plus two functions for float text that the embedder defines. You can find the list in: [`include/trilog_platform.h`](include/trilog_platform.h), and an example for the complete embedding in: [`test/api/api_freestanding_test.c`](test/api/api_freestanding_test.c).
 
 ## Libraries
 

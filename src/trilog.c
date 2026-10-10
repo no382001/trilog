@@ -10,9 +10,15 @@
 #include "solve.h"
 #include "term.h"
 #include "version.h"
+#include <float.h>
+#include <limits.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <string.h>
+
+_Static_assert(CHAR_BIT == 8, "trilog needs 8-bit bytes");
+_Static_assert(sizeof(double) == 8 && DBL_MANT_DIG == 53 && FLT_RADIX == 2,
+               "trilog needs an IEEE 754 binary64 double");
 
 static const trilog_term_t invalid_term = {(size_t)-1};
 

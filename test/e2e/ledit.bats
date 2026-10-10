@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-TRILOG="./trilog"
+load common
 
 setup() {
   rm -f /tmp/trilog_ledit_*.txt /tmp/trilog_ledit_*.pl
@@ -89,6 +89,7 @@ teardown() {
 # --- ledit edits file, make/0 reloads it ---
 
 @test "ledit: add clause via ledit, make reloads it" {
+  posix_only
   printf "pet(cat).\npet(dog).\n" > /tmp/trilog_ledit_make.pl
   touch -t 202001010000 /tmp/trilog_ledit_make.pl
   result=$(printf "consult('/tmp/trilog_ledit_make.pl').\nconsult('lib/ledit.pl').\nledit('/tmp/trilog_ledit_make.pl').\nw\na\npet(fish).\n.\nw\ns /tmp/trilog_ledit_make.pl\nq\nmake.\nfindall(X, pet(X), L), write(L).\n" \
@@ -97,6 +98,7 @@ teardown() {
 }
 
 @test "ledit: delete clause via ledit, make reloads without it" {
+  posix_only
   printf "color(red).\ncolor(green).\ncolor(blue).\n" > /tmp/trilog_ledit_make.pl
   touch -t 202001010000 /tmp/trilog_ledit_make.pl
   result=$(printf "consult('/tmp/trilog_ledit_make.pl').\nconsult('lib/ledit.pl').\nledit('/tmp/trilog_ledit_make.pl').\nf\nd\ns /tmp/trilog_ledit_make.pl\nq\nmake.\nfindall(X, color(X), L), write(L).\n" \

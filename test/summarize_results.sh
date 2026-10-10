@@ -7,6 +7,7 @@
 set -euo pipefail
 
 DIR="${1:-_build/test-results}"
+TITLE="${2:-}"
 
 rows=""
 total=0; passed=0; failed=0; crashed=0
@@ -38,7 +39,7 @@ chart=$(printf '%s' "$rows" | awk -F'|' 'NF && $2 > 0 {
   printf "%d|%s\n", int(100 * $3 / $2), name
 }' | sort -t'|' -k1,1n -k2,2)
 
-echo "### Test results"
+echo "### Test results${TITLE:+: $TITLE}"
 echo ""
 echo "$passed of $total tests pass, $failed fail, $crashed crash."
 echo ""

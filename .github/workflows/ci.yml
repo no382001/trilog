@@ -32,9 +32,44 @@ jobs:
             trilog
             _build
 
+  platforms:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: install cross compilers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang-format gcc-multilib gcc-arm-none-eabi libnewlib-arm-none-eabi
+
+      - name: posix, no_posix and freestanding
+        run: |
+          make release
+          make PLATFORM=no_posix release
+          make PLATFORM=freestanding release
+
+      - name: freestanding, 32-bit x86
+        run: make PLATFORM=freestanding REL=_build/release-i686-freestanding "CFLAGS=-Wall -Wextra -std=c11 -O2 -m32 -fno-pie" release
+
+      - name: no_posix with newlib, rp2350 (wokwi)
+        run: >
+          make _build/release-rp2350/libtrilog.a REL=_build/release-rp2350 PLATFORM=no_posix
+          CC=arm-none-eabi-gcc AR=arm-none-eabi-gcc-ar
+          "CFLAGS=-Wall -Wextra -std=c11 -O2 -mcpu=cortex-m33 -mthumb -march=armv8-m.main+fp+dsp -mfloat-abi=softfp -DGC_MIN_CELLS=2048 -DARENA_CHUNK_SIZE=4096 -DGC_SHRINK=0"
+          "HIDE_INTERNALS=arm-none-eabi-objcopy --wildcard --keep-global-symbol=trilog_*"
+
   test:
     runs-on: ubuntu-latest
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [posix, freestanding]
+    env:
+      TRILOG: ${{ matrix.variant == 'posix' && './trilog' || './trilog-hostile' }}
+      TRILOG_PLATFORM: ${{ matrix.variant }}
+      RESULTS: _build/test-results-${{ matrix.variant }}
     permissions:
       contents: read
       actions: read
@@ -49,13 +84,18 @@ jobs:
         with:
           name: trilog-build
 
-      - name: install bats
-        run: sudo apt-get install -y bats
+      - name: install test deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats clang-format ${{ matrix.variant == 'freestanding' && 'gcc-multilib' || '' }}
+          chmod +x ./trilog
+
+      - name: build the hostile freestanding CLI
+        if: matrix.variant == 'freestanding'
+        run: make trilog-hostile
 
       - name: run quad tests
-        run: |
-          chmod +x ./trilog
-          make quad-junit
+        run: make quad-junit
 
       - name: run system tests
         run: make syscheck-junit
@@ -64,6 +104,7 @@ jobs:
         run: make conformity-junit
 
       - name: run API tests
+        if: matrix.variant == 'posix'
         run: make api-junit
 
       - name: upload test results
@@ -71,16 +112,16 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results
-          path: _build/test-results/*.xml
+          name: test-results-${{ matrix.variant }}
+          path: ${{ env.RESULTS }}/*.xml
 
       - name: publish test report
         id: test_reporter
         uses: dorny/test-reporter@v1
         if: always()
         with:
-          name: JUnit Test Report
-          path: '_build/test-results/*.xml'
+          name: JUnit Test Report (${{ matrix.variant }})
+          path: '${{ env.RESULTS }}/*.xml'
           reporter: java-junit
           fail-on-error: false
           use-actions-summary: false
@@ -91,7 +132,7 @@ jobs:
         if: always()
         run: |
           chmod +x test/summarize_results.sh
-          test/summarize_results.sh _build/test-results > /tmp/test_summary.md
+          test/summarize_results.sh "$RESULTS" ${{ matrix.variant }} > /tmp/test_summary.md
           cat /tmp/test_summary.md
           cat /tmp/test_summary.md >> "$GITHUB_STEP_SUMMARY"
           echo "test_reporter url_html output: '${{ steps.test_reporter.outputs.url_html }}'"
@@ -116,7 +157,7 @@ jobs:
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
-            const marker = '### Test results';
+            const marker = '### Test results: ${{ matrix.variant }}';
             const existing = comments.find(c => c.body.includes(marker));
             if (existing) {
               await github.rest.issues.updateComment({

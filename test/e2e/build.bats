@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# The library and the build: release and no_posix builds, exported symbols, the C++ header.
+# The library and the build: release, no_posix and freestanding builds, exported symbols, the C++ header.
 
 load common
 
@@ -31,6 +31,36 @@ load common
   [[ "$output" == *"ok([aa])"* ]]
   [[ "$output" == *"E1 = existence_error(procedure, /(get_time_ms, 1))"* ]]
   [[ "$output" == *"E2 = existence_error(procedure, /(file_mtime, 2))"* ]]
+}
+
+@test "the freestanding build needs only mem*, str*, setjmp, libm and the two float functions, and runs" {
+  root="$BATS_TEST_DIRNAME/../.."
+  run make -s -C "$root" PLATFORM=freestanding release
+  [ "$status" -eq 0 ]
+  lib="$root/_build/release-no_posix-nolibc/libtrilog.a"
+  printf '%s\n' memcpy memmove memset strlen strcmp strncmp strchr strrchr strncat strpbrk \
+    setjmp _setjmp longjmp sin cos atan atan2 exp log pow sqrt fabs floor ceil round trunc modf \
+    trilog_format_float trilog_parse_float >"$BATS_TEST_TMPDIR/allowed"
+  run bash -c "nm -u '$lib' | awk '{print \$2}' | sort -u | grep -vxF -f '$BATS_TEST_TMPDIR/allowed'"
+  [ -z "$output" ] || { echo "unexpected: $output"; false; }
+  run cc -std=c11 -Wall -Wextra -I"$root/include" "$root/test/api/api_freestanding_test.c" "$lib" -lm \
+    -o "$BATS_TEST_TMPDIR/api_freestanding_test"
+  [ "$status" -eq 0 ]
+  run "$BATS_TEST_TMPDIR/api_freestanding_test"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"not ok"* ]]
+}
+
+@test "floats print without trailing zeros even when the embedder's %g keeps them, as pico-sdk printf does (regression)" {
+  root="$BATS_TEST_DIRNAME/../.."
+  run make -s -C "$root" PLATFORM=freestanding release
+  [ "$status" -eq 0 ]
+  run cc -std=c11 -I"$root/include" "$root/test/api/api_freestanding_test.c" \
+    "$root/_build/release-no_posix-nolibc/libtrilog.a" -lm -o "$BATS_TEST_TMPDIR/api_freestanding_test"
+  [ "$status" -eq 0 ]
+  run "$BATS_TEST_TMPDIR/api_freestanding_test"
+  [[ "$output" == *$'\nok - strcmp(answer, "[0.25, 5.0, 1.5e+10, 0.333333, -0.5, 100.0]") == 0'* ]]
+  [[ "$output" == *$'\nok - strcmp(answer, "1500.0") == 0'* ]]
 }
 
 @test "loading boot/core.pl and lib/ at startup produces no uncaught exceptions (regression)" {

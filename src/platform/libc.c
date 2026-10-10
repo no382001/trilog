@@ -37,12 +37,12 @@ static void libc_flush(void *ud, void *handle) {
   fflush(handle);
 }
 
-size_t platform_format_float(char *buf, size_t cap, double v) {
+size_t trilog_format_float(char *buf, size_t cap, double v) {
   int n = snprintf(buf, cap, "%g", v);
   return n < 0 ? 0 : (size_t)n;
 }
 
-double platform_parse_float(const char *s, const char **end) {
+double trilog_parse_float(const char *s, const char **end) {
   char *e;
   double v = strtod(s, &e);
   if (end)

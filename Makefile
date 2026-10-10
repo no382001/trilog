@@ -5,18 +5,25 @@ AR = gcc-ar
 CFLAGS = -Wall -Wextra -std=c11 -O2
 CPPFLAGS = -Iinclude -Isrc/kernel -Isrc/io -Isrc/platform -I_build -MMD -MP
 
+# LIBC=0 leaves the allocator, stdio and float text to the embedder (include/trilog_platform.h).
 PLATFORM ?= posix
+LIBC ?= 1
+ifeq ($(PLATFORM),freestanding)
+  override PLATFORM := no_posix
+  override LIBC := 0
+  override CFLAGS += -ffreestanding
+endif
 KERNEL_SRCS = src/kernel/fmt.c src/kernel/heap.c src/kernel/unify.c src/kernel/term.c src/kernel/solve.c \
               src/kernel/parse.c src/kernel/arena.c src/kernel/gc.c src/kernel/mem.c
 IO_SRCS = src/io/io.c src/io/streams.c
-LIB_SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c src/platform/$(PLATFORM).c src/platform/libc.c
-CLI_SRCS = cli/main.c cli/terminal_$(PLATFORM).c
+LIB_SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c src/platform/$(PLATFORM).c src/platform/$(if $(filter 0,$(LIBC)),nolibc,libc).c
+CLI_SRCS = cli/main.c cli/host_default.c cli/terminal_$(PLATFORM).c
 SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c cli/main.c
-HDRS = include/trilog.h cli/terminal.h $(wildcard src/kernel/*.h) $(wildcard src/io/*.h) $(wildcard src/platform/*.h)
+HDRS = include/trilog.h include/trilog_platform.h cli/host.h cli/terminal.h $(wildcard src/kernel/*.h) $(wildcard src/io/*.h) $(wildcard src/platform/*.h)
 
 # OPAQUE=0 exports every engine symbol instead of only the trilog_* API.
 OPAQUE ?= 1
-VARIANT = $(PLATFORM)$(if $(filter 0,$(OPAQUE)),-open)
+VARIANT = $(PLATFORM)$(if $(filter 0,$(LIBC)),-nolibc)$(if $(filter 0,$(OPAQUE)),-open)
 DEV = _build/dev-$(VARIANT)
 REL = _build/release-$(VARIANT)
 HIDE_INTERNALS = $(if $(filter 0,$(OPAQUE)),true,objcopy --wildcard --keep-global-symbol='trilog_*')
@@ -38,7 +45,7 @@ $(REL)/%.o: %.c | format
 # Unless OPAQUE=0, internal names are not exported.
 $(DEV)/libtrilog.a: $(DEV_LIB_OBJS)
 	@rm -f $@
-	$(CC) -r -nostdlib -o $(DEV)/libtrilog.o $^
+	$(CC) $(CFLAGS) -r -nostdlib -o $(DEV)/libtrilog.o $^
 	$(HIDE_INTERNALS) $(DEV)/libtrilog.o
 	$(AR) rcs $@ $(DEV)/libtrilog.o
 
@@ -84,20 +91,33 @@ _build/embedded.c: $(EMBED_FILES) tools/embed_libs.sh
 	@mkdir -p _build
 	sh tools/embed_libs.sh $(EMBED_FILES) > $@
 
+ifeq ($(LIBC),0)
+release: $(REL)/libtrilog.a
+else
 release: $(REL)/trilog
 	@cp $< _build/trilog
+endif
+
+# 32-bit, freestanding, with a host that poisons allocations.
+HOSTILE_DEV = _build/dev-hostile
+HOSTILE_FLAGS = -m32 -fno-pie
+.PHONY: trilog-hostile
+trilog-hostile:
+	$(MAKE) PLATFORM=freestanding DEV=$(HOSTILE_DEV) "CFLAGS=$(CFLAGS) $(HOSTILE_FLAGS)" $(HOSTILE_DEV)/libtrilog.a
+	$(CC) $(CFLAGS) $(HOSTILE_FLAGS) -no-pie -Iinclude -Icli cli/main.c cli/terminal_posix.c test/hostile/host.c \
+	  $(HOSTILE_DEV)/libtrilog.a -lm -o $@
 
 examples/embed: $(DEV)/examples/embed.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
 clean:
-	rm -rf trilog _build/trilog _build/embedded.c $(API_TEST_BINS) examples/embed _build/dev-* _build/release-*
+	rm -rf trilog trilog-hostile _build/trilog _build/embedded.c $(API_TEST_BINS) examples/embed _build/dev-* _build/release-*
 
 format:
-	clang-format -i $(SRCS) $(API_TEST_SRCS) examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
+	clang-format -i $(SRCS) $(API_TEST_SRCS) test/api/api_freestanding_test.c test/hostile/host.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
 
 format-check:
-	clang-format --dry-run --Werror $(SRCS) $(API_TEST_SRCS) examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
+	clang-format --dry-run --Werror $(SRCS) $(API_TEST_SRCS) test/api/api_freestanding_test.c test/hostile/host.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
 
 .PHONY: clean format format-check
 include test/test.mk
