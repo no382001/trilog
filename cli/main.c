@@ -177,9 +177,8 @@ static bool no_more(trilog_t *t, void *ud, bool has_more) {
 
 static void load_default_libraries(void) {
   static const char *const libs =
-      "ensure_loaded(library(apply)), ensure_loaded(library(dcgs)), "
-      "ensure_loaded(library(between)), ensure_loaded(library(charsio)), "
-      "ensure_loaded(library(make))";
+      "ensure_loaded(library(dcgs)), ensure_loaded(library(between)), "
+      "ensure_loaded(library(charsio)), ensure_loaded(library(make))";
   if (trilog_query(T, libs, no_more, NULL) != TRILOG_TRUE)
     print_uncaught();
 }

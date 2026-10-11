@@ -129,3 +129,5 @@ permutation(List, [X|Perm]) :- select(X, List, Rest), permutation(Rest, Perm).
 %!  numlist(+Low, +High, -List) is det.
 numlist(L, H, []) :- L > H, !.
 numlist(L, H, [L|T]) :- L =< H, L1 is L + 1, numlist(L1, H, T).
+
+:- ensure_loaded(library(apply)).

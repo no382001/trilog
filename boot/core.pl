@@ -118,13 +118,6 @@ use_module(Spec) :-
 repeat.
 repeat :- repeat.
 
-% --- lists ---
-
-% The core's own dependencies.
-:- consult('../lib/lists.pl').
-:- consult('../lib/error.pl').
-:- consult('../lib/misc.pl').
-
 % --- arithmetic ---
 
 % --- term comparison ---
@@ -763,3 +756,8 @@ current_prolog_flag(Flag, Value) :-
     ->  throw(error(domain_error(prolog_flag, Flag), current_prolog_flag/2))
     ;   throw(error(type_error(atom, Flag), current_prolog_flag/2))
     ).
+
+% The core's own dependencies.
+:- consult('../lib/lists.pl').
+:- consult('../lib/error.pl').
+:- consult('../lib/misc.pl').

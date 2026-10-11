@@ -54,6 +54,11 @@ typedef struct {
   // NULL means stdio. Also used to read the boot file.
   const trilog_io_t *io;
   size_t gc_threshold;
+  // A full heap grows to this percent of its size; 0 means 200.
+  unsigned heap_grow_percent;
+  // After a collection, the next one and the heap's size are set to this
+  // percent of the live cells; 0 means 200.
+  unsigned gc_grow_percent;
   bool gc_debug; // one line per collection on the error stream
 } trilog_config_t;
 
@@ -70,7 +75,8 @@ typedef struct {
 } trilog_usage_t;
 
 // A NULL config or hook uses the default, which a freestanding build lacks.
-// Returns NULL if booting fails or the allocator or I/O hooks are incomplete.
+// Returns NULL if booting fails, the allocator or I/O hooks are incomplete, or
+// a grow percent is 100 or less.
 trilog_t *trilog_new(const trilog_config_t *config);
 void trilog_free(trilog_t *t);
 

@@ -1,5 +1,6 @@
 #include "trilog.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int failures = 0;
@@ -417,6 +418,78 @@ static void test_io(trilog_t *t) {
   CHECK(trilog_set_io(t, NULL));
 }
 
+static size_t number_after(const char *text, const char *key) {
+  const char *p = strstr(text, key);
+  return p ? (size_t)strtoull(p + strlen(key), NULL, 10) : 0;
+}
+
+typedef struct {
+  char line[256], cur[256];
+  size_t len;
+} last_line;
+
+static long keep_last_line(void *ud, void *handle, const char *buf, size_t n) {
+  last_line *l = handle == ud ? ud : NULL;
+  for (size_t i = 0; l && i < n; i++) {
+    if (buf[i] == '\n') {
+      l->cur[l->len] = '\0';
+      memcpy(l->line, l->cur, l->len + 1);
+      l->len = 0;
+    } else if (l->len + 1 < sizeof l->cur) {
+      l->cur[l->len++] = buf[i];
+    }
+  }
+  return (long)n;
+}
+
+static void test_growth(void) {
+  CHECK(!trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl",
+                                       .heap_grow_percent = 100}));
+  CHECK(!trilog_new(
+      &(trilog_config_t){.boot_path = "boot/core.pl", .gc_grow_percent = 50}));
+
+  trilog_t *t = trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl",
+                                              .heap_grow_percent = 125,
+                                              .gc_threshold = 100000000});
+  CHECK(t != NULL);
+  if (!t)
+    return;
+  collected c = {0};
+  CHECK(trilog_query(t, "numlist(1, 50000, L), msort(L, _)", collect, &c) ==
+        TRILOG_TRUE);
+  trilog_usage_t u;
+  trilog_usage(t, &u);
+  CHECK(u.heap_capacity_cells >= u.heap_peak_cells);
+  CHECK(u.heap_capacity_cells * 100 <= u.heap_peak_cells * 125 + 100);
+  trilog_free(t);
+
+  last_line gc = {0};
+  trilog_io_t io = {.open = vfs_open,
+                    .read = vfs_read,
+                    .write = keep_last_line,
+                    .close = vfs_close,
+                    .out = NULL,
+                    .err = &gc,
+                    .userdata = &gc};
+  t = trilog_new(&(trilog_config_t){
+      .boot_path = "boot/core.pl", .gc_grow_percent = 150, .gc_debug = true});
+  CHECK(t != NULL);
+  if (!t)
+    return;
+  CHECK(trilog_set_io(t, &io));
+  CHECK(trilog_load_string(t, "churn(0) :- !.\n"
+                              "churn(N) :- numlist(1, 500, _), N1 is N - 1, "
+                              "churn(N1).\n") == TRILOG_TRUE);
+  collected d = {0};
+  CHECK(trilog_query(t, "numlist(1, 20000, L), churn(200), length(L, _)",
+                     collect, &d) == TRILOG_TRUE);
+  size_t live = number_after(gc.line, " -> ");
+  size_t threshold = number_after(gc.line, "threshold=");
+  CHECK(live > 20000);
+  CHECK(threshold == live * 150 / 100);
+  trilog_free(t);
+}
+
 static void test_usage(trilog_t *t) {
   trilog_usage_t u;
   trilog_usage(t, &u);
@@ -494,6 +567,7 @@ int main(void) {
   test_usage(t);
   test_two_interpreters();
   test_create_free();
+  test_growth();
 
   trilog_usage_t u;
   trilog_usage(t, &u);

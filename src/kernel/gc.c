@@ -378,8 +378,10 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
   heap_set_size(T, new_top);
   trail_set_size(T, new_trail_top);
 
-  if (!T->gc_fixed)
-    T->gc_threshold = new_top * 2 > GC_MIN_CELLS ? new_top * 2 : GC_MIN_CELLS;
+  if (!T->gc_fixed) {
+    size_t next = mem_grow_by(T, new_top, T->gc_grow_percent);
+    T->gc_threshold = next > GC_MIN_CELLS ? next : GC_MIN_CELLS;
+  }
 
   // tie capacity to gc_threshold so it can shrink after a big collection.
   if (GC_SHRINK || T->gc_threshold > heap_capacity(T))

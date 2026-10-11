@@ -69,7 +69,7 @@ The public API is [`include/trilog.h`](include/trilog.h):
 
 | Function | Use |
 | --- | --- |
-| `trilog_new`, `trilog_free` | create and destroy an interpreter; `trilog_config_t` sets the allocator, I/O and GC threshold |
+| `trilog_new`, `trilog_free` | create and destroy an interpreter; `trilog_config_t` sets the allocator, I/O, and how the heap and GC grow |
 | `trilog_load_file`, `trilog_load_string` | load Prolog code |
 | `trilog_query` | run a goal, calling back once per answer |
 | `trilog_binding_count`, `trilog_binding_name`, `trilog_binding_value` | read an answer's bindings |
@@ -102,13 +102,13 @@ The core holds the built-in predicates. Everything else is a library in [`lib/`]
 | `lists` | `append/3`, `member/2`, `length/2`, `nth0/3`, `reverse/2`, `select/3`, … | the core |
 | `error` | `must_be/2`, `can_be/2` | the core |
 | `misc` | `forall/2`, `with_output_to/2`, `numbervars/3`, `writeln/1` | the core |
-| `apply` | `maplist/2..`, `foldl/4`, `include/3`, `exclude/3` | the CLI |
+| `apply` | `maplist/2..`, `foldl/4`, `include/3`, `exclude/3` | the core |
 | `dcgs` | DCG translation, `phrase/2,3` | the CLI |
 | `between` | `between/3`, `succ/2`, `plus/3` | the CLI |
 | `charsio` | `read_term_from_chars/3`, `write_term_to_chars/3` | the CLI |
 | `make` | `make/0`, `consulted/1`, `unconsult/1` | the CLI |
 
-`trilog_new` loads only the core. The CLI also loads the five marked "the CLI"; `./trilog -n` skips them.
+`trilog_new` loads only the core. The CLI also loads the four marked "the CLI"; `./trilog -n` skips them.
 
 ## History
 

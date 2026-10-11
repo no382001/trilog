@@ -30,7 +30,7 @@ size_t heap_alloc(trilog_t *T, size_t n) {
   if (T->heap_top + n > T->heap_cap) {
     size_t cap = T->heap_cap;
     while (T->heap_top + n > cap)
-      cap *= 2;
+      cap = mem_grow_by(T, cap, T->heap_grow_percent);
     T->heap = mem_grow_n(T, T->heap, cap, sizeof(cell_t));
     T->heap_cap = cap;
   }

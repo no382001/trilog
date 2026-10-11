@@ -46,6 +46,18 @@ _Noreturn void engine_fatal(trilog_t *T, const char *msg) {
 
 _Noreturn void mem_fail(trilog_t *T) { engine_fatal(T, "out of memory\n"); }
 
+size_t mem_grow_by(trilog_t *T, size_t n, unsigned percent) {
+  size_t step = percent - 100;
+  if (step > SIZE_MAX / 100 || n / 100 > SIZE_MAX / step)
+    mem_fail(T);
+  size_t extra = n / 100 * step + n % 100 * step / 100;
+  if (extra == 0)
+    extra = 1;
+  if (n > SIZE_MAX - extra)
+    mem_fail(T);
+  return n + extra;
+}
+
 _Noreturn void engine_abort(trilog_t *T) {
   T->aborted = true;
   longjmp(T->fatal_jmp, 1);

@@ -59,15 +59,15 @@ load common
   [[ "$output" == *"n(2)"* ]]
 }
 
-@test "-n boots the core and the lists it uses, but not apply or DCGs" {
+@test "-n boots the core and the libraries it uses, lists and apply, but not DCGs" {
   run "$TRILOG" -f -n -e "
     append([1], [2], L),
-    catch(maplist(atom, [a]), error(E2, _), true),
+    ( maplist(atom, [a]) -> M = maplist ; M = none ),
     catch(phrase(x, []), error(E3, _), true),
-    writeq(r(L, E2, E3)),
+    writeq(r(L, M, E3)),
     nl.
   "
-  [[ "$output" == *"r([1, 2], existence_error(procedure, /(maplist, 2)), existence_error(procedure, /(phrase, 2)))"* ]]
+  [[ "$output" == *"r([1, 2], maplist, existence_error(procedure, /(phrase, 2)))"* ]]
 }
 
 @test "with -n, libraries load on request and DCG files parse after library(dcgs)" {
@@ -135,4 +135,18 @@ load common
     nl.
   "
   [[ "$output" == *"r(existence_error(procedure, /(maplist, 2)))"* ]]
+}
+
+@test "each library loads what it uses, so it works without the CLI's defaults (-n) (regression)" {
+  for f in lib/*.pl; do
+    run "$TRILOG" -n -f -e "consult('$f'), halt."
+    [ -z "$output" ] || { echo "$f: $output"; false; }
+  done
+  run "$TRILOG" -n -f -e "max_member(M, [1, 3, 2]), min_member(N, [2, 1, 3])."
+  [[ "$output" == *"M = 3, N = 1"* ]]
+  run "$TRILOG" -n -f -e "consult('lib/ledit.pl'), ed_new(S0), ed_session([\"a\", \"foo\", \".\"], S0, S), ed_lines(S, L)."
+  [[ "$output" == *'L = ["foo"]'* ]]
+  run "$TRILOG" -n -f -e "consult('lib/quad.pl'), quad_cli('test/quad/cuts_quad.pl')."
+  [[ "$output" != *"existence_error"* ]]
+  [[ "$output" == *"2 passed"* ]]
 }

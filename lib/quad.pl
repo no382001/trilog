@@ -1,5 +1,7 @@
 % --- line-buffering utilities ---
 
+:- ensure_loaded(library(apply)).
+
 ws_code(32).
 ws_code(0'\t).
 ws_code(0'\n).

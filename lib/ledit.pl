@@ -28,6 +28,8 @@
 %
 
 %!  ledit is det.
+:- ensure_loaded(library(dcgs)).
+
 ledit :-
     ed_new(S),
     ed_session(interactive, S, _).
