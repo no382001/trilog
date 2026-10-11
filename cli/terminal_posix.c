@@ -14,9 +14,9 @@ int terminal_read_key(void) {
   raw.c_lflag &= ~(ICANON | ECHO);
   raw.c_cc[VMIN] = 1;
   raw.c_cc[VTIME] = 0;
-  tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+  tcsetattr(STDIN_FILENO, TCSANOW, &raw);
   int c = getchar();
-  tcsetattr(STDIN_FILENO, TCSAFLUSH, &old);
+  tcsetattr(STDIN_FILENO, TCSANOW, &old);
   return c;
 }
 

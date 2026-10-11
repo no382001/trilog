@@ -47,6 +47,13 @@ load common
   [[ "$output" == *"X = 1"$'\n'";  X = 2"$'\n'";  ... ."* ]]
 }
 
+@test "a key typed before the answer appears is not thrown away (regression)" {
+  command -v script >/dev/null || skip "no script(1)"
+  run bash -c "{ echo 'member(X, [1,2,3]).'; printf ' '; sleep 0.5; printf '\004'; } \
+    | timeout 5 script -qc '$TRILOG -f' /dev/null 2>&1 | tr -d '\r'"
+  [[ "$output" == *"X = 1"$'\n'";  X = 2"* ]]
+}
+
 @test "calling an undefined predicate raises existence_error, not failure (#15)" {
   run "$TRILOG" -f -e "catch(ex_nihilo, error(E, _), true)."
   [[ "$output" == *"E = existence_error(procedure, /(ex_nihilo, 0))"* ]]
@@ -187,4 +194,9 @@ load common
   answer "X = f(_), _A = 1." "X = f(_B), _A = 1."
   answer "X = f(A, _), A = g(_)." "X = f(g(_A), _B), A = g(_A)."
   answer "X = '\$VAR'(1)." "X = '\$VAR'(1)."
+  answer "X = f(_A, _)." "X = f(_A, _B)."
+  answer "X = f(_, _A)." "X = f(_B, _A)."
+  answer "X = f(_A, _), _A = 1." "X = f(1, _B), _A = 1."
+  answer "X = f('_A', _)." "X = f('_A', _A)."
+  answer "X = f(_A1, _, _B)." "X = f(_A1, _A, _B)."
 }
