@@ -137,7 +137,6 @@
 
 % Test: 20
 ?- number_chars(N," 0'a").
-   N = 0'a.
    N = 97.
 
 % Test: 58
@@ -150,7 +149,6 @@
 
 % Test: 60
 ?- number_chars(N,"0'\\n"). 
-   N = 0'\n.
    N = 10.
 
 % Test: 61
@@ -163,7 +161,6 @@
 
 % Test: 62
 ?- number_chars(N,"0'.").
-   N = 0'..
    N = 46.
 
 % Test: 21

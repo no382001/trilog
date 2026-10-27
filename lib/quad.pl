@@ -142,6 +142,29 @@ parse_expected(AnswerRaw, Expected, Mode) :-
     ;  Mode = exact, Expected = Expected1
     ).
 
+% A line starting with "|" begins another acceptable outcome.
+quad_alternatives(Raw, Alts) :-
+    split_nl(Raw, Lines),
+    qalt_group(Lines, [], Alts).
+
+qalt_group([], Cur, [Alt]) :- reverse(Cur, Ls), join_nl(Ls, Alt).
+qalt_group([L|Ls], Cur, Alts) :-
+    trim_leading(L, T),
+    ( Cur \== [], sub_atom(T, 0, 1, _, '|')
+    -> reverse(Cur, CurLs),
+       join_nl(CurLs, Alt),
+       Alts = [Alt|Alts1],
+       sub_atom(T, 1, _, 0, Rest),
+       qalt_group(Ls, [Rest], Alts1)
+    ;  qalt_group(Ls, [L|Cur], Alts)
+    ).
+
+join_nl([L], L) :- !.
+join_nl([L|Ls], Joined) :-
+    join_nl(Ls, Rest),
+    atom_concat(L, '\n', L1),
+    atom_concat(L1, Rest, Joined).
+
 pe_group([], []).
 pe_group([L|Ls], Groups) :- pe_group_(Ls, [L], Groups).
 
@@ -234,7 +257,7 @@ quad_now(T) :-
 run_one_test(QueryRaw, AnswerRaw, Pass) :-
     strip_query_prefix(QueryRaw, Query0),
     strip_terminating_dot(Query0, Query),
-    parse_expected(AnswerRaw, Expected, Mode),
+    quad_alternatives(AnswerRaw, Alts),
     quad_display(Query, Display),
     quad_ckpt_before(Display),
     quad_now(T0),
@@ -251,7 +274,7 @@ run_one_test(QueryRaw, AnswerRaw, Pass) :-
     ),
     quad_now(T1),
     ElapsedMs is T1 - T0,
-    quad_judge(Expected, Got, Snaps, Error, Mode, Pass, Reason),
+    quad_judge_alts(Alts, Got, Snaps, Error, Pass, Reason),
     retract(quad_stat(TN0, P0, F0, TMs0)),
     TestNum is TN0 + 1,
     ( Pass == true -> P1 is P0 + 1, F1 = F0 ; P1 = P0, F1 is F0 + 1 ),
@@ -282,6 +305,14 @@ quad_ckpt_after(Display, Pass, Reason, ElapsedMs) :-
 % error(Type, _) balls reduce to Type; any other thrown term is used as-is.
 quad_error_type(error(Type, _), Type) :- !.
 quad_error_type(Ball, Ball).
+
+quad_judge_alts([Alt|Alts], Got, Snaps, Error, Pass, Reason) :-
+    parse_expected(Alt, Expected, Mode),
+    quad_judge(Expected, Got, Snaps, Error, Mode, Pass0, Reason0),
+    ( Pass0 == true -> Pass = true, Reason = ''
+    ; Alts == [] -> Pass = false, Reason = Reason0
+    ; quad_judge_alts(Alts, Got, Snaps, Error, Pass, Reason)
+    ).
 
 quad_judge(Expected, Got, Snaps, Error, Mode, Pass, Reason) :-
     ( Mode == ad_infinitum
@@ -386,7 +417,13 @@ qa_number_vars(T, N0, N) :- T =.. [_|Args], qa_number_vars_list(Args, N0, N).
 qa_number_vars_list([], N, N).
 qa_number_vars_list([A|As], N0, N) :- qa_number_vars(A, N0, N1), qa_number_vars_list(As, N1, N).
 
-is_error_expectation(Atom, Type) :- atom_concat('error(', Rest, Atom), atom_concat(Type, ')', Rest).
+is_error_expectation(Atom, Type) :- atom_concat('error(', Rest, Atom), atom_concat(Type, ')', Rest), !.
+is_error_expectation(Atom, Atom) :-
+    catch(atom_to_term(Atom, T, _), _, fail),
+    callable(T),
+    functor(T, N, _),
+    ( N == instantiation_error ; N == system_error ; sub_atom(N, _, _, 0, '_error') ),
+    !.
 
 % Falls back to comparing as terms: "foo/0" vs /(foo, 0), "a,b" vs "a, b".
 matches_error(Error, ExpType) :-
@@ -394,9 +431,15 @@ matches_error(Error, ExpType) :-
     ( ErrAtom == ExpType -> true
     ; atom_concat(ExpType, _, ErrAtom) -> true
     ; strip_at_marks(ExpType, Clean),
-      catch(atom_to_term(Clean, ExpTerm, _), _, fail),
+      catch(atom_to_term(Clean, ExpTerm0, _), _, fail),
+      err_dots(ExpTerm0, ExpTerm),
       \+ \+ Error = ExpTerm
     ).
+
+% "..." in an expected error matches anything.
+err_dots(T, _) :- T == '...', !.
+err_dots(T, T) :- \+ compound(T), !.
+err_dots(T0, T) :- T0 =.. [F|As0], maplist(err_dots, As0, As), T =.. [F|As].
 
 % Some expected errors carry an @ prefix from the
 % suite they were transcribed from, so drop them.
