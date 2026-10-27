@@ -105,8 +105,11 @@ use_module(Spec) :-
 '$source_file'(Spec, _) :- throw(error(domain_error(source_sink, Spec), _)).
 
 '$directory'(Path, Dir) :-
-    (   sub_atom(Path, B, 1, A, '/'), \+ ( sub_atom(Path, _, 1, A1, '/'), A1 < A )
-    ->  sub_atom(Path, 0, B, _, Dir)
+    '$$atom_codes'(Path, Cs),
+    reverse(Cs, Rs),
+    (   append(_, [0'/|RDs], Rs)
+    ->  reverse(RDs, Ds),
+        '$$atom_codes'(Dir, Ds)
     ;   Dir = '.'
     ).
 
@@ -513,13 +516,29 @@ atom_concat(A, B, C) :-
 %!  sub_atom(+Atom, ?Before, ?Length, ?After, ?Sub) is nondet.
 sub_atom(Atom, Before, Length, After, Sub) :-
     '$with_context'('$sub_atom_check'(Atom, Before, Length, After, Sub), sub_atom/5),
-    '$$atom_codes'(Atom, Codes),
-    append(BC, RestC, Codes),
-    length(BC, Before),
-    append(SC, AC, RestC),
-    length(SC, Length),
-    length(AC, After),
-    '$$atom_codes'(Sub, SC).
+    '$$atom_codes'(Atom, Cs),
+    length(Cs, N),
+    (   atom(Sub) -> '$$atom_codes'(Sub, SC), length(SC, L0), Length = L0
+    ;   true
+    ),
+    '$sub_atom'(Cs, N, Before, Length, After, SC),
+    ( var(Sub) -> '$$atom_codes'(Sub, SC) ; true ).
+'$sub_atom'(Cs, N, B, L, A, SC) :-
+    (   integer(B) -> B >= 0, length(BC, B), append(BC, Rest, Cs)
+    ;   integer(L), integer(A) ->
+        B is N - L - A, B >= 0, length(BC, B), append(BC, Rest, Cs)
+    ;   '$sub_suffix'(Cs, 0, B, Rest)
+    ),
+    M is N - B,
+    (   nonvar(SC) -> append(SC, _, Rest), A is M - L
+    ;   integer(L) -> L >= 0, L =< M, length(SC, L), append(SC, _, Rest), A is M - L
+    ;   integer(A) -> A >= 0, L is M - A, L >= 0, length(SC, L), append(SC, _, Rest)
+    ;   '$sub_prefix'(Rest, 0, L, SC), A is M - L
+    ).
+'$sub_suffix'(Cs, B, B, Cs).
+'$sub_suffix'([_|Cs], B0, B, R) :- B1 is B0 + 1, '$sub_suffix'(Cs, B1, B, R).
+'$sub_prefix'(_, L, L, []).
+'$sub_prefix'([C|Cs], L0, L, [C|P]) :- L1 is L0 + 1, '$sub_prefix'(Cs, L1, L, P).
 '$sub_atom_check'(Atom, Before, Length, After, Sub) :-
     '$must_be_atom'(Atom),
     '$can_be_atom'(Sub),

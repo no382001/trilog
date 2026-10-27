@@ -122,25 +122,16 @@ The first engine is on `main` ([`a3536a4`](https://github.com/no382001/trilog/co
 
 > The only applicable research method is to accumulate experience by implementing a system, synthesize the experience, think for a while and start over. — E. Sandewall, *Programming in an Interactive Environment: The LISP Experience* (1978)
 
-Both engines were measured on the same machine: [`5979680`](https://github.com/no382001/trilog/commit/597968071786c6649631f36ee2e0e950fba78740) as a release build, the first engine with `-O2` and no sanitiser. Times are median CPU time of 7 runs (63 for start-up), with peak memory. "Now" runs `./trilog -n`, which loads only the core; the benchmarks need nothing else.
+Both engines were measured on the same machine with `perf stat`: the current engine as a release build, the first engine with `-O2` and no sanitiser. Times are median CPU time (`task-clock`) of 7 runs (63 for start-up). Instructions are user-space instructions retired, which barely change between runs. Peak memory is measured with GNU `time`. "Now" runs `./trilog -n`, which loads only the core; the benchmarks need nothing else. `fib/2` cuts on `N < 2`, because the first engine runs out of stack on the version without the cut.
 
-| Workload | First engine | Now | Faster | Less memory |
-| --- | --- | --- | --- | --- |
-| start and exit | 9.9 ms, 4.6 MB | 4.4 ms, 2.5 MB | 2.2× | 1.8× |
-| naive reverse, 300 elements | 992 ms, 234 MB | 33 ms, 2.8 MB | 30× | 84× |
-| 8 queens, all solutions | 2,866 ms, 24 MB | 334 ms, 2.8 MB | 8.6× | 8.6× |
-| `fib(21)` | 493 ms, 49 MB | 33 ms, 3.0 MB | 15× | 16× |
-| build 20,000 atoms | 15,082 ms, 34 MB | 1,319 ms, 3.6 MB | 11× | 9.4× |
+| Workload | First engine | Now | Faster | Fewer instructions | Less memory |
+| --- | --- | --- | --- | --- | --- |
+| start and exit | 10.0 ms, 12.5M ins, 2.6 MB | 4.3 ms, 5.7M ins, 2.2 MB | 2.3x | 2.2x | 1.2x |
+| naive reverse, 300 elements | 1,418 ms, 4,222M ins, 232 MB | 49 ms, 157M ins, 2.8 MB | 29x | 27x | 84x |
+| 8 queens, all solutions | 4,029 ms, 14,289M ins, 16.3 MB | 512 ms, 2,595M ins, 2.5 MB | 7.9x | 5.5x | 6.5x |
+| `fib(21)` | 4,525 ms, 7,809M ins, 61 MB | 80 ms, 218M ins, 2.8 MB | 56x | 36x | 22x |
+| build 20,000 atoms | 11,766 ms, 41,079M ins, 28.9 MB | 1,006 ms, 4,107M ins, 3.3 MB | 12x | 10x | 8.6x |
 
-On average (geometric mean) the new engine is 10× faster and uses 11.5× less memory.
+On average (geometric mean) the new engine is 12.8x faster, runs 10.3x fewer instructions and uses 10.4x less memory.
 
-Without `-n`, the CLI also loads its five libraries, and start-up takes 22.3 ms and 3.0 MB.
-
-Lines of code, without blanks and comments, counted with `cloc`. C is the engine and the CLI for one platform; Prolog is the core and the libraries the CLI loads:
-
-| Language | First engine | Now |
-| --- | --- | --- |
-| C | 6,598 | 5,866 |
-| Prolog | 399 | 836 |
-
-The C code shrank by 11% and the Prolog doubled, this is because code that needs no C and is not on a hot path moved to Prolog: lists, errors, DCGs, `between/3`, text I/O helpers and `make/0`. The new engine has more built-ins and passes more tests (265 end-to-end and 1,431 quad tests, against 79 and 1,231) with less C.
+Without `-n`, the CLI also loads its four libraries, and start-up takes 5.2 ms, 10.1M instructions and 2.7 MB.
