@@ -5,6 +5,7 @@
 #include "fmt.h"
 #include "gc.h"
 #include "heap.h"
+#include "image.h"
 #include "io.h"
 #include "mem.h"
 #include "parse.h"
@@ -445,6 +446,22 @@ static void dynamic_declare(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
   T->dynamic_decls[T->dynamic_count++] = (dyn_decl_t){pred_id, pred_arity};
   unmark_consulted(T, pred_id, pred_arity);
   b->dynamic = 1;
+}
+
+bool image_load(trilog_t *T, const image_t *img) {
+  for (int32_t i = 0; i < img->natoms; i++)
+    if (i < T->atom_count ? strcmp(atom_name(T, i), img->atoms[i])
+                          : atom_intern_static(T, img->atoms[i]) != i)
+      return false;
+  for (int32_t i = 0; i < img->ndynamic; i++)
+    dynamic_declare(T, img->dynamic[i].pred_id, img->dynamic[i].pred_arity);
+  for (int32_t i = 0; i < img->nclauses; i++) {
+    const image_clause_t *c = &img->clauses[i];
+    T->consulting_atom = c->source;
+    db_add(T, c->head, c->body, c->nbody, c->nvars, c->source >= 0);
+  }
+  T->consulting_atom = -1;
+  return true;
 }
 
 static void dynamic_undeclare(trilog_t *T, int32_t pred_id,

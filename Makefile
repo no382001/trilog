@@ -27,8 +27,9 @@ VARIANT = $(PLATFORM)$(if $(filter 0,$(LIBC)),-nolibc)$(if $(filter 0,$(OPAQUE))
 DEV = _build/dev-$(VARIANT)
 REL = _build/release-$(VARIANT)
 HIDE_INTERNALS = $(if $(filter 0,$(OPAQUE)),true,objcopy --wildcard --keep-global-symbol='trilog_*')
-DEV_LIB_OBJS = $(patsubst %.c,$(DEV)/%.o,$(LIB_SRCS) src/kernel/embedded_none.c)
-REL_LIB_OBJS = $(patsubst %.c,$(REL)/%.o,$(LIB_SRCS) _build/embedded.c)
+DEV_LIB_OBJS = $(patsubst %.c,$(DEV)/%.o,$(LIB_SRCS) src/kernel/embedded_none.c \
+                 src/kernel/image_none.c src/kernel/image_dump.c)
+REL_LIB_OBJS = $(patsubst %.c,$(REL)/%.o,$(LIB_SRCS) _build/embedded.c) $(REL)/image.o
 DEV_CLI_OBJS = $(patsubst %.c,$(DEV)/%.o,$(CLI_SRCS))
 REL_CLI_OBJS = $(patsubst %.c,$(REL)/%.o,$(CLI_SRCS))
 
@@ -36,7 +37,7 @@ $(DEV)/cli/%.o $(REL)/cli/%.o: CPPFLAGS = -Iinclude -Icli -MMD -MP
 
 $(DEV)/%.o: %.c | format
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) -DTRILOG_IMAGE_DUMP $(CFLAGS) -c $< -o $@
 
 $(REL)/%.o: %.c | format
 	@mkdir -p $(@D)
@@ -90,6 +91,23 @@ EMBED_FILES = boot/core.pl $(sort $(wildcard lib/*.pl))
 _build/embedded.c: $(EMBED_FILES) tools/embed_libs.sh
 	@mkdir -p _build
 	sh tools/embed_libs.sh $(EMBED_FILES) > $@
+
+# The release library boots from an image of the loaded core, written by the
+# host dev build. IMAGE_LOAD runs before the dump and decides what it holds;
+# IMAGE_DEPS lists the files it loads.
+IMAGE_LOAD ?= true
+IMAGE_DEPS ?=
+HOST_MAKE = $(MAKE) --no-print-directory CC=gcc AR=gcc-ar "CFLAGS=-Wall -Wextra -std=c11 -O2" \
+  PLATFORM=posix LIBC=1 OPAQUE=1 DEV=_build/dev-posix \
+  "HIDE_INTERNALS=objcopy --wildcard --keep-global-symbol=trilog_*"
+
+$(REL)/image.c: $(EMBED_FILES) $(LIB_SRCS) $(HDRS) cli/main.c $(IMAGE_DEPS)
+	@mkdir -p $(@D)
+	$(HOST_MAKE) trilog
+	./trilog -n -f -e "$(IMAGE_LOAD), '\$$\$$dump_image'('$@'), halt."
+
+$(REL)/image.o: $(REL)/image.c
+	$(CC) $(CPPFLAGS) -DTRILOG_EMBEDDED $(CFLAGS) -flto=auto -c $< -o $@
 
 ifeq ($(LIBC),0)
 release: $(REL)/libtrilog.a

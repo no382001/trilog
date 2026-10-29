@@ -2,9 +2,7 @@ _build/
 trilog
 trilog-hostile
 examples/embed
-wokwi/build/
-wokwi/core_embed.h
-wokwi/rp2040_embed.h
+pico/build/
 *.o
 *.a
 *.so

@@ -52,6 +52,8 @@ size_t trail_mark(trilog_t *T);
 void trail_release(trilog_t *T, size_t mark);
 
 int32_t atom_intern(trilog_t *T, const char *name);
+// name must outlive the interpreter; it is not copied.
+int32_t atom_intern_static(trilog_t *T, const char *name);
 const char *atom_name(trilog_t *T, int32_t atom_id);
 
 size_t heap_size(trilog_t *T);

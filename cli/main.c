@@ -142,10 +142,11 @@ static void print_exit_stats(void) {
 
 // TODO: This probably should be NDEBUG or something
 #ifdef TRILOG_EMBEDDED
-// The release build bakes boot/ and lib/ into the binary
+// The release build boots from its built-in image.
 static void resolve_core_path(const char *argv0, char *out, size_t out_size) {
   (void)argv0;
-  snprintf(out, out_size, "embedded:boot/core.pl");
+  if (out_size > 0)
+    out[0] = '\0';
 }
 #else
 // The dev build reads boot/core.pl from next to the binary
@@ -231,11 +232,11 @@ int main(int argc, char **argv) {
 
   char core_path[4096];
   resolve_core_path(argv[0], core_path, sizeof core_path);
-  if (verbose)
+  if (verbose && core_path[0])
     printf("?- consult('%s').\n", core_path);
   const char *gc_threshold = getenv("TRILOG_GC_THRESHOLD");
   trilog_config_t config = {
-      .boot_path = core_path,
+      .boot_path = core_path[0] ? core_path : NULL,
       .gc_threshold = gc_threshold ? strtoul(gc_threshold, NULL, 10) : 0,
       .gc_debug = getenv("TRILOG_GC_DEBUG") != NULL,
   };

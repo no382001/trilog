@@ -3,6 +3,7 @@
 #include "ctx.h"
 #include "fmt.h"
 #include "heap.h"
+#include "image.h"
 #include "io.h"
 #include "mem.h"
 #include "parse.h"
@@ -95,10 +96,20 @@ trilog_t *trilog_new(const trilog_config_t *config) {
     return NULL;
   }
   heap_init(t);
-  platform_register(t);
-  ops_seed(t);
-  if (!consult_file(t, c.boot_path ? c.boot_path : "embedded:boot/core.pl",
-                    NULL)) {
+  bool booted;
+  if (!c.boot_path && trilog_image) {
+    booted = image_load(t, trilog_image);
+    platform_register(t);
+  } else {
+    platform_register(t);
+    ops_seed(t);
+    booted = consult_file(
+        t, c.boot_path ? c.boot_path : "embedded:boot/core.pl", NULL);
+  }
+#ifdef TRILOG_IMAGE_DUMP
+  image_dump_register(t);
+#endif
+  if (!booted) {
     trilog_free(t);
     return NULL;
   }

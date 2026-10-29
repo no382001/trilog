@@ -52,12 +52,13 @@ jobs:
       - name: freestanding, 32-bit x86
         run: make PLATFORM=freestanding REL=_build/release-i686-freestanding "CFLAGS=-Wall -Wextra -std=c11 -O2 -m32 -fno-pie" release
 
-      - name: no_posix with newlib, rp2350 (wokwi)
+      - name: no_posix with newlib, rp2040 (pico)
         run: >
-          make _build/release-rp2350/libtrilog.a REL=_build/release-rp2350 PLATFORM=no_posix
+          make _build/release-rp2040/libtrilog.a REL=_build/release-rp2040 PLATFORM=no_posix
+          "IMAGE_LOAD=consult('pico/server.pl')" IMAGE_DEPS=pico/server.pl
           CC=arm-none-eabi-gcc AR=arm-none-eabi-gcc-ar
-          "CFLAGS=-Wall -Wextra -std=c11 -O2 -mcpu=cortex-m33 -mthumb -march=armv8-m.main+fp+dsp -mfloat-abi=softfp -DGC_MIN_CELLS=2048 -DARENA_CHUNK_SIZE=4096 -DGC_SHRINK=0"
-          "HIDE_INTERNALS=arm-none-eabi-objcopy --wildcard --keep-global-symbol=trilog_*"
+          "CFLAGS=-Wall -Wextra -std=c11 -O2 -mcpu=cortex-m0plus -mthumb -DGC_MIN_CELLS=2048 -DARENA_CHUNK_SIZE=4096 -DGC_SHRINK=0"
+          "HIDE_INTERNALS=arm-none-eabi-objcopy --wildcard --keep-global-symbol=trilog_* --keep-global-symbol=embedded_files"
 
   test:
     runs-on: ubuntu-latest

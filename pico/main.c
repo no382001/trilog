@@ -1,8 +1,11 @@
-#include "hd44780.h"
-#include "leds.h"
+#include "hardware/clocks.h"
+#include "hardware/structs/sysinfo.h"
 #include "pico/stdlib.h"
 #include "trilog.h"
 #include <malloc.h>
+#include "tcp.h"
+#include "vfs.h"
+#include "wifi.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -14,7 +17,8 @@ extern char __StackTop, __scratch_x_start__;
 
 static void paint_stack(void) {
   volatile uint32_t here;
-  for (uint32_t *w = (uint32_t *)STACK_PAINT_LO; w < (uint32_t *)&here - 64; w++)
+  for (uint32_t *w = (uint32_t *)STACK_PAINT_LO; w < (uint32_t *)&here - 64;
+       w++)
     *w = 0xDEADBEEF;
 }
 
@@ -58,19 +62,55 @@ static void count_free(void *ud, void *p) {
   free(b);
 }
 
-static bool lcd_clear(trilog_t *t, void *ud, const trilog_value_t *in,
-                      trilog_value_t *out) {
-  (void)t, (void)ud, (void)in, (void)out;
-  hd44780_clear();
+static bool version(trilog_t *t, void *ud, const trilog_value_t *in,
+                    trilog_value_t *out) {
+  (void)t, (void)ud, (void)in;
+  out[0].a = trilog_version();
   return true;
 }
 
-static bool lcd_row(trilog_t *t, void *ud, const trilog_value_t *in,
-                    trilog_value_t *out) {
-  (void)t, (void)ud, (void)out;
-  if (in[0].i < 0 || in[0].i >= LCD_ROWS)
-    return false;
-  hd44780_puts((uint8_t)in[0].i, in[1].a);
+static bool board_info(trilog_t *t, void *ud, const trilog_value_t *in,
+                       trilog_value_t *out) {
+  (void)t, (void)ud, (void)in;
+  out[0].a = TRILOG_BOARD_NAME;
+  uint32_t part = (sysinfo_hw->chip_id & SYSINFO_CHIP_ID_PART_BITS) >>
+                  SYSINFO_CHIP_ID_PART_LSB;
+  out[1].a = part == 2 ? "rp2040" : part == 4 ? "rp2350" : "unknown";
+  out[2].i = clock_get_hz(clk_sys) / 1000000;
+  out[3].i = PICO_FLASH_SIZE_BYTES / 1024;
+  return true;
+}
+
+static bool get_time_ms(trilog_t *t, void *ud, const trilog_value_t *in,
+                        trilog_value_t *out) {
+  (void)t, (void)ud, (void)in;
+  out[0].i = (int64_t)(time_us_64() / 1000);
+  return true;
+}
+
+static bool memory_usage(trilog_t *t, void *ud, const trilog_value_t *in,
+                         trilog_value_t *out) {
+  (void)t, (void)ud, (void)in;
+  struct mallinfo mi = mallinfo();
+  out[0].i = mi.uordblks;
+  out[1].i = mi.arena;
+  out[2].i = &__HeapLimit - &__end__;
+  out[3].i = (int64_t)live_bytes;
+  out[4].i = (int64_t)peak_bytes;
+  return true;
+}
+
+static bool prolog_usage(trilog_t *t, void *ud, const trilog_value_t *in,
+                         trilog_value_t *out) {
+  (void)ud, (void)in;
+  trilog_usage_t u;
+  trilog_usage(t, &u);
+  out[0].i = (int64_t)u.heap_cells;
+  out[1].i = (int64_t)u.heap_capacity_cells;
+  out[2].i = (int64_t)u.heap_peak_cells;
+  out[3].i = (int64_t)u.atoms;
+  out[4].i = (int64_t)u.clauses;
+  out[5].i = (int64_t)u.arena_bytes;
   return true;
 }
 
@@ -181,25 +221,33 @@ static void query(const char *goal) {
 int main(void) {
   paint_stack();
   stdio_init_all();
-  leds_init();
-  hd44780_init();
-  hd44780_puts(0, "trilog");
+  while (!stdio_usb_connected())
+    sleep_ms(100);
 
   printf("trilog %s\n", trilog_version());
   print_memory("before boot");
-  T = trilog_new(&(trilog_config_t){.realloc = count_realloc, .free = count_free});
+  wifi_init();
+  print_memory("after wifi");
+  T = trilog_new(&(trilog_config_t){
+      .realloc = count_realloc, .free = count_free, .gc_threshold = 1536});
   if (!T) {
     print_memory("boot failed");
-    hd44780_puts(1, "boot failed");
     for (;;)
       tight_loop_contents();
   }
   print_memory("after boot");
 
-  leds_register(T);
-  trilog_register(T, "lcd_clear", "", lcd_clear, NULL);
-  trilog_register(T, "lcd_row", "ia", lcd_row, NULL);
-  trilog_load_string(T, "led(0). led(1). led(2). led(3). led(4).");
+  trilog_register(T, "get_time_ms", ">i", get_time_ms, NULL);
+  trilog_register(T, "$trilog_version", ">a", version, NULL);
+  trilog_register(T, "board_info", ">aaii", board_info, NULL);
+  trilog_register(T, "memory_usage", ">iiiii", memory_usage, NULL);
+  trilog_register(T, "prolog_usage", ">iiiiii", prolog_usage, NULL);
+  trilog_load_string(T, "trilog_version(V) :- '$trilog_version'(A), "
+                        "atom_chars(A, V).");
+  wifi_register(T);
+  tcp_register(T);
+  vfs_register(T);
+  trilog_set_io(T, &tcp_io);
 
   char line[256];
   for (;;) {
@@ -212,7 +260,5 @@ int main(void) {
     print_memory("after query");
   }
 
-  hd44780_puts(0, "halted.");
-  hd44780_puts(1, "");
   return 0;
 }
