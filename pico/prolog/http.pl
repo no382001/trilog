@@ -18,6 +18,7 @@ serve(Port) :-
 handle(Conn, In, Out) :-
     get_time_ms(T0),
     read_line_to_atom(In, Line),
+    Line \== end_of_file,
     skip_headers(In),
     (   atom(Line),
         atom_chars(Line, Cs),

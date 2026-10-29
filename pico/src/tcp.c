@@ -6,7 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MAX_CONNS 4
+#define MAX_CONNS 8
+#define IDLE_TIMEOUT_MS 5000
 
 typedef enum { FREE, PENDING, ACCEPTED } conn_state;
 
@@ -16,13 +17,14 @@ typedef struct {
   struct pbuf *rx;
   bool eof;
   int refs;
+  absolute_time_t deadline; // for the request to arrive
 } conn_t;
 
 static conn_t conns[MAX_CONNS];
 static struct tcp_pcb *listener;
 static u16_t listener_port;
-static const char *const conn_paths[MAX_CONNS] = {"tcp:0", "tcp:1", "tcp:2",
-                                                  "tcp:3"};
+static const char *const conn_paths[MAX_CONNS] = {
+    "tcp:0", "tcp:1", "tcp:2", "tcp:3", "tcp:4", "tcp:5", "tcp:6", "tcp:7"};
 
 static void conn_release(conn_t *c) {
   if (c->pcb) {
@@ -67,7 +69,9 @@ static err_t on_accept(void *arg, struct tcp_pcb *pcb, err_t err) {
     conn_t *c = &conns[i];
     if (c->state != FREE)
       continue;
-    *c = (conn_t){.state = PENDING, .pcb = pcb};
+    *c = (conn_t){.state = PENDING,
+                  .pcb = pcb,
+                  .deadline = make_timeout_time_ms(IDLE_TIMEOUT_MS)};
     tcp_arg(pcb, c);
     tcp_recv(pcb, on_recv);
     tcp_err(pcb, on_err);
@@ -155,6 +159,8 @@ long tcp_stream_read(void *h, char *buf, size_t n) {
       cyw43_arch_lwip_end();
       return k;
     }
+    if (time_reached(c->deadline))
+      c->eof = true;
     bool eof = c->eof;
     cyw43_arch_lwip_end();
     if (eof)
@@ -165,6 +171,7 @@ long tcp_stream_read(void *h, char *buf, size_t n) {
 
 long tcp_stream_write(void *h, const char *buf, size_t n) {
   conn_t *c = h;
+  absolute_time_t give_up = make_timeout_time_ms(IDLE_TIMEOUT_MS);
   for (;;) {
     cyw43_arch_lwip_begin();
     if (!c->pcb) {
@@ -179,7 +186,7 @@ long tcp_stream_write(void *h, const char *buf, size_t n) {
     cyw43_arch_lwip_end();
     if (e == ERR_OK)
       return k;
-    if (e != ERR_MEM)
+    if (e != ERR_MEM || time_reached(give_up))
       return -1;
     sleep_ms(1);
   }
