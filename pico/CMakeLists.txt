@@ -17,7 +17,7 @@ set(LIBTRILOG ${ROOT}/${TRILOG_REL}/libtrilog.a)
 add_custom_target(libtrilog
   COMMAND make -C ${ROOT} ${TRILOG_REL}/libtrilog.a
           REL=${TRILOG_REL} PLATFORM=no_posix
-          "IMAGE_LOAD=consult('pico/server.pl')" IMAGE_DEPS=pico/server.pl
+          "IMAGE_LOAD=consult('pico/prolog/server.pl')" IMAGE_DEPS=pico/prolog/server.pl
           CC=arm-none-eabi-gcc AR=arm-none-eabi-gcc-ar
           "CFLAGS=-Wall -Wextra -std=c11 -O2 -mcpu=cortex-m0plus -mthumb -DGC_MIN_CELLS=2048 -DARENA_CHUNK_SIZE=4096 -DGC_SHRINK=0"
           "HIDE_INTERNALS=arm-none-eabi-objcopy --wildcard --keep-global-symbol=trilog_* --keep-global-symbol=embedded_files"
@@ -25,19 +25,20 @@ add_custom_target(libtrilog
   VERBATIM
 )
 
-add_executable(trilog main.c terminal_pico.c ${ROOT}/cli/toplevel.c tcp.c vfs.c wifi.c
-  server_pl.S)
+set(SRC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_executable(trilog ${SRC}/main.c ${SRC}/terminal_pico.c ${SRC}/tcp.c
+  ${SRC}/vfs.c ${SRC}/wifi.c ${SRC}/server_pl.S ${ROOT}/cli/toplevel.c)
 add_dependencies(trilog libtrilog)
 set_target_properties(trilog PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/trilog"
 )
-set_source_files_properties(server_pl.S PROPERTIES
-  COMPILE_DEFINITIONS "SERVER_PL=\"${CMAKE_CURRENT_SOURCE_DIR}/server.pl\""
-  OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/server.pl)
+set_source_files_properties(${SRC}/server_pl.S PROPERTIES
+  COMPILE_DEFINITIONS "SERVER_PL=\"${CMAKE_CURRENT_SOURCE_DIR}/prolog/server.pl\""
+  OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/prolog/server.pl)
 
 target_compile_definitions(trilog PRIVATE PICO_MALLOC_PANIC=0 TOPLEVEL_LINE_MAX=256
   "TRILOG_BOARD_NAME=\"${PICO_BOARD}\"")
-target_include_directories(trilog PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${ROOT}/include ${ROOT}/cli)
+target_include_directories(trilog PRIVATE ${SRC} ${ROOT}/include ${ROOT}/cli)
 
 pico_enable_stdio_usb(trilog 1)
 pico_enable_stdio_uart(trilog 0)

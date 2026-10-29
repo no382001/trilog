@@ -383,7 +383,7 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
   size_t next = mem_grow_by(T, new_top, T->gc_grow_percent);
   size_t floor = T->gc_fixed ? T->gc_fixed : GC_MIN_CELLS;
   size_t room = heap_capacity(T) / 4 * 3;
-  if (T->gc_fixed && !GC_SHRINK && next > room && new_top < room)
+  if (T->gc_fixed && !GC_SHRINK && next > room)
     next = room;
   T->gc_threshold = next > floor ? next : floor;
 

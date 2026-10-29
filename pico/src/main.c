@@ -143,7 +143,7 @@ int main(void) {
   wifi_init();
   print_memory("after wifi");
   T = trilog_new(&(trilog_config_t){
-      .realloc = count_realloc, .free = count_free, .gc_threshold = 1536});
+      .realloc = count_realloc, .free = count_free, .gc_threshold = 1024});
   if (!T) {
     print_memory("boot failed");
     for (;;)

@@ -14,7 +14,7 @@ static const embedded_file *file_at(int64_t i) {
   if (i < n)
     return &embedded_files[i];
   static embedded_file server;
-  server = (embedded_file){"pico/server.pl", server_pl, strlen(server_pl)};
+  server = (embedded_file){"pico/prolog/server.pl", server_pl, strlen(server_pl)};
   return &server;
 }
 
