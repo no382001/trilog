@@ -20,6 +20,7 @@ typedef struct {
 
 static conn_t conns[MAX_CONNS];
 static struct tcp_pcb *listener;
+static u16_t listener_port;
 static const char *const conn_paths[MAX_CONNS] = {"tcp:0", "tcp:1", "tcp:2",
                                                   "tcp:3"};
 static char std_in, std_out, std_err;
@@ -82,6 +83,8 @@ static bool tcp_listen_on(trilog_t *t, void *ud, const trilog_value_t *in,
   (void)ud, (void)out;
   if (in[0].i < 1 || in[0].i > 65535)
     return trilog_error(t, "domain_error(port, %d)", (int)in[0].i);
+  if (listener && listener_port == in[0].i)
+    return true;
   cyw43_arch_lwip_begin();
   if (listener) {
     tcp_close(listener);
@@ -92,8 +95,10 @@ static bool tcp_listen_on(trilog_t *t, void *ud, const trilog_value_t *in,
     listener = tcp_listen_with_backlog(pcb, MAX_CONNS);
   else if (pcb)
     tcp_close(pcb);
-  if (listener)
+  if (listener) {
     tcp_accept(listener, on_accept);
+    listener_port = (u16_t)in[0].i;
+  }
   cyw43_arch_lwip_end();
   if (!listener)
     return trilog_error(t, "system_error(tcp_listen)");

@@ -3,19 +3,25 @@
 #include "tcp.h"
 #include <string.h>
 
-extern const char server_pl[];
+extern const char *const prolog_files[][2];
 
 static const embedded_file *file_at(int64_t i) {
   int64_t n = 0;
   while (embedded_files[n].path)
     n++;
-  if (i < 0 || i > n)
+  if (i < 0)
     return NULL;
   if (i < n)
     return &embedded_files[i];
-  static embedded_file server;
-  server = (embedded_file){"pico/prolog/server.pl", server_pl, strlen(server_pl)};
-  return &server;
+  for (int64_t j = 0; prolog_files[j][0]; j++) {
+    if (n + j == i) {
+      static embedded_file f;
+      f = (embedded_file){prolog_files[j][0], prolog_files[j][1],
+                          strlen(prolog_files[j][1])};
+      return &f;
+    }
+  }
+  return NULL;
 }
 
 static bool vfs_file(trilog_t *t, void *ud, const trilog_value_t *in,

@@ -51,11 +51,6 @@ void wifi_init(void) {
   }
   ready = true;
   cyw43_arch_enable_sta_mode();
-  const creds_t *c = saved_creds();
-  if (c)
-    connect(c->ssid, c->password);
-  else
-    printf("wifi: nothing saved; use wifi_connect/2 and wifi_save/2\n");
 }
 
 static bool check_creds(trilog_t *t, const trilog_value_t *in) {
@@ -73,6 +68,16 @@ static bool wifi_connect(trilog_t *t, void *ud, const trilog_value_t *in,
                          trilog_value_t *out) {
   (void)ud, (void)out;
   return check_creds(t, in) && connect(in[0].a, in[1].a);
+}
+
+// The password stays in C: it never becomes an atom.
+static bool wifi_connect_saved(trilog_t *t, void *ud, const trilog_value_t *in,
+                               trilog_value_t *out) {
+  (void)ud, (void)in, (void)out;
+  if (!ready)
+    return trilog_error(t, "system_error(wifi_init_failed)");
+  const creds_t *c = saved_creds();
+  return c && connect(c->ssid, c->password);
 }
 
 static bool wifi_save(trilog_t *t, void *ud, const trilog_value_t *in,
@@ -137,6 +142,7 @@ static bool onboard_led(trilog_t *t, void *ud, const trilog_value_t *in,
 
 void wifi_register(trilog_t *t) {
   trilog_register(t, "wifi_connect", "aa", wifi_connect, NULL);
+  trilog_register(t, "wifi_connect_saved", "", wifi_connect_saved, NULL);
   trilog_register(t, "wifi_save", "aa", wifi_save, NULL);
   trilog_register(t, "wifi_forget", "", wifi_forget, NULL);
   trilog_register(t, "wifi_saved", ">a", wifi_saved, NULL);

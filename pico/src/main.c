@@ -1,5 +1,6 @@
 #include "hardware/clocks.h"
 #include "hardware/structs/sysinfo.h"
+#include "hardware/watchdog.h"
 #include "pico/stdlib.h"
 #include "toplevel.h"
 #include "trilog.h"
@@ -88,6 +89,23 @@ static bool get_time_ms(trilog_t *t, void *ud, const trilog_value_t *in,
   return true;
 }
 
+static bool sleep_for(trilog_t *t, void *ud, const trilog_value_t *in,
+                      trilog_value_t *out) {
+  (void)t, (void)ud, (void)out;
+  if (in[0].i > 0)
+    sleep_ms((uint32_t)in[0].i);
+  return true;
+}
+
+static bool reboot(trilog_t *t, void *ud, const trilog_value_t *in,
+                   trilog_value_t *out) {
+  (void)t, (void)ud, (void)in, (void)out;
+  fflush(stdout);
+  watchdog_reboot(0, 0, 100);
+  for (;;)
+    tight_loop_contents();
+}
+
 static bool memory_usage(trilog_t *t, void *ud, const trilog_value_t *in,
                          trilog_value_t *out) {
   (void)t, (void)ud, (void)in;
@@ -136,8 +154,6 @@ static void print_memory(const char *when) {
 int main(void) {
   paint_stack();
   stdio_init_all();
-  while (!stdio_usb_connected())
-    sleep_ms(100);
 
   print_memory("before boot");
   wifi_init();
@@ -152,17 +168,18 @@ int main(void) {
   print_memory("after boot");
 
   trilog_register(T, "get_time_ms", ">i", get_time_ms, NULL);
+  trilog_register(T, "sleep_ms", "i", sleep_for, NULL);
+  trilog_register(T, "reboot", "", reboot, NULL);
   trilog_register(T, "$trilog_version", ">a", version, NULL);
   trilog_register(T, "board_info", ">aaii", board_info, NULL);
   trilog_register(T, "memory_usage", ">iiiii", memory_usage, NULL);
   trilog_register(T, "prolog_usage", ">iiiiii", prolog_usage, NULL);
-  trilog_load_string(T, "trilog_version(V) :- '$trilog_version'(A), "
-                        "atom_chars(A, V).");
   wifi_register(T);
   tcp_register(T);
   vfs_register(T);
   trilog_set_io(T, &tcp_io);
 
+  toplevel_query(T, "main", false);
   for (;;)
     toplevel_repl(T);
 }
