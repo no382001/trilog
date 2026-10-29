@@ -1,125 +1,12 @@
 #include "host.h"
 #include "terminal.h"
+#include "toplevel.h"
 #include "trilog.h"
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 static trilog_t *T;
-
-static size_t format_term(trilog_term_t *term, char *buf, size_t cap) {
-  return term ? trilog_format(T, *term, TRILOG_FORMAT_QUOTED, buf, cap)
-              : trilog_format_answer(T, buf, cap);
-}
-
-static void print_formatted(FILE *out, trilog_term_t *term) {
-  char small[256];
-  size_t n = format_term(term, small, sizeof small);
-  if (n < sizeof small) {
-    fputs(small, out);
-    return;
-  }
-  char *big = malloc(n + 1);
-  if (!big) {
-    fputs("...", out);
-    return;
-  }
-  format_term(term, big, n + 1);
-  fputs(big, out);
-  free(big);
-}
-
-static void print_term(FILE *out, trilog_term_t term) {
-  print_formatted(out, &term);
-}
-
-static void print_uncaught(void) {
-  fputs("uncaught exception: ", stderr);
-  print_term(stderr, trilog_error_term(T));
-  fputs("\n", stderr);
-}
-
-typedef struct {
-  bool interactive;
-  bool any_found;
-  bool closed;
-  bool all; // `a` was pressed: print every remaining answer
-} toplevel_state;
-
-static bool toplevel_solution(trilog_t *t, void *ud, bool has_more) {
-  toplevel_state *st = ud;
-  fputs(st->any_found ? "\n;  " : "   ", stdout);
-  st->any_found = true;
-  (void)t;
-  print_formatted(stdout, NULL);
-  if (has_more) {
-    if (st->all)
-      return true;
-    fflush(stdout);
-    int key = st->interactive ? terminal_read_key() : ';';
-    if (key == 'a')
-      st->all = true;
-    if (key == ';' || key == ' ' || key == 'a')
-      return true;
-    fputs("\n;  ... .\n", stdout);
-    st->closed = true;
-    return false;
-  }
-  fputs(".\n", stdout);
-  st->closed = true;
-  return false;
-}
-
-static trilog_status_t toplevel_query(const char *goal, bool interactive) {
-  toplevel_state st = {.interactive = interactive};
-  trilog_status_t s = trilog_query(T, goal, toplevel_solution, &st);
-  switch (s) {
-  case TRILOG_TRUE:
-    if (!st.closed)
-      fputs(".\n", stdout);
-    break;
-  case TRILOG_FALSE:
-    fputs("   false.\n", stdout);
-    break;
-  case TRILOG_ERROR:
-    if (trilog_term_type(T, trilog_error_term(T)) != TRILOG_INVALID)
-      print_uncaught();
-    break;
-  case TRILOG_HALT:
-    exit(trilog_halt_code(T));
-  case TRILOG_ABORTED:
-    break;
-  }
-  return s;
-}
-
-// One line, one query TODO: no support yet for a query spanning multiple lines.
-static void repl(void) {
-  bool interactive = terminal_stdin_is_tty();
-  if (interactive)
-    printf("trilog %s\n", trilog_version());
-  char line[8192];
-  for (;;) {
-    if (interactive) {
-      fputs("?- ", stdout);
-      fflush(stdout);
-    }
-    if (!fgets(line, sizeof line, stdin))
-      break;
-    line[strcspn(line, "\n")] = '\0';
-
-    int blank = 1;
-    for (char *p = line; *p; p++)
-      if (!isspace((unsigned char)*p)) {
-        blank = 0;
-        break;
-      }
-    if (blank)
-      continue;
-    toplevel_query(line, interactive);
-  }
-}
 
 static const char *usage =
     "Usage: trilog [options] [file...]\n"
@@ -181,7 +68,7 @@ static void load_default_libraries(void) {
       "ensure_loaded(library(dcgs)), ensure_loaded(library(between)), "
       "ensure_loaded(library(charsio)), ensure_loaded(library(make))";
   if (trilog_query(T, libs, no_more, NULL) != TRILOG_TRUE)
-    print_uncaught();
+    toplevel_print_uncaught(T);
 }
 
 static void load_init_file(int verbose) {
@@ -264,13 +151,12 @@ int main(int argc, char **argv) {
     }
   }
 
-  if (query) {
-    if (toplevel_query(query, false) == TRILOG_ERROR &&
-        trilog_term_type(T, trilog_error_term(T)) == TRILOG_INVALID)
-      return 1;
-  } else {
-    repl();
-  }
-
+  trilog_status_t s =
+      query ? toplevel_query(T, query, false) : toplevel_repl(T);
+  if (s == TRILOG_HALT)
+    exit(trilog_halt_code(T));
+  if (query && s == TRILOG_ERROR &&
+      trilog_term_type(T, trilog_error_term(T)) == TRILOG_INVALID)
+    return 1;
   return 0;
 }

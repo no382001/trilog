@@ -1,13 +1,13 @@
 #include "hardware/clocks.h"
 #include "hardware/structs/sysinfo.h"
 #include "pico/stdlib.h"
+#include "toplevel.h"
 #include "trilog.h"
 #include <malloc.h>
 #include "tcp.h"
 #include "vfs.h"
 #include "wifi.h"
 #include <stdio.h>
-#include <string.h>
 
 extern char __end__, __HeapLimit;
 
@@ -133,103 +133,12 @@ static void print_memory(const char *when) {
   }
 }
 
-static void print_term(trilog_term_t term) {
-  char buf[256];
-  size_t n = trilog_format(T, term, TRILOG_FORMAT_QUOTED, buf, sizeof buf);
-  printf("%s", buf);
-  if (n >= sizeof buf)
-    printf("%s", "...");
-}
-
-typedef struct {
-  bool any;
-  bool closed;
-} answer_state;
-
-static int typed_ahead = EOF;
-
-static bool on_solution(trilog_t *t, void *ud, bool has_more) {
-  answer_state *st = ud;
-  printf("%s", st->any ? "\n;  " : "   ");
-  st->any = true;
-  char buf[256];
-  size_t n = trilog_format_answer(t, buf, sizeof buf);
-  printf("%s", buf);
-  if (n >= sizeof buf)
-    printf("%s", "...");
-  if (!has_more) {
-    printf("%s", ".\n");
-    st->closed = true;
-    return false;
-  }
-  int key = getchar();
-  if (key == ';' || key == ' ')
-    return true;
-  if (key > ' ' && key != '.' && key < 127)
-    typed_ahead = key;
-  printf("%s", "\n;  ... .\n");
-  st->closed = true;
-  return false;
-}
-
-static bool read_line(char *buf, int size) {
-  int i = 0;
-  for (;;) {
-    int c = typed_ahead != EOF ? typed_ahead : getchar();
-    typed_ahead = EOF;
-    if (c == EOF)
-      return false;
-    if (c == '\r' || c == '\n') {
-      putchar('\n');
-      break;
-    }
-    if (c == 127 || c == '\b') {
-      if (i > 0) {
-        i--;
-        printf("%s", "\b \b");
-      }
-      continue;
-    }
-    if (i < size - 1) {
-      buf[i++] = (char)c;
-      putchar(c);
-    }
-  }
-  buf[i] = '\0';
-  return true;
-}
-
-static void query(const char *goal) {
-  answer_state st = {0};
-  switch (trilog_query(T, goal, on_solution, &st)) {
-  case TRILOG_TRUE:
-    if (!st.closed)
-      printf("%s", ".\n");
-    break;
-  case TRILOG_ABORTED:
-    break;
-  case TRILOG_FALSE:
-    printf("%s", "   false.\n");
-    break;
-  case TRILOG_ERROR:
-    if (trilog_term_type(T, trilog_error_term(T)) != TRILOG_INVALID) {
-      printf("%s", "uncaught exception: ");
-      print_term(trilog_error_term(T));
-      putchar('\n');
-    }
-    break;
-  case TRILOG_HALT:
-    break;
-  }
-}
-
 int main(void) {
   paint_stack();
   stdio_init_all();
   while (!stdio_usb_connected())
     sleep_ms(100);
 
-  printf("trilog %s\n", trilog_version());
   print_memory("before boot");
   wifi_init();
   print_memory("after wifi");
@@ -254,16 +163,6 @@ int main(void) {
   vfs_register(T);
   trilog_set_io(T, &tcp_io);
 
-  char line[256];
-  for (;;) {
-    printf("%s", "?- ");
-    if (!read_line(line, sizeof line))
-      break;
-    if (line[strspn(line, " \t")] == '\0')
-      continue;
-    query(line);
-    print_memory("after query");
-  }
-
-  return 0;
+  for (;;)
+    toplevel_repl(T);
 }

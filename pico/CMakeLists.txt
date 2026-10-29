@@ -25,7 +25,8 @@ add_custom_target(libtrilog
   VERBATIM
 )
 
-add_executable(trilog main.c tcp.c vfs.c wifi.c server_pl.S)
+add_executable(trilog main.c terminal_pico.c ${ROOT}/cli/toplevel.c tcp.c vfs.c wifi.c
+  server_pl.S)
 add_dependencies(trilog libtrilog)
 set_target_properties(trilog PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/trilog"
@@ -34,9 +35,9 @@ set_source_files_properties(server_pl.S PROPERTIES
   COMPILE_DEFINITIONS "SERVER_PL=\"${CMAKE_CURRENT_SOURCE_DIR}/server.pl\""
   OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/server.pl)
 
-target_compile_definitions(trilog PRIVATE PICO_MALLOC_PANIC=0
+target_compile_definitions(trilog PRIVATE PICO_MALLOC_PANIC=0 TOPLEVEL_LINE_MAX=256
   "TRILOG_BOARD_NAME=\"${PICO_BOARD}\"")
-target_include_directories(trilog PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${ROOT}/include)
+target_include_directories(trilog PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${ROOT}/include ${ROOT}/cli)
 
 pico_enable_stdio_usb(trilog 1)
 pico_enable_stdio_uart(trilog 0)
