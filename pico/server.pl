@@ -82,7 +82,7 @@ html(home).
 html(fs).
 html(stats).
 
-crlf --> [CR, '\n'], { char_code(CR, 13) }.
+crlf --> "\r\n".
 
 body(home, _, Out) :- !, home(Out).
 body(fs, _, Out) :- !, tree(Out).

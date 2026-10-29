@@ -11,8 +11,8 @@ correctness:
 - sub_atom/atom_length count bytes, not utf-8 chars (atom_length('Pécs', 5)) I mean how correct should we be?
 - directives run to exhaustion instead of once
 - 7/2 gives 3 (iso: 3.5); floats print as 1e+10 (iso: 1.0e10)
-- syntax conformity (make conformity): 140/363
-- quoted atoms: \a \b \f \v \0, octal \NNN\ and hex \xHH\ escapes, backslash-newline continuation; unknown escapes and raw tabs should be syntax errors
+- syntax conformity (make conformity): 142/363
+- quoted atoms: \0, octal \NNN\ and hex \xHH\ escapes, backslash-newline continuation; unknown escapes and raw tabs should be syntax errors
 - the toplevel reads one line per query, not one term; queries cannot span lines
 - printed arguments are separated by ", ", iso writes ","
 

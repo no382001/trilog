@@ -168,20 +168,8 @@ static const char *read_quoted(trilog_t *T, char quote) {
       if (*T->P == '\0')
         perr(T, "unterminated quoted token");
       char c = *T->P++;
-      switch (c) {
-      case 'n':
-        v = '\n';
-        break;
-      case 't':
-        v = '\t';
-        break;
-      case 'a':
-        v = '\a';
-        break;
-      default:
-        v = c;
-        break;
-      }
+      int e = escape_char(c);
+      v = e < 0 ? c : (char)e;
     } else
       T->P++;
     tok_put(T, n++, v);
@@ -222,32 +210,8 @@ static tterm_t *parse_char_code(trilog_t *T) {
   if (*T->P == '\\') {
     T->P++;
     char c = *T->P++;
-    switch (c) {
-    case 'n':
-      code = '\n';
-      break;
-    case 't':
-      code = '\t';
-      break;
-    case 'r':
-      code = '\r';
-      break;
-    case 'a':
-      code = '\a';
-      break;
-    case 'b':
-      code = '\b';
-      break;
-    case 'f':
-      code = '\f';
-      break;
-    case 'v':
-      code = '\v';
-      break;
-    default:
-      code = (unsigned char)c;
-      break;
-    }
+    int e = escape_char(c);
+    code = e < 0 ? (unsigned char)c : e;
   } else if (T->P[0] == '\'' && T->P[1] == '\'') {
     code = '\'';
     T->P += 2;

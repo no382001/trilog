@@ -47,7 +47,6 @@ conformity	#135 writeq(-(1)).
 conformity	#137 writeq(- (a*b)).
 conformity	#138 writeq(\ (a*b)).
 conformity	#139 writeq(-((a,b))).
-conformity	#14 writeq('\a').
 conformity	#140 writeq(-a).
 conformity	#147 op(9,fy,fy),op(9,yf,yf). ⏎ write_canonical(fy 1 yf).
 conformity	#148 op(9,fy,fy),op(9,yf,yf). ⏎ write_canonical(fy yf).
@@ -142,7 +141,6 @@ conformity	#262 op(100,xfx,'1'). ⏎ functor(2 '1'y, F, A).
 conformity	#263 op(9,yfx,[bop,bo,b,op,xor]). ⏎ writeq(0 bop 2).
 conformity	#266 op(9,yf,[b2,o8]). ⏎ writeq(0b2).
 conformity	#267 op(9,yf,[b2,o8]). ⏎ writeq(0o8).
-conformity	#269 writeq('\b\r\f\t\n').
 conformity	#27 writeq((*)=(*)).
 conformity	#270 get_char(C). %a
 conformity	#271 get_char(C).%a

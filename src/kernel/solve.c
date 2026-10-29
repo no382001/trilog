@@ -289,12 +289,15 @@ static int no_more_candidates(trilog_t *T, int32_t from_idx,
   return next_candidate(T, from_idx, caller_key) < 0;
 }
 
+static void db_reserve(trilog_t *T, int32_t cap) {
+  T->db = mem_grow_n(T, T->db, (size_t)cap, sizeof(clause_t));
+  T->db_cap = cap;
+}
+
 static void db_ensure_cap(trilog_t *T) {
   if (T->db_count < T->db_cap)
     return;
-  int32_t cap = T->db_cap ? T->db_cap * 2 : 8;
-  T->db = mem_grow_n(T, T->db, (size_t)cap, sizeof(clause_t));
-  T->db_cap = cap;
+  db_reserve(T, T->db_cap ? T->db_cap * 2 : 8);
 }
 
 static int is_dynamic(trilog_t *T, int32_t pred_id,
@@ -455,6 +458,9 @@ bool image_load(trilog_t *T, const image_t *img) {
       return false;
   for (int32_t i = 0; i < img->ndynamic; i++)
     dynamic_declare(T, img->dynamic[i].pred_id, img->dynamic[i].pred_arity);
+  int32_t need = T->db_count + img->nclauses;
+  if (need > T->db_cap)
+    db_reserve(T, need + need / 8);
   for (int32_t i = 0; i < img->nclauses; i++) {
     const image_clause_t *c = &img->clauses[i];
     T->consulting_atom = c->source;

@@ -220,14 +220,9 @@ static void print_atom(trilog_t *T, const char *name, int quoted,
     case '\\':
       emit(T, "\\\\");
       break;
-    case '\n':
-      emit(T, "\\n");
-      break;
-    case '\t':
-      emit(T, "\\t");
-      break;
     default: {
-      char c[2] = {*p, '\0'};
+      char e = escape_letter(*p);
+      char c[3] = {e ? '\\' : *p, e, '\0'};
       emit(T, c);
     }
     }
@@ -273,14 +268,9 @@ static int try_print_char_string(trilog_t *T, size_t r, emit_fn emit) {
     case '\\':
       emit(T, "\\\\");
       break;
-    case '\n':
-      emit(T, "\\n");
-      break;
-    case '\t':
-      emit(T, "\\t");
-      break;
     default: {
-      char s[2] = {c, '\0'};
+      char e = escape_letter(c);
+      char s[3] = {e ? '\\' : c, e, '\0'};
       emit(T, s);
     }
     }

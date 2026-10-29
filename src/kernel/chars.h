@@ -10,3 +10,19 @@ static inline bool ascii_alnum(int c) {
 static inline bool ascii_space(int c) {
   return c == ' ' || (c >= '\t' && c <= '\r');
 }
+
+static const char control_escapes[] = "a\ab\bf\fn\nr\rt\tv\v";
+
+static inline int escape_char(int letter) {
+  for (const char *p = control_escapes; *p; p += 2)
+    if (p[0] == letter)
+      return (unsigned char)p[1];
+  return -1;
+}
+
+static inline char escape_letter(int c) {
+  for (const char *p = control_escapes; *p; p += 2)
+    if (p[1] == c)
+      return p[0];
+  return 0;
+}

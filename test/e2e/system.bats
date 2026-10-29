@@ -470,6 +470,13 @@ load common
   [[ "$output" == *"W = none"* ]]
 }
 
+@test "a fixed GC threshold below the live set does not collect on every step" {
+  run env TRILOG_GC_DEBUG=1 TRILOG_GC_THRESHOLD=1000 timeout 30 "$TRILOG" test/e2e/files/family.pl -e "numlist(1,300,L), loop(20000), length(L,K)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"K = 300"* ]]
+  [ "$(grep -c '^gc:' <<<"$output")" -lt 1000 ]
+}
+
 @test "a binding made before a still-live choice point survives GC and backtracking out of it (regression)" {
   # regression: gc_maybe_run built trail_new_index AFTER compact_trail() had already mutated trail[], wrongly unbinding a still-live variable.
   run env TRILOG_GC_THRESHOLD=100 timeout 10 "$TRILOG" -e "

@@ -58,6 +58,26 @@ sstr8("hello\\world").
 ?- length("\\", N).
    N = 1.
 
+% --- control escapes ---
+
+?- atom_codes('\r', Cs).
+   Cs = [13].
+
+?- atom_codes('\a\b\f\n\r\t\v', Cs).
+   Cs = [7,8,12,10,13,9,11].
+
+?- "a\r\n" = [_, _C, _], char_code(_C, N).
+   N = 13.
+
+?- with_output_to(atom(_A), writeq('a\rb')), atom_codes(_A, Cs).
+   Cs = [39,97,92,114,98,39].
+
+?- with_output_to(atom(_A), writeq('\a\b\f\v')), atom_codes(_A, Cs).
+   Cs = [39,92,97,92,98,92,102,92,118,39].
+
+?- with_output_to(atom(_A), write('a\rb')), atom_codes(_A, Cs).
+   Cs = [97,13,98].
+
 % --- string unification with variables ---
 
 sstr9("hello").

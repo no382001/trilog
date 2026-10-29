@@ -378,10 +378,14 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
   heap_set_size(T, new_top);
   trail_set_size(T, new_trail_top);
 
-  if (!T->gc_fixed) {
-    size_t next = mem_grow_by(T, new_top, T->gc_grow_percent);
-    T->gc_threshold = next > GC_MIN_CELLS ? next : GC_MIN_CELLS;
-  }
+  // A fixed threshold is a floor. Without GC_SHRINK the trigger stays within
+  // 3/4 of the heap, so pushing it out never grows the heap by itself.
+  size_t next = mem_grow_by(T, new_top, T->gc_grow_percent);
+  size_t floor = T->gc_fixed ? T->gc_fixed : GC_MIN_CELLS;
+  size_t room = heap_capacity(T) / 4 * 3;
+  if (T->gc_fixed && !GC_SHRINK && next > room && new_top < room)
+    next = room;
+  T->gc_threshold = next > floor ? next : floor;
 
   // tie capacity to gc_threshold so it can shrink after a big collection.
   if (GC_SHRINK || T->gc_threshold > heap_capacity(T))

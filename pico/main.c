@@ -146,6 +146,8 @@ typedef struct {
   bool closed;
 } answer_state;
 
+static int typed_ahead = EOF;
+
 static bool on_solution(trilog_t *t, void *ud, bool has_more) {
   answer_state *st = ud;
   printf("%s", st->any ? "\n;  " : "   ");
@@ -163,6 +165,8 @@ static bool on_solution(trilog_t *t, void *ud, bool has_more) {
   int key = getchar();
   if (key == ';' || key == ' ')
     return true;
+  if (key > ' ' && key != '.' && key < 127)
+    typed_ahead = key;
   printf("%s", "\n;  ... .\n");
   st->closed = true;
   return false;
@@ -171,7 +175,8 @@ static bool on_solution(trilog_t *t, void *ud, bool has_more) {
 static bool read_line(char *buf, int size) {
   int i = 0;
   for (;;) {
-    int c = getchar();
+    int c = typed_ahead != EOF ? typed_ahead : getchar();
+    typed_ahead = EOF;
     if (c == EOF)
       return false;
     if (c == '\r' || c == '\n') {
