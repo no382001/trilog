@@ -80,6 +80,7 @@
   X(atom_halt, "halt")                                                         \
   X(atom_flush_output, "flush_output")                                         \
   X(atom_read_line_to_atom, "read_line_to_atom")                               \
+  X(atom_get_byte, "$$get_byte")                                               \
   X(atom_end_of_file, "end_of_file")                                           \
   X(atom_user_input, "user_input")                                             \
   X(atom_unload, "$$unload")                                                   \

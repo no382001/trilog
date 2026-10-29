@@ -23,7 +23,6 @@ static struct tcp_pcb *listener;
 static u16_t listener_port;
 static const char *const conn_paths[MAX_CONNS] = {"tcp:0", "tcp:1", "tcp:2",
                                                   "tcp:3"};
-static char std_in, std_out, std_err;
 
 static void conn_release(conn_t *c) {
   if (c->pcb) {
@@ -133,8 +132,7 @@ void tcp_register(trilog_t *t) {
   trilog_register(t, "tcp_accept", ">a", tcp_accept_next, NULL);
 }
 
-static void *io_open(void *ud, const char *path, const char *mode) {
-  (void)ud, (void)mode;
+void *tcp_stream_open(const char *path) {
   for (int i = 0; i < MAX_CONNS; i++) {
     if (strcmp(path, conn_paths[i]) == 0 && conns[i].state == ACCEPTED) {
       conns[i].refs++;
@@ -144,7 +142,8 @@ static void *io_open(void *ud, const char *path, const char *mode) {
   return NULL;
 }
 
-static long conn_read(conn_t *c, char *buf, size_t n) {
+long tcp_stream_read(void *h, char *buf, size_t n) {
+  conn_t *c = h;
   for (;;) {
     cyw43_arch_lwip_begin();
     if (c->rx) {
@@ -164,7 +163,8 @@ static long conn_read(conn_t *c, char *buf, size_t n) {
   }
 }
 
-static long conn_write(conn_t *c, const char *buf, size_t n) {
+long tcp_stream_write(void *h, const char *buf, size_t n) {
+  conn_t *c = h;
   for (;;) {
     cyw43_arch_lwip_begin();
     if (!c->pcb) {
@@ -190,7 +190,7 @@ bool tcp_send(const char *path, const char *buf, size_t n) {
     if (strcmp(path, conn_paths[i]) != 0 || conns[i].state != ACCEPTED)
       continue;
     while (n > 0) {
-      long k = conn_write(&conns[i], buf, n);
+      long k = tcp_stream_write(&conns[i], buf, n);
       if (k <= 0)
         return false;
       buf += k;
@@ -201,33 +201,7 @@ bool tcp_send(const char *path, const char *buf, size_t n) {
   return false;
 }
 
-static long io_read(void *ud, void *h, char *buf, size_t n) {
-  (void)ud;
-  if (h == &std_in) {
-    int c = getchar();
-    if (c == EOF)
-      return 0;
-    buf[0] = (char)c;
-    return 1;
-  }
-  if (h == &std_out || h == &std_err)
-    return 0;
-  return conn_read(h, buf, n);
-}
-
-static long io_write(void *ud, void *h, const char *buf, size_t n) {
-  (void)ud;
-  if (h == &std_out || h == &std_err)
-    return (long)fwrite(buf, 1, n, stdout);
-  if (h == &std_in)
-    return -1;
-  return conn_write(h, buf, n);
-}
-
-static void io_close(void *ud, void *h) {
-  (void)ud;
-  if (h == &std_in || h == &std_out || h == &std_err)
-    return;
+void tcp_stream_close(void *h) {
   conn_t *c = h;
   if (--c->refs > 0)
     return;
@@ -235,20 +209,3 @@ static void io_close(void *ud, void *h) {
   conn_release(c);
   cyw43_arch_lwip_end();
 }
-
-static void io_flush(void *ud, void *h) {
-  (void)ud;
-  if (h == &std_out || h == &std_err)
-    fflush(stdout);
-}
-
-const trilog_io_t tcp_io = {
-    .open = io_open,
-    .read = io_read,
-    .write = io_write,
-    .close = io_close,
-    .flush = io_flush,
-    .in = &std_in,
-    .out = &std_out,
-    .err = &std_err,
-};

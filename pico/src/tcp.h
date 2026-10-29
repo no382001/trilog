@@ -8,5 +8,9 @@ void tcp_register(trilog_t *t);
 // Writes all of buf to the connection a tcp_accept/1 path names.
 bool tcp_send(const char *path, const char *buf, size_t n);
 
-// stdio for the user streams, plus the tcp:N paths tcp_accept returns.
-extern const trilog_io_t tcp_io;
+// Stream hooks for a tcp:N path; tcp_stream_open returns NULL for anything
+// else.
+void *tcp_stream_open(const char *path);
+long tcp_stream_read(void *h, char *buf, size_t n);
+long tcp_stream_write(void *h, const char *buf, size_t n);
+void tcp_stream_close(void *h);

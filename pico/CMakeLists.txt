@@ -43,7 +43,7 @@ file(CONFIGURE OUTPUT prolog_files.c CONTENT
 
 set(SRC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_executable(trilog ${SRC}/main.c ${SRC}/terminal_pico.c ${SRC}/tcp.c
-  ${SRC}/vfs.c ${SRC}/wifi.c ${CMAKE_BINARY_DIR}/prolog_files.S
+  ${SRC}/io.c ${SRC}/mail.c ${SRC}/vfs.c ${SRC}/wifi.c ${CMAKE_BINARY_DIR}/prolog_files.S
   ${CMAKE_BINARY_DIR}/prolog_files.c ${ROOT}/cli/toplevel.c)
 add_dependencies(trilog libtrilog)
 set_target_properties(trilog PROPERTIES

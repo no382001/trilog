@@ -137,6 +137,7 @@ struct trilog {
   size_t capture_starts[CAPTURE_STACK_MAX];
   int capture_sp;
   size_t tta_pos; // in scratch
+  int in_peeked;  // the byte peek_char/1 saw on user_input, or -2
 
   bool in_query;
   bool in_callback;

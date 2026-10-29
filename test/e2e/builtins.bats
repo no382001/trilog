@@ -746,3 +746,13 @@ load common
   run bash -c "printf 'X = f(99999999999999999999, abcdefghijklmnopqrstuvwxyz).\n' | $TRILOG -n"
   [[ "$output" == *'integer literal out of range near ", abcdefghijklmnopqr"'* ]]
 }
+
+@test "peek_char/1 and peek_code/1 leave user_input unread for get_char/1 and get_code/1" {
+  run bash -c "printf 'xy' | $TRILOG -n -f -e 'peek_char(A), get_char(B), peek_code(C), get_code(D), get_char(E), peek_char(F).'"
+  [[ "$output" == *"A = x, B = x, C = 121, D = 121, E = end_of_file, F = end_of_file."* ]]
+}
+
+@test "a peeked user_input char is the start of read_line_to_atom/2's line" {
+  run bash -c "printf 'ab\ncd\n' | $TRILOG -n -f -e 'peek_char(A), read_line_to_atom(user_input, L).'"
+  [[ "$output" == *"A = a, L = ab."* ]]
+}

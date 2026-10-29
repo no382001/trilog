@@ -9,7 +9,7 @@ int stream_open(trilog_t *T, const char *path, const char *mode) {
     return -1;
   for (int i = 0; i < MAX_OPEN_STREAMS; i++) {
     if (!T->streams[i].handle) {
-      T->streams[i] = (io_reader_t){.handle = h};
+      T->streams[i] = (io_reader_t){.handle = h, .output = mode[0] != 'r'};
       return i;
     }
   }
@@ -34,4 +34,12 @@ char *stream_read_line(trilog_t *T, int id, char *buf, int size) {
   if (!stream_handle(T, id))
     return NULL;
   return io_reader_line(T, &T->streams[id], buf, size);
+}
+
+int stream_byte(trilog_t *T, int id, bool peek) {
+  if (!stream_handle(T, id))
+    return -2;
+  if (T->streams[id].output)
+    return -3;
+  return io_reader_byte(T, &T->streams[id], peek);
 }

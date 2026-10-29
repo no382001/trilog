@@ -471,8 +471,57 @@ char_code(Char, Code) :-
         '$$atom_codes'(Char, [Code])
     ).
 
-%!  get_char(-Char) is det.
-get_char(Char) :- get_code(C), (C == -1 -> Char = end_of_file ; char_code(Char, C)).
+%!  get_char(-Char), get_char(+Stream, -Char) is det.
+%!  peek_char(-Char), peek_char(+Stream, -Char) is det.
+%!  get_code(+Stream, -Code), peek_code(-Code), peek_code(+Stream, -Code) is det.
+%   At end of file Char is end_of_file and Code is -1, on every read.
+get_char(C) :- '$with_context'('$get_char'(user_input, 0, C), get_char/1).
+get_char(S, C) :- '$with_context'('$get_char'(S, 0, C), get_char/2).
+peek_char(C) :- '$with_context'('$get_char'(user_input, 1, C), peek_char/1).
+peek_char(S, C) :- '$with_context'('$get_char'(S, 1, C), peek_char/2).
+get_code(S, C) :- '$with_context'('$get_code'(S, 0, C), get_code/2).
+peek_code(C) :- '$with_context'('$get_code'(user_input, 1, C), peek_code/1).
+peek_code(S, C) :- '$with_context'('$get_code'(S, 1, C), peek_code/2).
+
+'$get_char'(S, Peek, C) :-
+    '$check_in_char'(C),
+    '$read_byte'(S, Peek, B),
+    (   B =:= -1
+    ->  C = end_of_file
+    ;   char_code(C0, B),
+        C = C0
+    ).
+
+'$get_code'(S, Peek, C) :-
+    '$check_in_code'(C),
+    '$read_byte'(S, Peek, B),
+    C = B.
+
+'$read_byte'(S, _, _) :- var(S), !, throw(error(instantiation_error, _)).
+'$read_byte'(S, Peek, B) :-
+    '$input_stream'(S),
+    '$$get_byte'(S, Peek, B0),
+    (   B0 =:= -2 -> throw(error(existence_error(stream, S), _))
+    ;   B0 =:= -3 -> throw(error(permission_error(input, stream, S), _))
+    ;   B = B0
+    ).
+
+'$input_stream'(user_input) :- !.
+'$input_stream'('$stream'(_)) :- !.
+'$input_stream'(S) :-
+    '$stream_alias'(S, _), !,
+    throw(error(permission_error(input, stream, S), _)).
+'$input_stream'(S) :- throw(error(domain_error(stream_or_alias, S), _)).
+
+'$check_in_char'(C) :- var(C), !.
+'$check_in_char'(end_of_file) :- !.
+'$check_in_char'(C) :- character(C), !.
+'$check_in_char'(C) :- throw(error(type_error(in_character, C), _)).
+
+'$check_in_code'(C) :- var(C), !.
+'$check_in_code'(C) :- \+ integer(C), !, throw(error(type_error(integer, C), _)).
+'$check_in_code'(C) :- C >= -1, !.
+'$check_in_code'(_) :- throw(error(representation_error(in_character_code), _)).
 
 %!  atom_length(+Atom, ?Length) is det.
 atom_length(A, L) :-

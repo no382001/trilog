@@ -24,6 +24,10 @@ home_link("/fs", "files").
 home_link("/led/on", "LED on").
 home_link("/led/off", "LED off").
 home_link("/stats", "stats").
+home_link("/mail", Text) :-
+    mail_unread(N),
+    phrase(("mail (", int(N), " new)"), Text).
+home_link("/log", "request log").
 
 link(Href, Text) --> "<li><a href=\"", Href, "\">", Text, "</a>\n".
 
@@ -50,3 +54,25 @@ stat_row(Name, N, Unit) -->
     { number_chars(N, Cs) },
     "<tr><td>", Name, "</td><td align=right>", Cs, "</td><td>", Unit,
     "</td></tr>\n".
+
+mailbox(Conn, Out) :-
+    emit(Out, title),
+    mail_ids(First, Last),
+    (   Last < First
+    ->  emit(Out, "<p>no mail\n")
+    ;   forall(between(First, Last, Id), mail_entry(Conn, Out, Id))
+    ).
+
+mail_entry(Conn, Out, Id) :-
+    emit(Out, mail_head(Id)),
+    mail_show_html(Conn, Id),
+    emit(Out, "</pre>\n").
+
+mail_head(Id) -->
+    { mail_info(Id, From, Subject, Ms, New) },
+    "<hr>\n<p>", int(Id), ". ",
+    strong(New, ("<a href=\"/mail/", int(Id), "\">", atom(Subject), "</a>")),
+    " from ", atom(From), ", ", age(Ms), "</p>\n<pre>".
+
+strong(1, Body) --> "<b>", Body, "</b>".
+strong(0, Body) --> Body.

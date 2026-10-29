@@ -1459,6 +1459,22 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     *ok = 1;
     return 1;
   }
+  // '$$get_byte'(+Stream, +Peek, -Code): Code is a byte, -1 at end of file,
+  // -2 for a stream that is not open, -3 for an output stream.
+  if (arity == 3 && id == atom_get_byte) {
+    size_t sd = heap_deref(T, f + 1);
+    bool peek = T->heap[heap_deref(T, f + 2)].as.ival != 0;
+    int sid, c;
+    if (T->heap[sd].tag == TAG_ATOM &&
+        T->heap[sd].as.atom_id == atom_user_input)
+      c = peek ? io_peek_char(T) : io_read_char(T);
+    else if (resolve_stream_id(T, f + 1, &sid))
+      c = stream_byte(T, sid, peek);
+    else
+      c = -2;
+    *ok = unify(T, f + 3, heap_new_int(T, c));
+    return 1;
+  }
   if (arity == 2 && id == atom_read_line_to_atom) {
     size_t sd = heap_deref(T, f + 1);
     int sid = -1;

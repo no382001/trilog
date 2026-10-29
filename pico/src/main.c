@@ -5,6 +5,8 @@
 #include "toplevel.h"
 #include "trilog.h"
 #include <malloc.h>
+#include "io.h"
+#include "mail.h"
 #include "tcp.h"
 #include "vfs.h"
 #include "wifi.h"
@@ -177,7 +179,8 @@ int main(void) {
   wifi_register(T);
   tcp_register(T);
   vfs_register(T);
-  trilog_set_io(T, &tcp_io);
+  mail_register(T);
+  trilog_set_io(T, &board_io);
 
   toplevel_query(T, "main", false);
   for (;;)

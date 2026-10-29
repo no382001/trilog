@@ -64,10 +64,19 @@ void io_flush(trilog_t *T) {
 
 // One byte at a time, so input meant for the host is never read ahead.
 int io_read_char(trilog_t *T) {
-  char c;
-  return T->hooks.read(T->hooks.userdata, T->hooks.in, &c, 1) == 1
-             ? (unsigned char)c
-             : -1;
+  int c = io_peek_char(T);
+  T->in_peeked = -2;
+  return c;
+}
+
+int io_peek_char(trilog_t *T) {
+  if (T->in_peeked == -2) {
+    char c;
+    T->in_peeked = T->hooks.read(T->hooks.userdata, T->hooks.in, &c, 1) == 1
+                       ? (unsigned char)c
+                       : -1;
+  }
+  return T->in_peeked;
 }
 
 char *io_read_line(trilog_t *T, char *buf, int size) {
@@ -99,19 +108,28 @@ long io_file_read(trilog_t *T, void *handle, char *buf, size_t n) {
   return T->hooks.read(T->hooks.userdata, handle, buf, n);
 }
 
+int io_reader_byte(trilog_t *T, io_reader_t *r, bool peek) {
+  if (r->pos == r->len) {
+    long got =
+        T->hooks.read(T->hooks.userdata, r->handle, r->buf, sizeof r->buf);
+    if (got <= 0)
+      return -1;
+    r->pos = 0;
+    r->len = (size_t)got;
+  }
+  unsigned char c = (unsigned char)r->buf[r->pos];
+  if (!peek)
+    r->pos++;
+  return c;
+}
+
 char *io_reader_line(trilog_t *T, io_reader_t *r, char *buf, int size) {
   int n = 0;
   while (n < size - 1) {
-    if (r->pos == r->len) {
-      long got =
-          T->hooks.read(T->hooks.userdata, r->handle, r->buf, sizeof r->buf);
-      if (got <= 0)
-        break;
-      r->pos = 0;
-      r->len = (size_t)got;
-    }
-    char c = r->buf[r->pos++];
-    buf[n++] = c;
+    int c = io_reader_byte(T, r, false);
+    if (c < 0)
+      break;
+    buf[n++] = (char)c;
     if (c == '\n')
       break;
   }

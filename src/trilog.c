@@ -46,6 +46,7 @@ static trilog_status_t unwound(trilog_t *t) {
   t->consulting_atom = -1;
   t->foreign_current = NULL;
   t->foreign_error = (size_t)-1;
+  t->in_peeked = -2;
   t->error_pi_name = -1;
   t->in_query = false;
   t->in_callback = false;
@@ -85,6 +86,7 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   t->pending_error_ball = (size_t)-1;
   t->uncaught_ball = (size_t)-1;
   t->foreign_error = (size_t)-1;
+  t->in_peeked = -2;
   t->consulting_atom = -1;
   t->error_pi_name = -1;
   if (!io_set(t, c.io)) {
