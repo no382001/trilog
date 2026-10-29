@@ -341,6 +341,7 @@ typedef struct {
 typedef struct {
   sink out, err;
   vfs_file file;
+  int closes;
 } host;
 
 static const char *const vfs_text = "v(1).\nv(2).\n";
@@ -380,8 +381,9 @@ static long vfs_write(void *ud, void *handle, const char *buf, size_t n) {
 }
 
 static void vfs_close(void *ud, void *handle) {
-  (void)ud;
-  (void)handle;
+  host *h = ud;
+  if (handle == &h->file)
+    h->closes++;
 }
 
 static void test_io(trilog_t *t) {
@@ -411,6 +413,22 @@ static void test_io(trilog_t *t) {
                      collect, &e) == TRILOG_TRUE);
   CHECK(trilog_query(t, "open('mem/nope.pl', read, _)", collect, &e) !=
         TRILOG_TRUE);
+  int closes = h.closes;
+  CHECK(trilog_query(t, "open('mem/v.pl', read, _), throw(oops)", collect,
+                     &e) == TRILOG_ERROR);
+  CHECK(h.closes == closes);
+  trilog_close_streams(t);
+  CHECK(h.closes == closes + 1);
+  trilog_close_streams(t);
+  CHECK(h.closes == closes + 1);
+  CHECK(trilog_load_string(t, "leak(0) :- !.\n"
+                              "leak(N) :- open('mem/v.pl', read, _), "
+                              "N1 is N - 1, leak(N1).") == TRILOG_TRUE);
+  CHECK(trilog_query(t, "leak(16)", collect, &e) == TRILOG_TRUE);
+  CHECK(trilog_query(t, "leak(1)", collect, &e) == TRILOG_FALSE);
+  trilog_close_streams(t);
+  CHECK(trilog_query(t, "leak(1)", collect, &e) == TRILOG_TRUE);
+  trilog_close_streams(t);
   CHECK(!trilog_set_io(t, &(trilog_io_t){.write = vfs_write}));
   size_t before = h.out.len;
   CHECK(trilog_query(t, "write(still)", collect, &e) == TRILOG_TRUE);

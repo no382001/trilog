@@ -41,5 +41,6 @@ trilog_version(V) :-
 % Compiles the DCGs now, so the boot image holds them already compiled.
 :- forall(member(N/A, [request/1, route/1, head/2, title/0, link/2, page/1,
                        stat_row/3, tree_footer/2, segments/1, node/1,
-                       request_line/4, mail_summary/1, mail_head/1]),
+                       request_line/4, mail_summary/1, mail_head/1,
+                       heap_map/0, heap_legend/0, gauge/4]),
           '$dcg_ensure'(N, A)).

@@ -17,11 +17,13 @@ typedef struct {
   struct pbuf *rx;
   bool eof;
   int refs;
+  bool sent;
   absolute_time_t deadline; // for the request to arrive
 } conn_t;
 
 static conn_t conns[MAX_CONNS];
 static struct tcp_pcb *listener;
+static unsigned accepted;
 static u16_t listener_port;
 static const char *const conn_paths[MAX_CONNS] = {
     "tcp:0", "tcp:1", "tcp:2", "tcp:3", "tcp:4", "tcp:5", "tcp:6", "tcp:7"};
@@ -119,6 +121,7 @@ static bool tcp_accept_next(trilog_t *t, void *ud, const trilog_value_t *in,
     for (int i = 0; i < MAX_CONNS; i++) {
       if (conns[i].state == PENDING) {
         conns[i].state = ACCEPTED;
+        accepted++;
         cyw43_arch_lwip_end();
         out[0].a = conn_paths[i];
         return true;
@@ -184,8 +187,10 @@ long tcp_stream_write(void *h, const char *buf, size_t n) {
     if (e == ERR_MEM)
       tcp_output(c->pcb);
     cyw43_arch_lwip_end();
-    if (e == ERR_OK)
+    if (e == ERR_OK) {
+      c->sent = true;
       return k;
+    }
     if (e != ERR_MEM || time_reached(give_up))
       return -1;
     sleep_ms(1);
@@ -216,3 +221,37 @@ void tcp_stream_close(void *h) {
   conn_release(c);
   cyw43_arch_lwip_end();
 }
+
+void tcp_fail_all(const char *reason) {
+  for (int i = 0; i < MAX_CONNS; i++) {
+    conn_t *c = &conns[i];
+    if (c->state != ACCEPTED)
+      continue;
+    char buf[160];
+    int n = c->sent ? snprintf(buf, sizeof buf, "\n\n[trilog crashed: %s]\n",
+                               reason)
+                    : snprintf(buf, sizeof buf,
+                               "HTTP/1.0 500 Internal Server Error\r\n"
+                               "Content-Type: text/plain\r\n"
+                               "Connection: close\r\n\r\n"
+                               "trilog crashed: %s\n",
+                               reason);
+    for (const char *p = buf; n > 0;) {
+      long k = tcp_stream_write(c, p, (size_t)n);
+      if (k <= 0)
+        break;
+      p += k;
+      n -= (int)k;
+    }
+  }
+}
+
+void tcp_drop_all(void) {
+  cyw43_arch_lwip_begin();
+  for (int i = 0; i < MAX_CONNS; i++)
+    if (conns[i].state == ACCEPTED)
+      conn_release(&conns[i]);
+  cyw43_arch_lwip_end();
+}
+
+unsigned tcp_accept_count(void) { return accepted; }

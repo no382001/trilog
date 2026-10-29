@@ -134,6 +134,10 @@ void trilog_usage(trilog_t *t, trilog_usage_t *out);
 // Replaces the I/O hooks; NULL restores stdio. False for an incomplete set.
 bool trilog_set_io(trilog_t *t, const trilog_io_t *io);
 
+// Closes every stream open/3 opened. A query that ends in an error, or in
+// running out of memory leaves its streams open
+void trilog_close_streams(trilog_t *t);
+
 #define TRILOG_MAX_FOREIGN_ARGS 8
 
 typedef union {

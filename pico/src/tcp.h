@@ -14,3 +14,8 @@ void *tcp_stream_open(const char *path);
 long tcp_stream_read(void *h, char *buf, size_t n);
 long tcp_stream_write(void *h, const char *buf, size_t n);
 void tcp_stream_close(void *h);
+
+void tcp_fail_all(const char *reason);
+void tcp_drop_all(void);
+
+unsigned tcp_accept_count(void);

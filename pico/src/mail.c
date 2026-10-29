@@ -61,15 +61,27 @@ long mail_stream_write(void *h, const char *buf, size_t n) {
   return (long)n;
 }
 
-static bool mail_new(trilog_t *t, void *ud, const trilog_value_t *in,
-                     trilog_value_t *out) {
-  (void)t, (void)ud, (void)out;
+static mail_t *mail_start(const char *from, const char *subject) {
   mail_t *m = &box[++last_id % MAIL_SLOTS];
   *m = (mail_t){.id = last_id,
                 .ms = (int64_t)(time_us_64() / 1000),
                 .unread = true};
-  snprintf(m->from, sizeof m->from, "%s", in[0].a);
-  snprintf(m->subject, sizeof m->subject, "%s", in[1].a);
+  snprintf(m->from, sizeof m->from, "%s", from);
+  snprintf(m->subject, sizeof m->subject, "%s", subject);
+  return m;
+}
+
+void mail_post(const char *from, const char *subject, const char *body) {
+  mail_t *m = mail_start(from, subject);
+  m->len = (size_t)snprintf(m->body, sizeof m->body, "%s", body);
+  if (m->len >= sizeof m->body)
+    m->len = sizeof m->body - 1;
+}
+
+static bool mail_new(trilog_t *t, void *ud, const trilog_value_t *in,
+                     trilog_value_t *out) {
+  (void)t, (void)ud, (void)out;
+  mail_start(in[0].a, in[1].a);
   return true;
 }
 

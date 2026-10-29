@@ -108,6 +108,16 @@ static bool reboot(trilog_t *t, void *ud, const trilog_value_t *in,
     tight_loop_contents();
 }
 
+extern char __flash_binary_end;
+
+static bool flash_usage(trilog_t *t, void *ud, const trilog_value_t *in,
+                        trilog_value_t *out) {
+  (void)t, (void)ud, (void)in;
+  out[0].i = &__flash_binary_end - (char *)XIP_BASE;
+  out[1].i = PICO_FLASH_SIZE_BYTES;
+  return true;
+}
+
 static bool memory_usage(trilog_t *t, void *ud, const trilog_value_t *in,
                          trilog_value_t *out) {
   (void)t, (void)ud, (void)in;
@@ -153,6 +163,12 @@ static void print_memory(const char *when) {
   }
 }
 
+static bool crashed(trilog_status_t s) {
+  return s == TRILOG_ABORTED ||
+         (s == TRILOG_ERROR &&
+          trilog_term_type(T, trilog_error_term(T)) == TRILOG_INVALID);
+}
+
 int main(void) {
   paint_stack();
   stdio_init_all();
@@ -176,13 +192,34 @@ int main(void) {
   trilog_register(T, "board_info", ">aaii", board_info, NULL);
   trilog_register(T, "memory_usage", ">iiiii", memory_usage, NULL);
   trilog_register(T, "prolog_usage", ">iiiiii", prolog_usage, NULL);
+  trilog_register(T, "flash_usage", ">ii", flash_usage, NULL);
   wifi_register(T);
   tcp_register(T);
   vfs_register(T);
   mail_register(T);
   trilog_set_io(T, &board_io);
 
-  toplevel_query(T, "main", false);
+  trilog_status_t s = toplevel_query(T, "main", false);
+  for (int idle = 0; crashed(s);) {
+    tcp_fail_all(s == TRILOG_ABORTED ? "aborted" : "out of memory");
+    trilog_close_streams(T);
+    tcp_drop_all();
+    if (++idle == 3) {
+      mail_post("trilog", "crashed 3 times",
+                "The server crashed 3 times without taking a request. It "
+                "stays stopped; use serve(80) at the prompt.\n");
+      break;
+    }
+    mail_post("trilog", "crashed",
+              s == TRILOG_ABORTED
+                  ? "A request was aborted. The server was restarted.\n"
+                  : "A request ran trilog out of memory. The server was "
+                    "restarted.\n");
+    unsigned before = tcp_accept_count();
+    s = toplevel_query(T, "serve(80)", false);
+    if (tcp_accept_count() != before)
+      idle = 0;
+  }
   for (;;)
     toplevel_repl(T);
 }

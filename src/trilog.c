@@ -9,6 +9,7 @@
 #include "parse.h"
 #include "platform.h"
 #include "solve.h"
+#include "streams.h"
 #include "term.h"
 #include "version.h"
 #include <float.h>
@@ -247,6 +248,13 @@ bool trilog_register(trilog_t *t, const char *name, const char *sig,
 }
 
 bool trilog_set_io(trilog_t *t, const trilog_io_t *io) { return io_set(t, io); }
+
+void trilog_close_streams(trilog_t *t) {
+  if (t->in_query)
+    return;
+  for (int i = 0; i < MAX_OPEN_STREAMS; i++)
+    stream_close(t, i);
+}
 
 bool trilog_error(trilog_t *t, const char *formal, ...) {
   if (!t->foreign_current)
