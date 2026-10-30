@@ -270,64 +270,101 @@ static tterm_t *parse_string(trilog_t *T) {
   return acc;
 }
 
-// 0'c: the character code of c. A doubled quote (0''') is a literal
-// quote, matching how a quoted atom escapes one; not a quoted-atom opener.
-static tterm_t *parse_char_code(trilog_t *T) {
-  T->P += 2; // "0'"
-  int code;
-  if (*T->P == '\0' || (*T->P == '\\' && T->P[1] == '\0'))
-    perr(T, "unexpected end of input in 0' character code");
-  if (*T->P == '\\') {
-    T->P++;
-    code = read_escape(T);
-    if (code < 0)
-      perr(T, "a 0' character code cannot be a line continuation");
-  } else if (T->P[0] == '\'' && T->P[1] == '\'') {
-    code = '\'';
-    T->P += 2;
-  } else if (*T->P == '\n' || *T->P == '\t') {
-    perr(T, "layout other than a space after 0'");
-  } else {
-    code = (unsigned char)*T->P++;
-  }
-  return tt_int(T, code);
+// Without a character after it 0' is 0 and a quoted atom, so 0''1 is 0 '' 1.
+static bool char_code_follows(const char *p) {
+  if (p[0] == '\0' || (p[0] == '\\' && p[1] == '\n'))
+    return false;
+  return p[0] != '\'' || p[1] == '\'';
 }
 
-static tterm_t *parse_number(trilog_t *T) {
-  if (T->P[0] == '0' && T->P[1] == '\'')
-    return parse_char_code(T);
-  const char *start = T->P;
-  if (*T->P == '-')
+// 0'c: the character code of c. A doubled quote (0''') is a literal
+// quote, matching how a quoted atom escapes one; not a quoted-atom opener.
+static int parse_char_code(trilog_t *T) {
+  T->P += 2; // "0'"
+  if (*T->P == '\\') {
     T->P++;
+    return read_escape(T);
+  }
+  if (T->P[0] == '\'' && T->P[1] == '\'') {
+    T->P += 2;
+    return '\'';
+  }
+  if (*T->P == '\n' || *T->P == '\t')
+    perr(T, "layout other than a space after 0'");
+  return (unsigned char)*T->P++;
+}
+
+static int base_digit(int c, int base) {
+  int d = ascii_digit(c)         ? c - '0'
+          : c >= 'a' && c <= 'z' ? c - 'a' + 10
+          : c >= 'A' && c <= 'Z' ? c - 'A' + 10
+                                 : base;
+  return d < base ? d : -1;
+}
+
+static int radix(int c) {
+  return c == 'x' ? 16 : c == 'o' ? 8 : c == 'b' ? 2 : 0;
+}
+
+#define INTEGER_OVERFLOW "integer literal out of range"
+
+static tterm_t *parse_number(trilog_t *T, bool negative) {
+  if (T->P[0] == '0' && T->P[1] == '\'' && char_code_follows(T->P + 2)) {
+    int code = parse_char_code(T);
+    return tt_int(T, negative ? -code : code);
+  }
+  int base = T->P[0] == '0' ? radix(T->P[1]) : 0;
+  if (base && base_digit((unsigned char)T->P[2], base) >= 0) {
+    T->P += 2;
+    int64_t v = 0;
+    for (int d; (d = base_digit((unsigned char)*T->P, base)) >= 0; T->P++)
+      if (__builtin_mul_overflow(v, base, &v) ||
+          __builtin_add_overflow(v, negative ? -d : d, &v))
+        perr(T, INTEGER_OVERFLOW);
+    return tt_int(T, v);
+  }
+  char buf[64];
+  size_t n = 0;
+  if (negative)
+    buf[n++] = '-';
+  const char *start = T->P;
   while (ascii_digit((unsigned char)*T->P))
     T->P++;
-  int is_float = 0;
-  if (T->P[0] == '.' && ascii_digit((unsigned char)T->P[1])) {
-    is_float = 1;
+  bool is_float = T->P[0] == '.' && ascii_digit((unsigned char)T->P[1]);
+  if (is_float) {
     T->P++;
     while (ascii_digit((unsigned char)*T->P))
       T->P++;
+    const char *e = T->P;
+    if (*e == 'e' || *e == 'E') {
+      e += e[1] == '+' || e[1] == '-' ? 2 : 1;
+      if (ascii_digit((unsigned char)*e)) {
+        T->P = e;
+        while (ascii_digit((unsigned char)*T->P))
+          T->P++;
+      }
+    }
   }
-  if (*T->P == 'e' || *T->P == 'E') {
-    is_float = 1;
-    T->P++;
-    if (*T->P == '+' || *T->P == '-')
-      T->P++;
-    while (ascii_digit((unsigned char)*T->P))
-      T->P++;
-  }
-  size_t n = (size_t)(T->P - start);
-  char buf[64];
-  if (n >= sizeof(buf))
+  if ((size_t)(T->P - start) >= sizeof buf - n)
     perr(T, "number literal too long");
-  memcpy(buf, start, n);
-  buf[n] = '\0';
+  memcpy(buf + n, start, (size_t)(T->P - start));
+  buf[n + (size_t)(T->P - start)] = '\0';
   if (is_float)
     return tt_flt(T, trilog_parse_float(buf, NULL));
   int64_t v;
   if (!parse_int(buf, NULL, &v))
-    perr(T, "integer literal out of range");
+    perr(T, INTEGER_OVERFLOW);
   return tt_int(T, v);
+}
+
+// The standard reads a '-' name token before a number as its sign: - 1 is -1.
+static bool negative_number_follows(trilog_t *T) {
+  const char *save = T->P;
+  skip_ws(T);
+  if (ascii_digit((unsigned char)*T->P))
+    return true;
+  T->P = save;
+  return false;
 }
 
 // tries to read an operator name that find accepts at the current position,
@@ -345,6 +382,16 @@ static int peek_op(trilog_t *T, size_t *len_out, op_t *out,
   if (*T->P == ';') {
     *len_out = 1;
     return find(T, ";", out);
+  }
+  if (*T->P == '\'') {
+    const char *save = T->P;
+    const char *name = read_quoted(T, '\'');
+    int found = find(T, name, out);
+    size_t len = (size_t)(T->P - save);
+    T->P = save;
+    if (found)
+      *len_out = len;
+    return found;
   }
   if (is_symbol_char((unsigned char)*T->P)) {
     const char *save = T->P;
@@ -472,9 +519,19 @@ start:
     goto produced;
   case '\'': {
     const char *name = atom_name(T, atom_intern(T, read_quoted(T, '\'')));
+    if (!strcmp(name, "-") && negative_number_follows(T)) {
+      v = parse_number(T, true);
+      goto produced;
+    }
     skip_ws(T);
     if (*T->P == '(')
       goto compound_name;
+    op_t pre;
+    if (find_prefix(T, name, &pre) && prefix_applies(T)) {
+      frame_push(T, K_PREFIX, PTR(name), (size_t)pre.pri, 0);
+      prec = pre.assoc == FY ? pre.pri : pre.pri - 1;
+      goto start;
+    }
     v = tt_atom(T, name);
     goto produced;
   compound_name:
@@ -491,9 +548,13 @@ start:
     v = tt_var(T, vartab_slot(T, read_while(T, is_ident_char)));
     goto produced;
   }
-  if (ascii_digit((unsigned char)*T->P) ||
-      (*T->P == '-' && ascii_digit((unsigned char)T->P[1]))) {
-    v = parse_number(T);
+  if (ascii_digit((unsigned char)*T->P)) {
+    v = parse_number(T, false);
+    goto produced;
+  }
+  if (*T->P == '-' && ascii_digit((unsigned char)T->P[1])) {
+    T->P++;
+    v = parse_number(T, true);
     goto produced;
   }
   {
@@ -501,6 +562,10 @@ start:
     if (!lower && !is_symbol_char((unsigned char)*T->P))
       perr(T, "unexpected character");
     const char *name = read_name(T, lower ? is_ident_char : is_symbol_char);
+    if (!strcmp(name, "-") && *T->P != '(' && negative_number_follows(T)) {
+      v = parse_number(T, true);
+      goto produced;
+    }
     if (*T->P == '(') {
       T->P++;
       skip_ws(T);
@@ -925,6 +990,47 @@ bool parse_query(trilog_t *T, const char *src, tterm_t ***goals_out,
 static bool parse_term_from_string_(trilog_t *T, const char *src,
                                     tterm_t **term_out, int32_t *nvars_out,
                                     const char ***varnames_out);
+
+static number_text_t parse_number_text_(trilog_t *T, const char *text,
+                                        tterm_t **out) {
+  T->P = text;
+  volatile bool negative = false;
+  if (setjmp(T->err_jmp))
+    return strncmp(T->err_msg, INTEGER_OVERFLOW, strlen(INTEGER_OVERFLOW))
+               ? NUMBER_TEXT_BAD
+           : negative ? NUMBER_TEXT_TOO_SMALL
+                      : NUMBER_TEXT_TOO_BIG;
+  skip_ws(T);
+  if (T->P[0] == '-' && !is_symbol_char((unsigned char)T->P[1])) {
+    T->P++;
+    negative = true;
+  } else if (T->P[0] == '\'') {
+    if (strcmp(read_quoted(T, '\''), "-"))
+      perr(T, "not a number");
+    negative = true;
+  }
+  if (negative)
+    skip_ws(T);
+  if (!ascii_digit((unsigned char)*T->P))
+    perr(T, "not a number");
+  *out = parse_number(T, negative);
+  if (*T->P != '\0')
+    perr(T, "text after a number");
+  return NUMBER_TEXT_OK;
+}
+
+number_text_t parse_number_text(trilog_t *T, const char *text, tterm_t **out) {
+  const char *saved_P = T->P;
+  jmp_buf saved_jmp;
+  memcpy(saved_jmp, T->err_jmp, sizeof(jmp_buf));
+  bool saved_temp = T->arena_use_temp;
+  T->arena_use_temp = true;
+  number_text_t r = parse_number_text_(T, text, out);
+  T->arena_use_temp = saved_temp;
+  T->P = saved_P;
+  memcpy(T->err_jmp, saved_jmp, sizeof(jmp_buf));
+  return r;
+}
 
 bool parse_term_from_string(trilog_t *T, const char *src, tterm_t **term_out,
                             int32_t *nvars_out, const char ***varnames_out) {

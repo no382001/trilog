@@ -19,3 +19,12 @@ bool parse_query(trilog_t *T, const char *src, tterm_t ***goals_out,
 // arena_temp_reset.
 bool parse_term_from_string(trilog_t *T, const char *src, tterm_t **term_out,
                             int32_t *nvars_out, const char ***varnames_out);
+
+typedef enum {
+  NUMBER_TEXT_OK,
+  NUMBER_TEXT_BAD,
+  NUMBER_TEXT_TOO_BIG,
+  NUMBER_TEXT_TOO_SMALL
+} number_text_t;
+// *out is in the scratch arena, as for parse_term_from_string.
+number_text_t parse_number_text(trilog_t *T, const char *text, tterm_t **out);

@@ -5,12 +5,11 @@ must have:
 correctness:
 - the CLI's five default libraries add about 18 ms to boot (4.4 ms with -n, 22.3 ms by default, 5979680 release); ensure_loaded/consult is slow for small files
 - reconsulting a file while one of its predicates still has a choicepoint breaks the logical update view: member(X, [a,b]), consult('lib/lists.pl'), write(X), fail loops on b forever
-- number_codes parses with its own strtoll/strtod, not the parser's number reader, so the number_chars quads test the wrong code (#7)
 - dcg: \+//1 and pushback are missing; call//N skips compile-on-first-call (call(item, a) -> existence_error item/3)
 - sub_atom/atom_length count bytes, not utf-8 chars (atom_length('Pécs', 5)) I mean how correct should we be?
 - directives run to exhaustion instead of once
 - 7/2 gives 3 (iso: 3.5); floats print as 1e+10 (iso: 1.0e10)
-- syntax conformity (make conformity): 285/366
+- syntax conformity (make conformity): 323/366
 - quoted text cannot hold \0\ (atoms are C strings); iso also allows a representation error there
 - the toplevel reads one line per query, not one term; queries cannot span lines
 - the reader takes an infix operator that is also a prefix operator, followed by (, as a functor: a:-(b:-c) does not parse, though writeq prints it

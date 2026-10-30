@@ -2147,33 +2147,31 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       return 1;
     }
     int incomplete = 0;
-    char *buf = codes_text(T, f + 2, 63, &incomplete);
+    char *buf = codes_text(T, f + 2, SIZE_MAX, &incomplete);
     if (!buf) {
       if (incomplete)
         T->pending_error_ball = make_instantiation_error(T);
       *ok = 0;
       return 1;
     }
-    const char *end;
-    int64_t iv;
-    bool fits = parse_int(buf, &end, &iv);
-    if (*end == '\0' && end != buf) {
-      if (!fits) {
-        size_t args[1] = {heap_new_atom(
-            T, atom_intern(T, iv > 0 ? "max_integer" : "min_integer"))};
-        T->pending_error_ball = make_error(
-            T, heap_new_struct(T, atom_intern(T, "representation_error"), 1,
-                               args));
-        *ok = 0;
-        return 1;
-      }
-      *ok = unify(T, f + 1, heap_new_int(T, iv));
+    tterm_t *num;
+    number_text_t got = parse_number_text(T, buf, &num);
+    if (got == NUMBER_TEXT_TOO_BIG || got == NUMBER_TEXT_TOO_SMALL) {
+      arena_temp_reset(T);
+      size_t args[1] = {heap_new_atom(
+          T, atom_intern(T, got == NUMBER_TEXT_TOO_BIG ? "max_integer"
+                                                       : "min_integer"))};
+      T->pending_error_ball = make_error(
+          T,
+          heap_new_struct(T, atom_intern(T, "representation_error"), 1, args));
+      *ok = 0;
       return 1;
     }
-    const char *fend;
-    double dv = trilog_parse_float(buf, &fend);
-    *ok =
-        (*fend == '\0' && fend != buf) && unify(T, f + 1, heap_new_flt(T, dv));
+    size_t v = got != NUMBER_TEXT_OK ? 0
+               : num->tag == T_INT   ? heap_new_int(T, num->as.ival)
+                                     : heap_new_flt(T, num->as.fval);
+    arena_temp_reset(T);
+    *ok = got == NUMBER_TEXT_OK && unify(T, f + 1, v);
     return 1;
   }
   return 0;
