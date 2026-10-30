@@ -1300,31 +1300,32 @@ static bool octal_or_hex(int c) {
   return ascii_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
 
-// The rest of an escape after its backslash: one character, or the digits of
-// \NNN\ or \xHH\ through their closing backslash. False at end of file.
-static bool read_escape_text(trilog_t *T, int sid, size_t *n) {
+enum { ESCAPE_OK, ESCAPE_EOF, ESCAPE_BAD };
+
+// A bad escape is an error at once; a reader does not wait for the term's end.
+static int read_escape_text(trilog_t *T, int sid, size_t *n) {
   int c = read_byte(T, sid, false);
   if (c < 0)
-    return false;
+    return ESCAPE_EOF;
   read_put(T, n, c);
   if (c != 'x' && !(c >= '0' && c <= '7'))
-    return true;
+    return escape_char(c) >= 0 || strchr("\\'\"`\n", c) ? ESCAPE_OK
+                                                        : ESCAPE_BAD;
   for (;;) {
     int d = read_byte(T, sid, true);
     if (d < 0)
-      return false;
+      return ESCAPE_EOF;
     if (d != '\\' && !octal_or_hex(d))
-      return true;
+      return ESCAPE_BAD;
     read_put(T, n, read_byte(T, sid, false));
     if (d == '\\')
-      return true;
+      return ESCAPE_OK;
   }
 }
 
-// Reads the text of one term into T->read_buf, through its end: a '.' that
-// is followed by layout, % or end of file and is not part of a symbol atom.
-// What follows the '.' stays unread. Returns 1 for a term, 0 at end of file
-// with only layout and comments, -1 at end of file inside a term.
+enum { TEXT_TERM, TEXT_NONE, TEXT_CUT_OFF };
+
+// A term ends at a '.' before layout, % or EOF that is not in a symbol atom.
 static int read_term_text(trilog_t *T, int sid) {
   size_t n = 0;
   int quote = 0, prev = ' ', prev2 = ' ';
@@ -1332,11 +1333,22 @@ static int read_term_text(trilog_t *T, int sid) {
   for (;;) {
     int c = read_byte(T, sid, false);
     if (c < 0)
-      return any ? -1 : 0;
+      return any ? TEXT_CUT_OFF : TEXT_NONE;
     read_put(T, &n, c);
     if (quote) {
-      if (c == '\\' && !read_escape_text(T, sid, &n))
-        return -1;
+      if (c == '\n') { // not allowed in quoted text: the parser says so
+        T->read_buf[n] = '\0';
+        return TEXT_TERM;
+      }
+      if (c == '\\') {
+        int e = read_escape_text(T, sid, &n);
+        if (e == ESCAPE_EOF)
+          return TEXT_CUT_OFF;
+        if (e == ESCAPE_BAD) {
+          T->read_buf[n] = '\0';
+          return TEXT_TERM;
+        }
+      }
       if (c == quote) {
         if (read_byte(T, sid, true) == quote)
           read_put(T, &n, read_byte(T, sid, false));
@@ -1351,10 +1363,10 @@ static int read_term_text(trilog_t *T, int sid) {
       read_put(T, &n, '\n');
       prev = ' ';
       if (c < 0)
-        return any ? -1 : 0;
+        return any ? TEXT_CUT_OFF : TEXT_NONE;
       continue;
     }
-    if (c == '*' && prev == '/') {
+    if (c == '*' && prev == '/' && !ascii_symbol(prev2)) {
       int last = 0;
       while ((c = read_byte(T, sid, false)) >= 0 && !(last == '*' && c == '/'))
         last = c;
@@ -1362,16 +1374,23 @@ static int read_term_text(trilog_t *T, int sid) {
       read_put(T, &n, '/');
       prev = ' ';
       if (c < 0)
-        return -1;
+        return TEXT_CUT_OFF;
       continue;
     }
     if (c == '\'' && prev == '0' && !ascii_alnum(prev2) && prev2 != '_') {
       int d = read_byte(T, sid, false);
       if (d < 0)
-        return -1;
+        return TEXT_CUT_OFF;
       read_put(T, &n, d);
-      if (d == '\\' && !read_escape_text(T, sid, &n))
-        return -1;
+      if (d == '\\') {
+        int e = read_escape_text(T, sid, &n);
+        if (e == ESCAPE_EOF)
+          return TEXT_CUT_OFF;
+        if (e == ESCAPE_BAD) {
+          T->read_buf[n] = '\0';
+          return TEXT_TERM;
+        }
+      }
       if (d == '\'' && read_byte(T, sid, true) == '\'')
         read_put(T, &n, read_byte(T, sid, false));
       any = true;
@@ -1388,7 +1407,7 @@ static int read_term_text(trilog_t *T, int sid) {
       int d = read_byte(T, sid, true);
       if (d < 0 || ascii_space(d) || d == '%') {
         T->read_buf[n] = '\0';
-        return 1;
+        return TEXT_TERM;
       }
     }
     if (!ascii_space(c))
@@ -1882,8 +1901,8 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       return 1;
     }
     int got = read_term_text(T, sid);
-    if (got <= 0) {
-      if (got < 0) {
+    if (got != TEXT_TERM) {
+      if (got == TEXT_CUT_OFF) {
         fmt(T->err_msg, sizeof T->err_msg, "end of file inside a term");
         T->pending_error_ball = make_syntax_error(T);
         *ok = 0;

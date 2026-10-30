@@ -231,6 +231,8 @@ static const char *read_quoted(trilog_t *T, char quote) {
       T->P++;
       break;
     }
+    if (*T->P == '\n' || *T->P == '\t')
+      perr(T, "layout other than a space inside quoted text");
     if (*T->P != '\\') {
       tok_put(T, n++, *T->P++);
       continue;
@@ -283,6 +285,8 @@ static tterm_t *parse_char_code(trilog_t *T) {
   } else if (T->P[0] == '\'' && T->P[1] == '\'') {
     code = '\'';
     T->P += 2;
+  } else if (*T->P == '\n' || *T->P == '\t') {
+    perr(T, "layout other than a space after 0'");
   } else {
     code = (unsigned char)*T->P++;
   }

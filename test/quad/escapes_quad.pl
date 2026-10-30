@@ -124,3 +124,14 @@
 
 ?- with_output_to(chars(Cs), writeq('\t')).
    Cs = "'\\t'".
+
+% --- layout other than a space is not allowed inside quotes ---
+
+?- atom_codes(_A, [39,97,9,98,39]), catch(term_to_atom(_, _A), error(syntax_error(_), _), R = caught).
+   R = caught.
+
+?- atom_codes(_A, [39,97,10,98,39]), catch(term_to_atom(_, _A), error(syntax_error(_), _), R = caught).
+   R = caught.
+
+?- atom_codes(_A, [39,97,32,98,39]), term_to_atom(T, _A).
+   T = 'a b'.

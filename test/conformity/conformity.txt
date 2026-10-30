@@ -2,7 +2,7 @@
 
 writeq('\n').
 
-'\n'   true.
+'\n'
 
 2
 
@@ -44,7 +44,7 @@ syntax err.
 6
 
 writeq('
-').                
+').
 
 syntax err.
 
@@ -53,28 +53,28 @@ syntax err.
 writeq('\
 '). % "\\\n"
 
-''   true.
+''
 
 8
 
 writeq('\
 a'). % "\\\na"
 
-a   true.
+a
 
 9
 
 writeq('a\
 b'). % "a\\\nb"
 
-ab   true.
+ab
 
 10
 
 writeq('a\
  b'). % "a\\\n b"
 
-'a b'   true.
+'a b'
 
 11
 
@@ -91,7 +91,7 @@ syntax err.
 
 12
 
-writeq('\ '). % "\\\t"
+writeq('\	'). % "\\\t"
 
 syntax err.
 
@@ -99,19 +99,19 @@ syntax err.
 
 writeq('\t').
 
-'\t'   true.
+'\t'
 
 14
 
 writeq('\a').
 
-'\a'   true.
+e.g. '\a'
 
 15
 
 writeq('\7\').
 
-'\a'   true.
+e.g. '\a'
 
 16
 
@@ -135,13 +135,13 @@ syntax err.
 
 writeq('\033\').
 
-'\33\'   true.
+e.g. '\33\' or repr. err.
 
 301
 
 writeq('\0\').
 
-'\0\'   true.
+e.g. '\0\' or repr. err.
 
 19
 
@@ -183,13 +183,13 @@ syntax err.
 
 writeq('\x21\').
 
-!   true.
+!
 
 316
 
 writeq('\x0021\').
 
-!   true.
+!
 
 23
 
@@ -232,91 +232,91 @@ syntax err.
 
 writeq((-)-(-)).
 
-(-)-(-)   true.
+(-)-(-)
 
 223
 
 writeq(((:-):-(:-))).
 
-(:-):-(:-)   true.
+(:-):-(:-)
 
 27
 
 writeq((*)=(*)).
 
-(*)=(*)   true.
+(*)=(*)
 
 28
 
 writeq([:-,-]).
 
-[:-,-]   true.
+[:-,-]
 
 29
 
 writeq(f(*)).
 
-f(*)   true.
+f(*)
 
 30
 
 writeq(a*(b+c)).
 
-a*(b+c)   true.
+a*(b+c)
 
 31
 
 writeq(f(;,'|',';;')).
 
-f(;,'|',';;')   true.
+f(;,'|',';;')
 
 32
 
 writeq([.,.(.,.,.)]).
 
-['.','.'('.','.','.')]   true.
+['.','.'('.','.','.')]
 
 33
 
 writeq((a :- b,c)).
 
-a:-b,c   true.
+a:-b,c
 
 34
 
 write_canonical([a]).
 
-'.'(a,[])   true.
+'.'(a,[])
 
 35
 
 writeq('/*').
 
-'/*'   true.
+'/*'
 
 203
 
 writeq(//*).
 
-//*   true.
+//*
 
 282
 
 writeq(//*.*/).
 
-//*.*/   true.
+//*.*/
 
 36
 
 writeq('/**').
 
-'/**'   true.
+'/**'
 
 37
 
 writeq('*/').
 
-*/   true.
+*/
 
 38
 
@@ -346,7 +346,7 @@ succeeds
 
 writeq('\'\`\"\"').
 
-'\'`""'   true.
+e.g. '\'`""'
 
 41
 
@@ -376,9 +376,9 @@ syntax err.
 45
 
 op(100,xfx,.).
-functor(3 .2,F,A). 
+functor(3 .2,F,A).
 
-   F = ('.'), A = 2.
+F = ('.'), A = 2.
 
 46
 
@@ -414,37 +414,34 @@ succeeds
 
 51
 
-op(9,xf,e).
-1.0e- 9 = -(e(1.0),9).
+/**/ 1.0e- 9 = -(e(1.0),9).
 
 succeeds
 
 204
 
-op(9,xf,e).
-writeq(1e).
+/**/ writeq(1e).
 
-1 e   true.
+e.g. 1 e
 
 220
 
-op(9,xf,e).
-writeq(1.0e).
+/**/ writeq(1.0e).
 
-1.0 e   true.
+e.g. 1.0 e
 
 52
 
 op(9,xfy,e).
 1.2e 3 = e(X,Y).
 
-   X = 1.2, Y = 3.
+X = 1.2, Y = 3.
 
 53
 
 writeq(1.0e100).
 
-1.0e+100   true.
+e.g. 1.0e+100
 
 54
 
@@ -520,176 +517,167 @@ succeeds
 
 180
 
-op(0,fy,-).
-integer(-1).
+/**/ integer(-1).
 
 succeeds
 
 64
 
-op(0,fy,-).
-integer(- 1).
+/**/ integer(- 1).
 
 succeeds
 
 136
 
-op(0,fy,-).
-writeq(-(1)).
+/**/ writeq(-(1)).
 
--(1)   true.
+-(1)
 
 328
 
-op(0,fy,-).
-writeq([-]).
+/**/ writeq([-]).
 
-[-]   true.
+[-]
 
 135
 
 writeq(-(1)).
 
-- (1)   true.
+- (1)
 
 182
 
 writeq(-(-1)).
 
-- -1   true.
+- -1
 
 183
 
 writeq(-(1^2)).
 
-- (1^2)   true.
+- (1^2)
 
 260
 
 writeq(-(a^2)).
 
-- (a^2)   true.
+- (a^2)
 
 139
 
 writeq(-((a,b))).
 
-- (a,b)   true.
+- (a,b)
 
 218
 
 writeq(-(1*2)).
 
-- (1*2)   true.
+- (1*2)
 
 140
 
 writeq(-a).
 
--a   true.
+-a
 
 184
 
 writeq(-(-)).
 
-- (-)   true.
+- (-)
 
 185
 
 writeq(-[-]).
 
--[-]   true.
+-[-]
 
 188
 
 writeq(-p(c)).
 
--p(c)   true.
+-p(c)
 
 189
 
 writeq(-{}).
 
--{}   true.
+-{}
 
 190
 
 writeq(-{a}).
 
--{a}   true.
+-{a}
 
 191
 
 writeq(-(-a)).
 
-- -a   true.
+- -a
 
 192
 
 writeq(-(-(-a))).
 
-- - -a   true.
+- - -a
 
 216
 
 writeq(-(-(1))).
 
-- - (1)   true.
+- - (1)
 
 215
 
 op(100,yfx,~).
 writeq(-(1~2~3)).
 
-- (1~2~3)   true.
+- (1~2~3)
 
 248
 
-op(100,yfx,~).
-writeq(- (1~2)).
+/**/ writeq(- (1~2)).
 
-- (1~2)   true.
+- (1~2)
 
 249
 
-op(100,yfx,~).
-writeq(1~2).
+/**/ writeq(1~2).
 
-1~2   true.
+1~2
 
 278
 
 op(9,xfy,.), writeq(-[1]).
 
--[1]   true.
+-[1]
 
 279
 
-op(9,xf,'$VAR'),
-writeq(- '$VAR'(0)).
+op(9,xf,'$VAR'), writeq(- '$VAR'(0)).
 
--A   true.
+-A
 
 296
 
-op(9,xf,'$VAR'),
-writeq('$VAR'(0)).
+/**/ writeq('$VAR'(0)).
 
-A   true.
+A
 
 355
 
-op(9,xf,'$VAR'),
-writeq('$VAR'(-1)).
+/**/ writeq('$VAR'(-1)).
 
--1'$VAR'   true.
+-1'$VAR'
 
 55
 
 op(1,yf,yf1).
 {-1 yf1}={yf1(X)}.
 
-   X = -1.
+X = -1.
 
 65
 
@@ -707,7 +695,7 @@ succeeds
 
 writeq(+1^2).
 
-+1^2   true.
++1^2
 
 67
 
@@ -720,7 +708,7 @@ syntax err.
 
 writeq([+{a},+[]]).
 
-[+{a},+[]]   true.
+[+{a},+[]]
 
 68
 
@@ -738,45 +726,41 @@ syntax err.
 
 op(1000,xfy,',').
 
-error(permission_error(modify,operator,','),op/3)
+p._e.(m., o.,',')
 
 71
 
 op(1001,xfy,',').
 
-error(permission_error(modify,operator,','),op/3)
+p._e.(m., o.,',') or p._e.(c., o.,',')
 
 72
 
-op(999,xfy,'|').
+op(0,xfy,'|'), op(999,xfy,'|').
 
-error(permission_error(create,operator,'|'),op/3)
+p._e.(c., o.,'|')
 
 73
 
-op(999,xfy,'|').
-X=[a|b].
+/**/ X=[a|b].
 
-   X = [a|b].
+X=[a|b].
 
 285
 
-op(999,xfy,'|').
-X=[(a|b)].
+/**/ X=[(a|b)].
 
 syntax err.
 
 219
 
-op(999,xfy,'|').
-[a|[]]=[a].
+/**/ [a|[]]=[a].
 
 succeeds
 
 74
 
-op(999,xfy,'|').
-X=[a|b|c].
+/**/ X=[a|b|c].
 
 syntax err.
 
@@ -910,13 +894,13 @@ succeeds
 
 write_canonical({1}).
 
-{}(1)   true.
+{}(1)
 
 97
 
 '[]'(1) = [ ](X).
 
-   X = 1.
+X = 1
 
 98
 
@@ -928,7 +912,7 @@ syntax err.
 
 op(100,yfy,op).
 
-error(domain_error(operator_specifier,yfy),op/3)
+d._e.(op._s., yfy)
 
 100
 
@@ -952,7 +936,7 @@ syntax err.
 
 X = '\141\141'.
 
-   X = a141.
+X = a141
 
 104
 
@@ -976,7 +960,7 @@ syntax err.
 
 X = '\77777777777\'.
 
-syntax err.
+syntax/repr. err.
 
 108
 
@@ -988,13 +972,13 @@ succeeds
 
 atom_codes('\xG\',Cs).
 
-syntax err.
+syntax err./waits
 
 110
 
 atom_codes('\xG1\',Cs).
 
-syntax err.
+syntax err./waits
 
 111
 
@@ -1053,24 +1037,21 @@ succeeds
 
 205
 
-op(100,xf,'').
-(0 '') = ''(X).
+/**/ (0 '') = ''(X).
 
-   X = 0.
+X = 0.
 
 196
 
-op(100,xf,'').
-writeq(0 '').
+/**/ writeq(0 '').
 
-0''   true.
+0 '' or 0''
 
 197
 
-op(100,xf,'').
-writeq(0'').
+/**/ writeq(0'').
 
-0''   true.
+0 '' or 0''
 
 118
 
@@ -1080,17 +1061,15 @@ succeeds
 
 119
 
-op(100,xfx,'').
-functor(0 ''1,F, A).
+/**/ functor(0 ''1, F, A).
 
-   F = (''), A = 2.
+F = (''), A = 2.
 
 120
 
-op(100,xfx,'').
-functor(0''1, F, A).
+/**/ functor(0''1, F, A).
 
-   F = (''), A = 2.
+F = (''), A = 2.
 
 206
 
@@ -1101,31 +1080,28 @@ syntax err.
 
 207
 
-op(100,xf,f).
-writeq(0'f'f').
+/**/ writeq(0'f'f').
 
-102 f   true.
+e.g. 102 f
 
 209
 
-op(100,xf,f).
-writeq(0'ff).
+/**/ writeq(0'ff).
 
-102 f   true.
+102 f
 
 256
 
-op(100,xf,f).
-writeq(0f).
+/**/ writeq(0f).
 
-0 f   true.
+0 f
 
 208
 
 op(100,xf,'f ').
 writeq(0 'f ').
 
-0 'f '   true.
+0 'f '
 
 121
 
@@ -1138,32 +1114,31 @@ syntax err.
 op(100,xfx,'1').
 functor(2'1'y, F, A).
 
-   F = ('1'), A = 2.
+F = ('1'), A = 2.
 
 262
 
-op(100,xfx,'1').
-functor(2 '1'y, F, A).
+/**/ functor(2 '1'y, F, A).
 
-   F = ('1'), A = 2.
+F = ('1'), A = 2.
 
 123
 
 X =0'\x41\ .
 
-   X = 65.
+X = 65
 
 124
 
 X =0'\x41\.
 
-   X = 65.
+X = 65
 
 125
 
 X =0'\x1\.
 
-   X = 1.
+X = 1
 
 339
 
@@ -1175,13 +1150,13 @@ syntax err.
 
 X is 16'mod'2.
 
-   X = 0.
+X = 0
 
 128
 
 X is 37'mod'2.
 
-   X = 1.
+X = 1
 
 129
 
@@ -1193,28 +1168,28 @@ syntax err.
 
 X is 1'+'1.
 
-   X = 2.
+X = 2
 
 212
 
 X is 1'\
 +'1.
 
-   X = 2.
+X = 2.
 
 213
 
 X is 0'\
 +'1.
 
-   X = 1.
+X = 1.
 
 259
 
 X = 0'\
 +'/*'. %*/1.
 
-   X = 0+1.
+X = 0+1
 
 303
 
@@ -1244,17 +1219,15 @@ succeeds
 
 132
 
-op(100,fx,' op').
-writeq(' op' '1').
+/**/ writeq(' op' '1').
 
-' op' '1'   true.
+' op' '1'
 
 133
 
-op(100,fx,' op').
-writeq(' op'[]).
+/**/ writeq(' op'[]).
 
-' op'[]   true.
+' op'[]
 
 134
 
@@ -1267,19 +1240,19 @@ syntax err.
 
 writeq(- (a*b)).
 
-- (a*b)   true.
+- (a*b)
 
 138
 
 writeq(\ (a*b)).
 
-\ (a*b)   true.
+\ (a*b)
 
 141
 
 current_op(P,xfy,.).
 
-   false.
+fails
 
 142
 
@@ -1289,160 +1262,145 @@ succeeds
 
 143
 
-op(100,xfy,.).
-writeq(1 .2).
+/**/ writeq(1 .2).
 
-[1|2]   true.
+[1|2]
 
 144
 
-op(100,xfy,.).
-writeq([1]).
+/**/ writeq([1]).
 
-[1]   true.
+[1]
 
 283
 
-op(100,xfy,.).
-writeq(-[1]).
+/**/ writeq(-[1]).
 
--[1]   true.
+-[1]
 
 221
 
-op(100,xfy,.).
-X = 1.e. 
+/**/ X = 1.e.
 
-   X = [1|e].
+X = [1|e].
 
 258
 
-op(100,xfy,.).
-writeq(ok).%
+/**/ writeq(ok).%
 1 = X.
 
-   true.
-ok   true.
-   X = 1.
+ok X = 1
 
 145
 
 write_canonical('$VAR'(0)).
 
-'$VAR'(0)   true.
+'$VAR'(0)
 
 146
 
-write_term('$VAR'(0), []).
+write_term('$VAR'(0),[]).
 
-$VAR(0)   true.
+$VAR(0)
 
 244
 
 writeq('$VAR'(0)).
 
-A   true.
+A
 
 245
 
 writeq('$VAR'(-1)).
 
-'$VAR'(-1)   true.
+'$VAR'(-1)
 
 246
 
 writeq('$VAR'(-2)).
 
-'$VAR'(-2)   true.
+'$VAR'(-2)
 
 247
 
 writeq('$VAR'(x)).
 
-'$VAR'(x)   true.
+'$VAR'(x)
 
 289
 
 writeq('$VAR'('A')).
 
-'$VAR'('A')   true.
+'$VAR'('A')
 
 147
 
 op(9,fy,fy),op(9,yf,yf).
 write_canonical(fy 1 yf).
 
-fy(yf(1))   true.
+fy(yf(1))
 
 148
 
-op(9,fy,fy),op(9,yf,yf).
-write_canonical(fy yf).
+/**/ write_canonical(fy yf).
 
 syntax err.
 
 149
 
-op(9,fy,fy),op(9,yf,yf).
-writeq(fy(yf(1))).
+/**/ writeq(fy(yf(1))).
 
-fy 1 yf   true.
+fy 1 yf
 
 150
 
-op(9,fy,fy),op(9,yf,yf).
-writeq(yf(fy(1))).
+/**/ writeq(yf(fy(1))).
 
-(fy 1)yf   true.
+(fy 1)yf
 
 319
 
-op(9,fy,fy),op(9,yf,yf).
-writeq(yf(fy(yf(fy(1))))).
+/**/ writeq(yf(fy(yf(fy(1))))).
 
-(fy (fy 1)yf)yf   true.
+(fy (fy 1)yf)yf
 
 151
 
 op(9,fy,fy),op(9,yfx,yfx).
 write_canonical(fy 1 yfx 2).
 
-fy(yfx(1,2))   true.
+fy(yfx(1,2))
 
 152
 
-op(9,fy,fy),op(9,yfx,yfx).
-writeq(fy(yfx(1,2))).
+/**/ writeq(fy(yfx(1,2))).
 
-fy 1 yfx 2   true.
+fy 1 yfx 2
 
 153
 
-op(9,fy,fy),op(9,yfx,yfx).
-writeq(yfx(fy (1),2)).
+/**/ writeq(yfx(fy(1),2)).
 
-(fy 1)yfx 2   true.
+(fy 1)yfx 2
 
 154
 
-op(9,yf,yf),op (9,xfy,xfy).
+op(9,yf,yf),op(9,xfy,xfy).
 write_canonical(1 xfy 2 yf).
 
-xfy(1,yf(2))   true.
+xfy(1,yf(2))
 
 155
 
-op(9,yf,yf),op (9,xfy,xfy).
-writeq(xfy(1,yf(2))).
+/**/ writeq(xfy(1,yf(2))).
 
-1 xfy 2 yf   true.
+1 xfy 2 yf
 
 156
 
-op(9,yf,yf),op (9,xfy,xfy).
-writeq(yf(xfy (1,2))).
+/**/ writeq(yf(xfy(1,2))).
 
-(1 xfy 2)yf   true.
+(1 xfy 2)yf
 
 157
 
@@ -1455,47 +1413,42 @@ fails
 
 op(0,xfy,',').
 
-error(permission_error(modify,operator,','),op/3)
+p._e.(m., o.,',')
 
 159
 
 op(9,fy,f),op(9,yf,f).
 write_canonical(f f 0).
 
-f(f(0))   true.
+f(f(0))
 
 201
 
-op(9,fy,f),op(9,yf,f).
-writeq(f(f(0))).
+/**/ writeq(f(f(0))).
 
-f f 0   true.
+e.g. f f 0
 
 202
 
-op(9,fy,f),op(9,yf,f).
-write_canonical(f 0 f).
+/**/ write_canonical(f 0 f).
 
-f(f(0))   true.
+f(f(0))
 
 160
 
-op(9,fy,f),op(9,yf,f).
-write_canonical(0 f f).
+/**/ write_canonical(0 f f).
 
-f(f(0))   true.
+f(f(0))
 
 161
 
-op(9,fy,f),op(9,yf,f).
-write_canonical
-(f f).
+/**/ write_canonical(f f).
 
 syntax err.
 
 162
 
-op(9,fy,p),op (9,yfx,p).
+op(9,fy,p),op(9,yfx,p).
 write_canonical(1 p p p 2).
 
 syntax err.
@@ -1505,14 +1458,14 @@ syntax err.
 op(9,fy,p),op(9,xfy,p).
 write_canonical(1 p p p 2).
 
-p(1,p(p(2)))   true.
+p(1,p(p(2)))
 
 164
 
 op(7,fy,p),op(9,yfx,p).
 write_canonical(1 p p p 2).
 
-p(1,p(p(2)))   true.
+p(1,p(p(2)))
 
 165
 
@@ -1528,8 +1481,7 @@ succeeds
 
 167
 
-op(0,xfy,'|').
-writeq((a|b)).
+/**/ writeq((a|b)).
 
 syntax err.
 
@@ -1541,49 +1493,46 @@ succeeds
 
 169
 
-op(0,xfy,.),op(9,yf,.).
-writeq(.(.)).
+/**/ writeq(.(.)).
 
-('.')'.'   true.
+('.')'.'
 
 194
 
 op(0,xfy,.),writeq((.)+(.)).
 
-'.'+'.'   true.
+'.'+'.'
 
 170
 
-set_prolog_flag(double_quotes,chars).
+set_prolog_flag(
+ double_quotes,chars).
 
 succeeds
 
 171
 
-set_prolog_flag(double_quotes,chars).
-writeq("a").
+/**/ writeq("a").
 
-[a]   true.
+[a]
 
 229
 
-set_prolog_flag(double_quotes,chars).
-writeq("\z").
+/**/ writeq("\z").
 
 syntax err.
 
 300
 
-set_prolog_flag(double_quotes,chars).
-writeq("\0\").
+/**/ writeq("\0\").
 
-['\0\']   true.
+e.g. ['\0\']
 
 172
 
 X is 10.0** -323, writeq(X).
 
-9.881312916824931e-324   X = 9.881312916824931e-324.
+e.g. 1.0e-323
 
 173
 
@@ -1601,13 +1550,13 @@ succeeds
 
 T = t(0b1,0o1,0x1).
 
-   T = t(1,1,1).
+T = t(1,1,1)
 
 176
 
 X is 0b1mod 2.
 
-   X = 1.
+X = 1
 
 217
 
@@ -1617,57 +1566,51 @@ succeeds
 
 181
 
-op(1105,xfy,'|').
-writeq((a-->b,c|d)).
+/**/ writeq((a-->b,c|d)).
 
-a-->b,c|d   true.
+a-->b,c|d
 
 322
 
-op(1105,xfy,'|').
-write_canonical((a|b;c)).
+/**/ write_canonical((a|b;c)).
 
-'|'(a,;(b,c))   true.
+'|'(a,;(b,c))
 
 323
 
-op(1105,xfy,'|').
-write_canonical((a;b|c)).
+/**/ write_canonical((a;b|c)).
 
-'|'(;(a,b),c)   true.
+'|'(;(a,b),c)
 
 348
 
-op(1105,xfy,'|').
-write_canonical([a;b|c]).
+/**/ write_canonical([a;b|c]).
 
 syntax err.
 
 290
 
-op(1105,xfy,'|').
-writeq([(a|b)]).
+/**/ writeq([(a|b)]).
 
-[(a|b)]   true.
+[(a|b)]
 
 317
 
-op(1105,xfy,'|').
-writeq([a,(b,c)|[]]).
+/**/ writeq([a,(b,c)|[]]).
 
-[a,(b,c)]   true.
+[a,(b,c)]
 
 186
 
 X/* /*/=7.
 
-   X = 7.
+X = 7
 
 187
 
 X/*/*/=7.
 
-   X = 7.
+X = 7
 
 198
 
@@ -1686,37 +1629,37 @@ succeeds
 op(900, fy, [$]).
 write_canonical($a+b).
 
-$(+(a,b))   true.
+$(+(a,b))
 
 224
 
 \ .
 
-error(existence_error(procedure,(\)/0),(\)/0)
+ex._e.(..)
 
 225
 
 char_code(C,0), writeq(C).
 
-'\0\'   C = '\0\'.
+'\0\' or rep._e.
 
 250
 
 writeq('\0\').
 
-'\0\'   true.
+rep._e. or '\0\'
 
 226
 
 write_canonical(_+_).
 
-+(_0,_1)   true.
+e.g. +(_1,_2)
 
 227
 
 write_canonical(B+B).
 
-+(_0,_0)   true.
+e.g. +(_1,_1)
 
 228
 
@@ -1753,12 +1696,11 @@ syntax err.
 op(400,fx,f).
 writeq(f/*.*/(1,2)).
 
-f (1,2)   true.
+f (1,2)
 
 235
 
-op(400,fx,f).
-writeq(1 = f).
+/**/ writeq(1 = f).
 
 syntax err.
 
@@ -1766,7 +1708,7 @@ syntax err.
 
 write_canonical(a- - -b).
 
--(a,-(-(b)))   true.
+-(a,-(-(b)))
 
 340
 
@@ -1776,135 +1718,118 @@ succeeds
 
 341
 
-op(699,xf,>.).
-writeq(>(>.(a),b)).
+/**/ writeq(>(>.(a),b)).
 
-a>. >b   true.
+a>. >b
 
 342
 
-op(699,xf,>.).
-write_canonical(a>. >b).
+/**/ write_canonical(a>. >b).
 
->(>.(a),b)   true.
+>(>.(a),b)
 
 343
 
-op(699,xf,>.).
-write_canonical(a>. =b).
+/**/ write_canonical(a>. =b).
 
-=(>.(a),b)   true.
+=(>.(a),b)
 
 344
 
-op(699,xf,>.).
-write_canonical((a>.,b)).
+/**/ write_canonical((a>.,b)).
 
-','(>.(a),b)   true.
+','(>.(a),b)
 
 345
 
-op(699,xf,>.).
-write_canonical(a>.).
+/**/ write_canonical(a>.).
 
->.(a)   true.
+>.(a)
 
 237
 
 op(699,xf,>).
 
-error(permission_error(create,operator,>),op/3)
+p._e.(c.,op,>)
 
 238
 
-op(699,xf,>).
-writeq(>(>(a),b)).
+/**/ writeq(>(>(a),b)).
 
->(a)>b   true.
+>(a)>b
 
 239
 
-op(699,xf,>).
-write_canonical(a> >b).
+/**/ write_canonical(a> >b).
 
 syntax err.
 
 242
 
-op(699,xf,>).
-write_canonical(a> =b).
+/**/ write_canonical(a> =b).
 
 syntax err.
 
 243
 
-op(699,xf,>).
-write_canonical((a>,b)).
+/**/ write_canonical((a>,b)).
 
 syntax err.
 
 240
 
-op(699,xf,>).
-write_canonical(a>).
+/**/ write_canonical(a>).
 
 syntax err.
 
 346
 
-op(699,xf,>).
-write_canonical
-(a>b).
+/**/ write_canonical(a>b).
 
->(a,b)   true.
+>(a,b)
 
 251
 
 op(9,yfx,[bop,bo,b,op,xor]).
 writeq(0bop 2).
 
-0 bop 2   true.
+0 bop 2
 
 263
 
-op(9,yfx,[bop,bo,b,op,xor]).
-writeq(0 bop 2).
+/**/ writeq(0 bop 2).
 
-0 bop 2   true.
+0 bop 2
 
 252
 
-op(9,yfx,[bop,bo,b,op,xor]).
-writeq(0bo 2).
+/**/ writeq(0bo 2).
 
-0 bo 2   true.
+0 bo 2
 
 253
 
-op(9,yfx,[bop,bo,b,op,xor]).
-writeq(0b 2).
+/**/ writeq(0b 2).
 
-0 b 2   true.
+0 b 2
 
 254
 
-op(9,yfx,[bop,bo,b,op,xor]).
-writeq(0op 2).
+/**/ writeq(0op 2).
 
-0 op 2   true.
+0 op 2
 
 255
 
-op(9,yfx,[bop,bo,b,op,xor]).
-writeq(0xor 2).
+/**/ writeq(0xor 2).
 
-0 xor 2   true.
+0 xor 2
 
 264
 
 writeq('^`').
 
-'^`'   true.
+'^`'
 
 265
 
@@ -1914,41 +1839,39 @@ succeeds
 
 266
 
-op(9,yf,[b2,o8]).
-writeq(0b2).
+/**/ writeq(0b2).
 
-0 b2   true.
+0 b2
 
 267
 
-op(9,yf,[b2,o8]).
-writeq(0o8).
+/**/ writeq(0o8).
 
-0 o8   true.
+0 o8
 
 268
 
 op(500, xfy, {}).
 
-error(permission_error(create,operator,{}),op/3)
+p._e.(c.,o.,{})
 
 269
 
 writeq('\b\r\f\t\n').
 
-'\b\r\f\t\n'   true.
+'\b\r\f\t\n'
 
 270
 
 get_char(C). %a
 
-   C = ' '.
+C = ' '
 
 271
 
 get_char(C).%a
 
-   C = '%'.
+C = '%'
 
 272
 
@@ -1960,32 +1883,31 @@ syntax err.
 
 op(20,fx,--),writeq(--(a)).
 
---a   true.
+--a
 
 275
 
-op(20,fx,--).
-op(0,fy,--),writeq(--(a)).
+/**/ op(0,fy,--),writeq(--(a)).
 
---(a)   true.
+--(a)
 
 276
 
 writeq(0xamod 2).
 
-10 mod 2   true.
+10 mod 2
 
 363
 
 writeq(010).
 
-10   true.
+10
 
 280
 
 writeq(00'+'1).
 
-0+1   true.
+0+1
 
 281
 
@@ -2003,13 +1925,13 @@ syntax err.
 
 writeq([(a,b)]).
 
-[(a,b)]   true.
+[(a,b)]
 
 292
 
 writeq(1= \\).
 
-1= \\   true.
+1= \\
 
 293
 
@@ -2033,13 +1955,13 @@ syntax err.
 
 writeq([a,b|c]).
 
-[a,b|c]   true.
+[a,b|c]
 
 299
 
 (\+ (a,b)) = \+(T).
 
-   T = (a,b).
+T = (a,b)
 
 302
 
@@ -2049,39 +1971,39 @@ succeeds
 
 304
 
-op(300,fy,~). writeq(~ (a=b)). 
+op(300,fy,~). writeq(~ (a=b)).
 
-~ (a=b)   true.
+~ (a=b)
 
 305
 
 writeq(\ (a=b)).
 
-\ (a=b)   true.
+\ (a=b)
 
 306
 
 writeq(+ (a=b)).
 
-+ (a=b)   true.
++ (a=b)
 
 307
 
 writeq([/*.*/]).
 
-[]   true.
+[]
 
 308
 
 writeq(.+).
 
-.+   true.
+.+
 
 309
 
 writeq({a,b}).
 
-{a,b}   true.
+{a,b}
 
 310
 
@@ -2099,19 +2021,19 @@ syntax err.
 
 writeq(+((1*2)^3)).
 
-+ (1*2)^3   true.
++ (1*2)^3
 
 327
 
 writeq(-((1*2)^3)).
 
-- ((1*2)^3)   true.
+- ((1*2)^3)
 
 320
 
 writeq([a|\+2]).
 
-[a|\+2]   true.
+[a|\+2]
 
 321
 
@@ -2123,7 +2045,7 @@ syntax err.
 
 writeq('%').
 
-'%'   true.
+'%'
 
 325
 
@@ -2141,31 +2063,31 @@ syntax err.
 
 write_canonical(;(a)).
 
-;(a)   true.
+;(a)
 
 330
 
 write_canonical(';'(a)).
 
-;(a)   true.
+;(a)
 
 331
 
 write_canonical(;(a,b)).
 
-;(a,b)   true.
+;(a,b)
 
 332
 
 writeq(1 is _).
 
-1 is _0   true.
+e.g. 1 is _1
 
 333
 
 op(9,fx,.),writeq(.(' ')).
 
-'.' ' '   true.
+'.' ' '
 
 334
 
@@ -2175,35 +2097,33 @@ succeeds
 
 335
 
-op(9,yf,.>).
-write_canonical(a.> .>).
+/**/ write_canonical(a.> .>).
 
-.>(.>(a))   true.
+.>(.>(a))
 
 336
 
-op(9,yf,.>).
-writeq(((a).>).>).
+/**/ writeq(((a).>).>).
 
-a.> .>   true.
+a.> .>
 
 337
 
 writeq([.|1]).
 
-['.'|1]   true.
+['.'|1]
 
 338
 
 writeq(-'-'2).
 
-- -2   true.
+- -2
 
 347
 
 op(100,fx,',').
 
-error(permission_error(modify,operator,','),op/3)
+p._e.(m., o.,',')
 
 349
 
@@ -2225,22 +2145,19 @@ syntax err.
 
 352
 
-op(1000,xfx,~>).
-writeq([a~>b]).
+op(1000,xfx,~>). writeq([a~>b]).
 
 syntax err.
 
 353
 
-op(1000,yfx,~>).
-writeq([a~>b]).
+op(1000,yfx,~>). writeq([a~>b]).
 
 syntax err.
 
 354
 
-op(1000,xfy,~>).
-writeq([a~>b]).
+op(1000,xfy,~>). writeq([a~>b]).
 
 syntax err.
 
@@ -2266,7 +2183,7 @@ syntax err.
 
 writeq({a:-b}).
 
-{a:-b}   true.
+{a:-b}
 
 360
 
@@ -2292,10 +2209,29 @@ syntax err.
 
 writeq(-0.0).
 
-0.0   true.
+e.g. 0.0
 
 365
 
-Finis ().
+op(0,fy,$).
+
+succeeds
+
+366
+
+/**/ writeq($ab).
 
 syntax err.
+
+367
+
+writeq(0'. ).
+
+46
+
+368
+
+writeq(?).
+
+?
+

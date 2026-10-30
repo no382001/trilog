@@ -10,8 +10,8 @@ correctness:
 - sub_atom/atom_length count bytes, not utf-8 chars (atom_length('Pécs', 5)) I mean how correct should we be?
 - directives run to exhaustion instead of once
 - 7/2 gives 3 (iso: 3.5); floats print as 1e+10 (iso: 1.0e10)
-- syntax conformity (make conformity): 256/363
-- quoted text cannot hold \0\ (atoms are C strings), and raw tabs and newlines inside quotes should be syntax errors
+- syntax conformity (make conformity): 285/366
+- quoted text cannot hold \0\ (atoms are C strings); iso also allows a representation error there
 - the toplevel reads one line per query, not one term; queries cannot span lines
 - the reader takes an infix operator that is also a prefix operator, followed by (, as a functor: a:-(b:-c) does not parse, though writeq prints it
 - a quoted operator atom, like '-', can still be a bare operand; iso gives it priority 1201 like the unquoted one
