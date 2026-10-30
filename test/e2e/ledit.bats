@@ -61,7 +61,7 @@ teardown() {
   # use ledit to remove first line (cat), save to new file, then consult it
   result=$(printf "consult('lib/ledit.pl').\nledit('/tmp/trilog_ledit_pets.pl').\nf\nd\ns /tmp/trilog_ledit_edited.pl\nq\nconsult('/tmp/trilog_ledit_edited.pl').\nfindall(X, pet(X), L), write(L).\n" \
     | timeout 5 "$TRILOG" 2>&1 | tail -1)
-  [[ "$result" == *"[dog, snake]"* ]]
+  [[ "$result" == *"[dog,snake]"* ]]
 }
 
 # --- wind + rewind ---
@@ -94,7 +94,7 @@ teardown() {
   touch -t 202001010000 /tmp/trilog_ledit_make.pl
   result=$(printf "consult('/tmp/trilog_ledit_make.pl').\nconsult('lib/ledit.pl').\nledit('/tmp/trilog_ledit_make.pl').\nw\na\npet(fish).\n.\nw\ns /tmp/trilog_ledit_make.pl\nq\nmake.\nfindall(X, pet(X), L), write(L).\n" \
     | timeout 5 "$TRILOG" 2>&1 | tail -1)
-  [[ "$result" == *"[cat, dog, fish]"* ]]
+  [[ "$result" == *"[cat,dog,fish]"* ]]
 }
 
 @test "ledit: delete clause via ledit, make reloads without it" {
@@ -103,7 +103,7 @@ teardown() {
   touch -t 202001010000 /tmp/trilog_ledit_make.pl
   result=$(printf "consult('/tmp/trilog_ledit_make.pl').\nconsult('lib/ledit.pl').\nledit('/tmp/trilog_ledit_make.pl').\nf\nd\ns /tmp/trilog_ledit_make.pl\nq\nmake.\nfindall(X, color(X), L), write(L).\n" \
     | timeout 5 "$TRILOG" 2>&1 | tail -1)
-  [[ "$result" == *"[green, blue]"* ]]
+  [[ "$result" == *"[green,blue]"* ]]
 }
 
 # --- unconsult ledit then query core predicates ---
@@ -111,7 +111,7 @@ teardown() {
 @test "ledit: full lifecycle then core still works" {
   result=$(printf "consult('lib/ledit.pl').\nledit.\na\ntest line\n.\nw\ns /tmp/trilog_ledit_out.txt\nq\nunconsult('lib/ledit.pl').\nappend([1,2],[3],X), write(X).\n" \
     | timeout 5 "$TRILOG" 2>&1)
-  [[ "$result" == *"[1, 2, 3]"* ]]
+  [[ "$result" == *"[1,2,3]"* ]]
 }
 
 

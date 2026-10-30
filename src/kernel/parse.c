@@ -84,9 +84,7 @@ static void perr(trilog_t *T, const char *msg) {
   longjmp(T->err_jmp, 1);
 }
 
-static int is_symbol_char(int c) {
-  return c != '\0' && strchr("+-*/\\^<>=~:.?@#&$", c) != NULL;
-}
+static int is_symbol_char(int c) { return ascii_symbol(c); }
 
 static void skip_ws(trilog_t *T) {
   for (;;) {

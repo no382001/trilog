@@ -18,7 +18,7 @@ freestanding_symbols() {
   run bash -c "cd '$dir' && ./trilog -f -e \"append(X, [c], [a,b,c]), maplist(atom, X), phrase([a], [a]), consult('lib/meta.pl'), findall(Y, solve(member(Y, [1, 2])), L), write(done(L)), nl.\""
   rm -rf "$dir"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"done([1, 2])"* ]]
+  [[ "$output" == *"done([1,2])"* ]]
   [[ "$output" != *"uncaught"* ]]
   [[ "$output" != *"cannot open"* ]]
 }
@@ -35,8 +35,8 @@ freestanding_symbols() {
   rm -rf "$dir"
   make -s -C "$BATS_TEST_DIRNAME/../.." release
   [[ "$output" == *"ok([aa])"* ]]
-  [[ "$output" == *"E1 = existence_error(procedure, /(get_time_ms, 1))"* ]]
-  [[ "$output" == *"E2 = existence_error(procedure, /(file_mtime, 2))"* ]]
+  [[ "$output" == *"E1 = existence_error(procedure,get_time_ms/1)"* ]]
+  [[ "$output" == *"E2 = existence_error(procedure,file_mtime/2)"* ]]
 }
 
 @test "the freestanding build needs only mem*, str*, setjmp, libm and the two float functions, and runs" {
@@ -73,7 +73,7 @@ freestanding_symbols() {
     "$root/_build/release-no_posix-nolibc/libtrilog.a" -lm -o "$BATS_TEST_TMPDIR/api_freestanding_test"
   [ "$status" -eq 0 ]
   run "$BATS_TEST_TMPDIR/api_freestanding_test"
-  [[ "$output" == *$'\nok - strcmp(answer, "[0.25, 5.0, 1.5e+10, 0.333333, -0.5, 100.0]") == 0'* ]]
+  [[ "$output" == *$'\nok - strcmp(answer, "[0.25,5.0,1.5e+10,0.333333,-0.5,100.0]") == 0'* ]]
   [[ "$output" == *$'\nok - strcmp(answer, "1500.0") == 0'* ]]
 }
 

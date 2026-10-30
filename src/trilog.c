@@ -480,7 +480,7 @@ size_t trilog_format_answer(trilog_t *t, char *buf, size_t cap) {
         format_emit(t, alias);
       else {
         t->answer_naming = true;
-        print_term_via(t, r, PRINT_QUOTED, format_emit);
+        print_term_via(t, r, PRINT_QUOTED | PRINT_ANSWER, format_emit);
         t->answer_naming = false;
       }
       any = true;

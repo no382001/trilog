@@ -74,7 +74,7 @@ static void test_solutions(trilog_t *t) {
   CHECK(!c.last_has_more);
   CHECK(streq(c.text[0], "1"));
   CHECK(streq(c.text[1], "two"));
-  CHECK(streq(c.text[2], "\"x y\""));
+  CHECK(streq(c.text[2], "[x,' ',y]"));
 
   collected first = {.stop_after = 1};
   CHECK(trilog_query(t, "q(X).", collect, &first) == TRILOG_TRUE);
@@ -151,13 +151,12 @@ static void test_errors(trilog_t *t) {
   CHECK(trilog_query(t, "throw(oops(1, \"a\"))", collect, &c) == TRILOG_ERROR);
   char buf[64];
   trilog_format(t, trilog_error_term(t), TRILOG_FORMAT_QUOTED, buf, sizeof buf);
-  CHECK(streq(buf, "oops(1, \"a\")"));
+  CHECK(streq(buf, "oops(1,[a])"));
 
   CHECK(trilog_query(t, "undefined_pred", collect, &c) == TRILOG_ERROR);
   trilog_format(t, trilog_error_term(t), 0, buf, sizeof buf);
-  CHECK(!strncmp(
-      buf, "error(existence_error(procedure, /(undefined_pred, 0))",
-      strlen("error(existence_error(procedure, /(undefined_pred, 0))")));
+  CHECK(!strncmp(buf, "error(existence_error(procedure,undefined_pred/0)",
+                 strlen("error(existence_error(procedure,undefined_pred/0)")));
 
   CHECK(trilog_query(t, "foo(", collect, &c) == TRILOG_ERROR);
   CHECK(trilog_term_type(t, trilog_error_term(t)) == TRILOG_INVALID);
@@ -268,9 +267,9 @@ static void test_foreign(trilog_t *t) {
   CHECK(error_text(t, "c_add(X, 1, _)", buf, sizeof buf) == TRILOG_ERROR);
   CHECK(!strncmp(buf, "error(instantiation_error", 25));
   CHECK(error_text(t, "c_add(a, 1, _)", buf, sizeof buf) == TRILOG_ERROR);
-  CHECK(!strncmp(buf, "error(type_error(integer, a)", 28));
+  CHECK(!strncmp(buf, "error(type_error(integer,a)", 27));
   CHECK(error_text(t, "c_greet(1)", buf, sizeof buf) == TRILOG_ERROR);
-  CHECK(!strncmp(buf, "error(type_error(atom, 1)", 25));
+  CHECK(!strncmp(buf, "error(type_error(atom,1)", 24));
   CHECK(error_text(t, "c_nan(_)", buf, sizeof buf) == TRILOG_ERROR);
   CHECK(!strncmp(buf, "error(evaluation_error(undefined)", 33));
   CHECK(error_text(t, "assertz(c_add(1, 2, 3))", buf, sizeof buf) ==
@@ -289,15 +288,14 @@ static void test_foreign(trilog_t *t) {
   CHECK(trilog_query(t, "c_isqrt(17, R)", collect, &r) == TRILOG_TRUE);
   CHECK(streq(r.text[0], "4"));
   CHECK(error_text(t, "c_isqrt(-3, _)", buf, sizeof buf) == TRILOG_ERROR);
-  CHECK(
-      streq(buf, "error(domain_error(not_less_than_zero, -3), /(c_isqrt, 2))"));
+  CHECK(streq(buf, "error(domain_error(not_less_than_zero,-3),c_isqrt/2)"));
   collected k = {0};
   CHECK(trilog_query(t,
                      "catch(c_isqrt(-3, _), error(domain_error(D, V), C), "
                      "true), D == not_less_than_zero, V == -3, C == c_isqrt/2",
                      collect, &k) == TRILOG_TRUE);
   CHECK(error_text(t, "c_bad_error", buf, sizeof buf) == TRILOG_ERROR);
-  CHECK(!strncmp(buf, "error(syntax_error(oops(), /(c_bad_error, 0))", 46));
+  CHECK(!strncmp(buf, "error(syntax_error(oops(),c_bad_error/0)", 40));
   CHECK(trilog_load_string(t, ":- catch(c_isqrt(-1, _), _, true).\n"
                               "after_error(1).\n") == TRILOG_TRUE);
   collected a = {0};

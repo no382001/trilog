@@ -24,7 +24,7 @@ load common
     write(L),
     nl.
   "
-  [[ "$output" == *"[2, 3]"* ]]
+  [[ "$output" == *"[2,3]"* ]]
 }
 
 @test "a library that does not exist raises existence_error(source_sink, library(Name))" {
@@ -33,7 +33,7 @@ load common
     writeq(E),
     nl.
   "
-  [[ "$output" == *"existence_error(source_sink, library(nope))"* ]]
+  [[ "$output" == *"existence_error(source_sink,library(nope))"* ]]
 }
 
 @test "library(Name) resolves next to the core, whatever the caller's directory" {
@@ -43,7 +43,7 @@ load common
   bin="$(cd "$(dirname "$TRILOG")" && pwd)/$(basename "$TRILOG")"
   cd "$dir"
   run "$bin" -f prog.pl -e "findall(X, t(X), L), write_canonical(L), nl."
-  [[ "$output" == *"[a, b]"* ]]
+  [[ "$output" == *"'.'(a,'.'(b,[]))"* ]]
 }
 
 @test "consulting a loaded file by another path does not add its clauses twice (regression)" {
@@ -67,7 +67,7 @@ load common
     writeq(r(L, M, E3)),
     nl.
   "
-  [[ "$output" == *"r([1, 2], maplist, existence_error(procedure, /(phrase, 2)))"* ]]
+  [[ "$output" == *"r([1,2],maplist,existence_error(procedure,phrase/2))"* ]]
 }
 
 @test "with -n, libraries load on request and DCG files parse after library(dcgs)" {
@@ -81,7 +81,7 @@ load common
     writeq(r(L, P)),
     nl.
   "
-  [[ "$output" == *"r([1, 2], parsed)"* ]]
+  [[ "$output" == *"r([1,2],parsed)"* ]]
 }
 
 @test "the CLI loads lists, apply and dcgs by default" {
@@ -94,7 +94,7 @@ load common
     writeq(S),
     nl.
   "
-  [[ "$output" == *"['apply.pl', 'dcgs.pl', 'lists.pl']"* ]]
+  [[ "$output" == *"['apply.pl','dcgs.pl','lists.pl']"* ]]
 }
 
 @test "-n keeps error and misc, which the core uses, but not between, charsio or make" {
@@ -122,7 +122,7 @@ load common
     writeq(r(S, T)),
     nl.
   "
-  [[ "$output" == *"r(2, f(x))"* ]]
+  [[ "$output" == *"r(2,f(x))"* ]]
 }
 
 @test "unconsult(library(Name)) unloads a library, and ensure_loaded/1 loads it again" {
@@ -134,7 +134,7 @@ load common
     writeq(r(E)),
     nl.
   "
-  [[ "$output" == *"r(existence_error(procedure, /(maplist, 2)))"* ]]
+  [[ "$output" == *"r(existence_error(procedure,maplist/2))"* ]]
 }
 
 @test "each library loads what it uses, so it works without the CLI's defaults (-n) (regression)" {

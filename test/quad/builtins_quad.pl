@@ -674,7 +674,7 @@ bcapply(G) :- call(G).
    E = type_error(list, foo).
 
 ?- write_term_to_chars('a b'+[x|y], [quoted(true), ignore_ops(true)], Cs).
-   Cs = "+('a b', [x|y])".
+   Cs = "+('a b','.'(x,y))".
 
 ?- write_term_to_chars('a b', [quoted(false)], Cs).
    Cs = "a b".
@@ -694,17 +694,17 @@ bcapply(G) :- call(G).
    Cs = "hello".
 
 ?- write_term_to_chars(f(a, b), [], Cs).
-   Cs = "f(a, b)".
+   Cs = "f(a,b)".
 
 ?- write_term_to_chars(42, [], Cs).
    Cs = "42".
 
 ?- write_term_to_chars([1,2,3], [], Cs).
-   Cs = "[1, 2, 3]".
+   Cs = "[1,2,3]".
 
 % roundtrip: write then read
 ?- write_term_to_chars(f(a, b), [quoted(true)], Cs), read_from_chars(Cs, T).
-   Cs = "f(a, b)", T = f(a, b).
+   Cs = "f(a,b)", T = f(a, b).
 
 ?- write_term_to_chars(hello, [quoted(true)], Cs), read_from_chars(Cs, T).
    Cs = "hello", T = hello.
@@ -720,13 +720,13 @@ bcapply(G) :- call(G).
    E = type_error(integer, a), C = numbervars/3.
 
 ?- write_term_to_chars(['$VAR'(0), '$VAR'(25), '$VAR'(26), '$VAR'(53)], [numbervars(true)], Cs).
-   Cs = "[A, Z, A1, B2]".
+   Cs = "[A,Z,A1,B2]".
 
 ?- write_term_to_chars('$VAR'(1), [quoted(true)], Cs).
    Cs = "'$VAR'(1)".
 
 ?- write_term_to_chars(['$VAR'(-1), '$VAR'(x)], [quoted(true), numbervars(true)], Cs).
-   Cs = "['$VAR'(-1), '$VAR'(x)]".
+   Cs = "['$VAR'(-1),'$VAR'(x)]".
 
 ?- with_output_to(chars(Cs), writeq('$VAR'(1))).
    Cs = "B".
@@ -788,7 +788,7 @@ bcapply(G) :- call(G).
 
 % write_canonical/1
 ?- with_output_to(chars(Cs), write_canonical(f('B c', 1+2))).
-   Cs = "f('B c', +(1, 2))".
+   Cs = "f('B c',+(1,2))".
 
 % op/3 permission and argument errors (8.14.3.3, Cor.2)
 ?- catch(op(1000, xfy, ','), error(E, _), true).

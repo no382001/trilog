@@ -45,7 +45,7 @@ load common
     nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"-(hithere, inner)"* ]]
+  [[ "$output" == *"hithere-inner"* ]]
 }
 
 @test "get_time_ms/1 returns a non-negative integer, monotonic across two calls" {
@@ -123,7 +123,7 @@ load common
     write(r(E1, E2)), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"r(evaluation_error(int_overflow), evaluation_error(int_overflow))"* ]]
+  [[ "$output" == *"r(evaluation_error(int_overflow),evaluation_error(int_overflow))"* ]]
 }
 
 @test "mod takes the divisor's sign and never overflows (regression)" {
@@ -135,7 +135,7 @@ load common
     write(r(A, B, C, D, E)), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"r(0, 9223372036854775806, 2, -2, 0)"* ]]
+  [[ "$output" == *"r(0,9223372036854775806,2,-2,0)"* ]]
 }
 
 @test "negating min_int raises int_overflow (regression)" {
@@ -146,7 +146,7 @@ load common
     A is abs(-5), B is -(7),
     write(r(E1, E2, A, B)), nl.
   "
-  [[ "$output" == *"r(evaluation_error(int_overflow), evaluation_error(int_overflow), 5, -7)"* ]]
+  [[ "$output" == *"r(evaluation_error(int_overflow),evaluation_error(int_overflow),5,-7)"* ]]
 }
 
 @test "shifts are defined for every shift amount (regression)" {
@@ -158,7 +158,7 @@ load common
     catch(_ is 1 << 64, error(E2, _), true),
     write(r(A, B, C, D, E, F, G, E1, E2)), nl.
   "
-  [[ "$output" == *"r(4611686018427387904, -8, 0, -1, 4, -4, 4, evaluation_error(int_overflow), evaluation_error(int_overflow))"* ]]
+  [[ "$output" == *"r(4611686018427387904,-8,0,-1,4,-4,4,evaluation_error(int_overflow),evaluation_error(int_overflow))"* ]]
 }
 
 @test "=.. raises the ISO errors instead of truncating or ignoring a bad tail (regression)" {
@@ -169,7 +169,7 @@ load common
     length(Args, 300), T =.. [f|Args], functor(T, _, A),
     write(Xs), nl, write(arity(A)), nl.
   "
-  [[ "$output" == *"[type_error(list, [foo|bar]), type_error(list, 4), domain_error(non_empty_list, []), type_error(atom, 3), type_error(atom, a(b)), type_error(atomic, f(a))]"* ]]
+  [[ "$output" == *"[type_error(list,[foo|bar]),type_error(list,4),domain_error(non_empty_list,[]),type_error(atom,3),type_error(atom,a(b)),type_error(atomic,f(a))]"* ]]
   [[ "$output" == *"arity(300)"* ]]
 }
 
@@ -179,7 +179,7 @@ load common
     findall(X, ( member(N-A, [foo-a, 1.5-1, foo(a)-1, foo-(-1)]), catch(functor(_, N, A), E, true) ), Xs),
     write(Xs), nl.
   "
-  [[ "$output" == *"[type_error(integer, a), type_error(atom, 1.5), type_error(atomic, foo(a)), domain_error(not_less_than_zero, -1)]"* ]]
+  [[ "$output" == *"[type_error(integer,a),type_error(atom,1.5),type_error(atomic,foo(a)),domain_error(not_less_than_zero,-1)]"* ]]
 }
 
 @test "float arithmetic in is/2: mixed-mode promotion, //, float/1" {
@@ -220,7 +220,7 @@ load common
 @test "float arithmetic rejects int-only operators" {
   run "$TRILOG" -e "catch(X is 5 mod 2.0, E, true)."
   [ "$status" -eq 0 ]
-  [[ "$output" == *"type_error(integer, 2.0)"* ]]
+  [[ "$output" == *"type_error(integer,2.0)"* ]]
 
   run "$TRILOG" -e "catch(X is 1/0.0, E, true)."
   [[ "$output" == *"evaluation_error(zero_divisor)"* ]]
@@ -284,8 +284,8 @@ load common
     foo(a,b,c) =.. L,
     T =.. [foo,a,b,c].
   "
-  [[ "$output" == *"L = [foo, a, b, c]"* ]]
-  [[ "$output" == *"T = foo(a, b, c)"* ]]
+  [[ "$output" == *"L = [foo,a,b,c]"* ]]
+  [[ "$output" == *"T = foo(a,b,c)"* ]]
 }
 
 @test "compare/3 gives standard order of terms" {
@@ -308,11 +308,11 @@ load common
     number_codes(42, L2),
     number_codes(N, [52,50]).
   "
-  [[ "$output" == *"L1 = [104, 105]"* ]]
+  [[ "$output" == *"L1 = [104,105]"* ]]
   [[ "$output" == *"A = hi"* ]]
   [[ "$output" == *"C = 97"* ]]
   [[ "$output" == *"Ch = a"* ]]
-  [[ "$output" == *"L2 = [52, 50]"* ]]
+  [[ "$output" == *"L2 = [52,50]"* ]]
   [[ "$output" == *"N = 42"* ]]
 }
 
@@ -359,9 +359,9 @@ load common
     length([a,b,c],N),
     length(L2,3).
   "
-  [[ "$output" == *"L1 = [1, 2, 3, 4]"* ]]
-  [[ "$output" == *"X = [1, 2]"* ]]
-  [[ "$output" == *"R = [3, 2, 1]"* ]]
+  [[ "$output" == *"L1 = [1,2,3,4]"* ]]
+  [[ "$output" == *"X = [1,2]"* ]]
+  [[ "$output" == *"R = [3,2,1]"* ]]
   [[ "$output" == *"N = 3"* ]]
 }
 
@@ -383,7 +383,7 @@ load common
   [[ "$output" == *"S = 10"* ]]
   [[ "$output" == *"Mx = 5"* ]]
   [[ "$output" == *"Mn = 1"* ]]
-  [[ "$output" == *"NL = [1, 2, 3, 4, 5]"* ]]
+  [[ "$output" == *"NL = [1,2,3,4,5]"* ]]
 }
 
 @test "select, delete, subtract, intersection, union, permutation" {
@@ -395,12 +395,12 @@ load common
     union([1,2,3],[2,3,4],R5),
     findall(P,permutation([1,2],P),Ps).
   "
-  [[ "$output" == *"R1 = [1, 3]"* ]]
-  [[ "$output" == *"R2 = [2, 3]"* ]]
-  [[ "$output" == *"R3 = [1, 3]"* ]]
-  [[ "$output" == *"R4 = [2, 4]"* ]]
-  [[ "$output" == *"R5 = [1, 2, 3, 4]"* ]]
-  [[ "$output" == *"Ps = [[1, 2], [2, 1]]"* ]]
+  [[ "$output" == *"R1 = [1,3]"* ]]
+  [[ "$output" == *"R2 = [2,3]"* ]]
+  [[ "$output" == *"R3 = [1,3]"* ]]
+  [[ "$output" == *"R4 = [2,4]"* ]]
+  [[ "$output" == *"R5 = [1,2,3,4]"* ]]
+  [[ "$output" == *"Ps = [[1,2],[2,1]]"* ]]
 }
 
 @test "flatten, list_to_set, max_member, min_member, repeat" {
@@ -411,8 +411,8 @@ load common
     min_member(Mn,[3,1,4,1,5]),
     (repeat, X=done, !).
   "
-  [[ "$output" == *"R1 = [1, 2, 3, 4, 5, 6]"* ]]
-  [[ "$output" == *"R2 = [1, 2, 3]"* ]]
+  [[ "$output" == *"R1 = [1,2,3,4,5,6]"* ]]
+  [[ "$output" == *"R2 = [1,2,3]"* ]]
   [[ "$output" == *"Mx = 5"* ]]
   [[ "$output" == *"Mn = 1"* ]]
   [[ "$output" == *"X = done"* ]]
@@ -488,8 +488,8 @@ load common
     catch(must_be(atom, X), E4, true).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"type_error(integer, foo)"* ]]
-  [[ "$output" == *"domain_error(not_less_than_zero, -1)"* ]]
+  [[ "$output" == *"type_error(integer,foo)"* ]]
+  [[ "$output" == *"domain_error(not_less_than_zero,-1)"* ]]
   [[ "$output" == *"uninstantiation_error(foo)"* ]]
   [[ "$output" == *"E4 = error(instantiation_error,"* ]]
 }
@@ -512,7 +512,7 @@ load common
   succeeded
 
   run "$TRILOG" -e "catch(can_be(integer, foo), E, true)."
-  [[ "$output" == *"type_error(integer, foo)"* ]]
+  [[ "$output" == *"type_error(integer,foo)"* ]]
 }
 
 @test "between enumerates and checks, forall, succ, plus" {
@@ -525,7 +525,7 @@ load common
     succ(S2,4),
     plus(2,3,P).
   "
-  [[ "$output" == *"L = [1, 2, 3, 4, 5]"* ]]
+  [[ "$output" == *"L = [1,2,3,4,5]"* ]]
   [[ "$output" == *"S1 = 4"* ]]
   [[ "$output" == *"S2 = 3"* ]]
   [[ "$output" == *"P = 5"* ]]
@@ -538,7 +538,7 @@ load common
     maplist(plus(10),[1,2,3],L).
   "
   [[ "$output" == *"X = 3"* ]]
-  [[ "$output" == *"L = [11, 12, 13]"* ]]
+  [[ "$output" == *"L = [11,12,13]"* ]]
 }
 
 @test "maplist/2,3,4, foldl, include, exclude, partition" {
@@ -551,12 +551,12 @@ load common
     exclude(integer,[1,foo,2,bar,3],L3),
     partition(integer,[1,foo,2,bar,3],Inc,Exc).
   "
-  [[ "$output" == *"L1 = [2, 3, 4]"* ]]
+  [[ "$output" == *"L1 = [2,3,4]"* ]]
   [[ "$output" == *"S = 10"* ]]
-  [[ "$output" == *"L2 = [1, 2, 3]"* ]]
-  [[ "$output" == *"L3 = [foo, bar]"* ]]
-  [[ "$output" == *"Inc = [1, 2, 3]"* ]]
-  [[ "$output" == *"Exc = [foo, bar]"* ]]
+  [[ "$output" == *"L2 = [1,2,3]"* ]]
+  [[ "$output" == *"L3 = [foo,bar]"* ]]
+  [[ "$output" == *"Inc = [1,2,3]"* ]]
+  [[ "$output" == *"Exc = [foo,bar]"* ]]
 }
 
 @test "sort dedups and orders, msort keeps duplicates" {
@@ -564,8 +564,8 @@ load common
     sort([3,1,4,1,5,9,2,6], L1),
     msort([3,1,4,1,5,9,2,6], L2).
   "
-  [[ "$output" == *"L1 = [1, 2, 3, 4, 5, 6, 9]"* ]]
-  [[ "$output" == *"L2 = [1, 1, 2, 3, 4, 5, 6, 9]"* ]]
+  [[ "$output" == *"L1 = [1,2,3,4,5,6,9]"* ]]
+  [[ "$output" == *"L2 = [1,1,2,3,4,5,6,9]"* ]]
 }
 
 @test "number_chars/2 on a cyclic list throws a catchable error instead of dying (regression)" {
@@ -586,14 +586,14 @@ load common
     catch(arg(a, f(x), _), error(E8, _), true),
     number_chars(1, ['0', '1']).
   "
-  [[ "$output" == *"E1 = type_error(atom, f(a)), C1 = /(atom_chars, 2)"* ]]
-  [[ "$output" == *"E2 = type_error(list, iso)"* ]]
-  [[ "$output" == *"E3 = type_error(integer, '4')"* ]]
-  [[ "$output" == *"E4 = type_error(integer, a)"* ]]
-  [[ "$output" == *"E5 = type_error(character, ab)"* ]]
+  [[ "$output" == *"E1 = type_error(atom,f(a)), C1 = atom_chars/2"* ]]
+  [[ "$output" == *"E2 = type_error(list,iso)"* ]]
+  [[ "$output" == *"E3 = type_error(integer,'4')"* ]]
+  [[ "$output" == *"E4 = type_error(integer,a)"* ]]
+  [[ "$output" == *"E5 = type_error(character,ab)"* ]]
   [[ "$output" == *"E6 = representation_error(character_code)"* ]]
   [[ "$output" == *"E7 = syntax_error(illegal_number)"* ]]
-  [[ "$output" == *"E8 = type_error(integer, a)"* ]]
+  [[ "$output" == *"E8 = type_error(integer,a)"* ]]
 }
 
 @test "is_list/1 fails on an open or cyclic list without binding it (regression)" {
@@ -606,7 +606,7 @@ load common
     write(r(R1, R2, R3, R4)),
     nl.
   "
-  [[ "$output" == *"r(no, no, yes, unbound)"* ]]
+  [[ "$output" == *"r(no,no,yes,unbound)"* ]]
 }
 
 @test "length/2 raises ISO errors for a bad length (regression)" {
@@ -617,7 +617,7 @@ load common
     write(r(E1, C1, E2, C2)),
     nl.
   "
-  [[ "$output" == *"r(domain_error(not_less_than_zero, -1), /(length, 2), type_error(integer, a), /(length, 2))"* ]]
+  [[ "$output" == *"r(domain_error(not_less_than_zero,-1),length/2,type_error(integer,a),length/2)"* ]]
 }
 
 @test "length/2 fills, measures and enumerates partial lists, fails on improper ones" {
@@ -630,7 +630,7 @@ load common
     write(r(NT, Ns, R1, R2)),
     nl.
   "
-  [[ "$output" == *"r(2, [1, 2, 3], no, no)"* ]]
+  [[ "$output" == *"r(2,[1,2,3],no,no)"* ]]
 }
 
 @test "keysort/2 is stable and checks its arguments" {
@@ -643,7 +643,7 @@ load common
     write(r(S, E1, E2, E3, C3, E4)),
     nl.
   "
-  [[ "$output" == *"r([-(a, 2), -(a, 1), -(a, 0), -(b, 1), -(b, 0)], type_error(pair, x), instantiation_error, type_error(list, foo), /(keysort, 2), type_error(list, foo))"* ]]
+  [[ "$output" == *"r([a-2,a-1,a-0,b-1,b-0],type_error(pair,x),instantiation_error,type_error(list,foo),keysort/2,type_error(list,foo))"* ]]
 }
 
 @test "subsumes_term/2 is one-way and does not bind" {
@@ -659,7 +659,7 @@ load common
     write(r(R1, R2, R3, R4, R5, R6)),
     nl.
   "
-  [[ "$output" == *"r(yes, no, no, yes, no, unbound)"* ]]
+  [[ "$output" == *"r(yes,no,no,yes,no,unbound)"* ]]
 }
 
 @test "rem, **, ^, sqrt, log, exp, trig, pi and float parts evaluate per ISO" {
@@ -677,7 +677,7 @@ load common
     write(r(A, B, C, D, E, E1, E2, E3, E4, P)),
     nl.
   "
-  [[ "$output" == *"r(-1, 8.0, 1024, 4.0, -0.5, type_error(float, 2), evaluation_error(undefined), evaluation_error(int_overflow), evaluation_error(float_overflow), ok)"* ]]
+  [[ "$output" == *"r(-1,8.0,1024,4.0,-0.5,type_error(float,2),evaluation_error(undefined),evaluation_error(int_overflow),evaluation_error(float_overflow),ok)"* ]]
 }
 
 @test "atoms with the same text are the same atom, across many atoms" {
@@ -694,7 +694,7 @@ load common
     write(r(R1, N, R2, R3, R4)),
     nl.
   "
-  [[ "$output" == *"r(same, 5000, same, same, distinct)"* ]]
+  [[ "$output" == *"r(same,5000,same,same,distinct)"* ]]
 }
 
 @test "string in arithmetic context gives type error" {
@@ -715,7 +715,7 @@ load common
   printf "inc(X,Y) :- Y is X + 1.\n" > /tmp/trilog_map.pl
   result=$(printf "consult('/tmp/trilog_map.pl').\nmaplist(inc, [1,2,3], L), write(L).\n" \
     | "$TRILOG" 2>&1)
-  [[ "$result" == *"[2, 3, 4]"* ]]
+  [[ "$result" == *"[2,3,4]"* ]]
   rm -f /tmp/trilog_map.pl
 }
 
@@ -729,7 +729,7 @@ load common
 
 @test "between generates integer range" {
   result=$(printf "findall(X, between(1,5,X), L), write(L).\n" | "$TRILOG" 2>&1)
-  [[ "$result" == *"[1, 2, 3, 4, 5]"* ]]
+  [[ "$result" == *"[1,2,3,4,5]"* ]]
 }
 
 @test "with_output_to captures write into atom" {

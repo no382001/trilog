@@ -7,6 +7,8 @@
 #include "heap.h"
 #include "io.h"
 #include "mem.h"
+#include "solve.h"
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -184,7 +186,7 @@ size_t heap_rebake_cuts(trilog_t *T, size_t r, size_t cut_barrier) {
 }
 
 static int atom_needs_quote(const char *s) {
-  if (!s[0])
+  if (!s[0] || !strcmp(s, "."))
     return 1;
   if (!strcmp(s, "[]") || !strcmp(s, "{}") || !strcmp(s, "!") ||
       !strcmp(s, ";"))
@@ -195,22 +197,41 @@ static int atom_needs_quote(const char *s) {
         return 1;
     return 0;
   }
-  static const char symbol_chars[] = "+-*/\\^<>=~:.?@#&$";
-  int all_symbol = 1;
   for (const char *p = s; *p; p++)
-    if (!strchr(symbol_chars, *p)) {
-      all_symbol = 0;
-      break;
-    }
-  return !all_symbol;
+    if (!ascii_symbol((unsigned char)*p))
+      return 1;
+  return 0;
+}
+
+static bool word_char(int c) { return ascii_alnum(c) || c == '_'; }
+
+// Two tokens that would read back as one get a space between them, as does a
+// prefix operator and a following (, which would otherwise make it a functor.
+static void glue(trilog_t *T, emit_fn emit, int first) {
+  int last = T->print_last;
+  if ((T->print_prefix && first == '(') ||
+      (word_char(last) && word_char(first)) ||
+      (ascii_symbol(last) && ascii_symbol(first)) ||
+      ((last == '\'' || ascii_digit(last)) && first == '\''))
+    emit(T, " ");
+  T->print_prefix = false;
+}
+
+static void token(trilog_t *T, emit_fn emit, const char *s) {
+  if (!s[0])
+    return;
+  glue(T, emit, (unsigned char)s[0]);
+  emit(T, s);
+  T->print_last = (unsigned char)s[strlen(s) - 1];
 }
 
 static void print_atom(trilog_t *T, const char *name, int quoted,
                        emit_fn emit) {
   if (!quoted || !atom_needs_quote(name)) {
-    emit(T, name);
+    token(T, emit, name);
     return;
   }
+  glue(T, emit, '\'');
   emit(T, "'");
   for (const char *p = name; *p; p++) {
     switch (*p) {
@@ -228,10 +249,11 @@ static void print_atom(trilog_t *T, const char *name, int quoted,
     }
   }
   emit(T, "'");
+  T->print_last = '\'';
 }
 
-// A proper list of single-character atoms (what "abc" parses to) prints as
-// "abc" for write/1 and writeq/1 alike.
+// In an answer, a proper list of single-character atoms (what "abc" parses
+// to) prints as "abc".
 #define MAX_PRINT_DEPTH 10000
 
 static int try_print_char_string(trilog_t *T, size_t r, emit_fn emit) {
@@ -257,6 +279,7 @@ static int try_print_char_string(trilog_t *T, size_t r, emit_fn emit) {
       return 0;
     cell = tail;
   }
+  glue(T, emit, '"');
   emit(T, "\"");
   for (cell = r;;) {
     size_t cf = T->heap[cell].as.ptr;
@@ -280,6 +303,7 @@ static int try_print_char_string(trilog_t *T, size_t r, emit_fn emit) {
     cell = tail;
   }
   emit(T, "\"");
+  T->print_last = '"';
   return 1;
 }
 
@@ -297,21 +321,26 @@ static int print_var_name(trilog_t *T, size_t f, emit_fn emit) {
     fmt(buf, sizeof buf, "%c%lld", 'A' + (int)(i % 26), (long long)(i / 26));
   else
     fmt(buf, sizeof buf, "%c", 'A' + (int)(i % 26));
-  emit(T, buf);
+  token(T, emit, buf);
   return 1;
 }
 
-enum { P_TERM, P_TEXT, P_LIST, P_EXIT };
+enum { P_TERM, P_TEXT, P_LIST, P_EXIT, P_NAME, P_PREFIX };
+
+// A term's priority word: the highest priority it may print at without
+// brackets, and whether it is an operand, where an operator atom is bracketed.
+#define OPERAND ((size_t)1 << 16)
 
 static void template_mark(trilog_t *T, size_t f);
 
-static void print_push(trilog_t *T, size_t kind, size_t a) {
+static void print_push(trilog_t *T, size_t kind, size_t a, size_t prio) {
   wstack_push(T, kind);
   wstack_push(T, a);
+  wstack_push(T, prio);
 }
 
 static void print_text(trilog_t *T, const char *s) {
-  print_push(T, P_TEXT, (size_t)(uintptr_t)s);
+  print_push(T, P_TEXT, (size_t)(uintptr_t)s, 0);
 }
 
 static int is_cons(trilog_t *T, size_t r) {
@@ -325,7 +354,7 @@ static int is_cons(trilog_t *T, size_t r) {
 // Marked again: a cycle.
 static void print_enter(trilog_t *T, size_t f) {
   template_mark(T, f);
-  print_push(T, P_EXIT, f);
+  print_push(T, P_EXIT, f, 0);
 }
 
 static size_t answer_slot(trilog_t *T, size_t ref) {
@@ -401,7 +430,7 @@ static void print_answer_var(trilog_t *T, size_t r, emit_fn emit) {
   char buf[32];
   answer_var_t *a = answer_find(T, r);
   if (a && a->name) {
-    emit(T, a->name);
+    token(T, emit, a->name);
     return;
   }
   if (!a) {
@@ -414,18 +443,58 @@ static void print_answer_var(trilog_t *T, size_t r, emit_fn emit) {
     a->fresh = T->answer_fresh++;
   }
   fresh_name(a->fresh, buf, sizeof buf);
-  emit(T, buf);
+  token(T, emit, buf);
+}
+
+enum { OP_NONE, OP_INFIX, OP_PREFIX, OP_ATOM };
+enum { ASSOC_XFX, ASSOC_XFY, ASSOC_YFX, ASSOC_FX, ASSOC_FY };
+
+// How r prints with operators: an infix or prefix operator term, an atom that
+// is an operator, or neither
+static int op_kind(trilog_t *T, size_t r, int flags, int *pri, int *assoc) {
+  if (flags & PRINT_IGNORE_OPS)
+    return OP_NONE;
+  if (T->heap[r].tag == TAG_ATOM) {
+    int32_t id = T->heap[r].as.atom_id;
+    return op_lookup_infix(T, id, pri, assoc) ||
+                   op_lookup_prefix(T, id, pri, assoc)
+               ? OP_ATOM
+               : OP_NONE;
+  }
+  if (T->heap[r].tag != TAG_STR || is_cons(T, r))
+    return OP_NONE;
+  size_t f = T->heap[r].as.ptr;
+  int32_t arity = T->heap[f].as.func.arity, id = T->heap[f].as.func.atom_id;
+  if (arity == 2 && op_lookup_infix(T, id, pri, assoc))
+    return OP_INFIX;
+  if (arity == 1 && id != atom_curly && op_lookup_prefix(T, id, pri, assoc))
+    return OP_PREFIX;
+  return OP_NONE;
+}
+
+static bool nonnegative_number(trilog_t *T, size_t r) {
+  return T->heap[r].tag == TAG_INT   ? T->heap[r].as.ival >= 0
+         : T->heap[r].tag == TAG_FLT ? !signbit(T->heap[r].as.fval)
+                                     : false;
 }
 
 static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
   size_t wbase = T->wsp, mbase = T->template_marks_len;
-  print_push(T, P_TERM, r);
+  T->print_last = 0;
+  T->print_prefix = false;
+  print_push(T, P_TERM, r, flags & PRINT_ANSWER ? 699 : 1200);
   char buf[64];
   while (T->wsp > wbase) {
+    size_t prio = T->wstack[--T->wsp];
     size_t a = T->wstack[--T->wsp];
     size_t kind = T->wstack[--T->wsp];
     if (kind == P_TEXT) {
-      emit(T, (const char *)(uintptr_t)a);
+      token(T, emit, (const char *)(uintptr_t)a);
+      continue;
+    }
+    if (kind == P_NAME || kind == P_PREFIX) {
+      print_atom(T, atom_name(T, (int32_t)a), flags & PRINT_QUOTED, emit);
+      T->print_prefix = kind == P_PREFIX;
       continue;
     }
     if (kind == P_EXIT) {
@@ -437,79 +506,131 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
       size_t tail = heap_deref(T, T->heap[a].as.ptr + 2);
       if (T->heap[tail].tag == TAG_ATOM &&
           T->heap[tail].as.atom_id == atom_nil) {
-        emit(T, "]");
+        token(T, emit, "]");
       } else if (is_cons(T, tail)) {
-        emit(T, ", ");
+        token(T, emit, ",");
         print_enter(T, T->heap[tail].as.ptr);
-        print_push(T, P_LIST, tail);
-        print_push(T, P_TERM, T->heap[tail].as.ptr + 1);
+        print_push(T, P_LIST, tail, 0);
+        print_push(T, P_TERM, T->heap[tail].as.ptr + 1, 999);
       } else {
-        emit(T, "|");
+        token(T, emit, "|");
         print_text(T, "]");
-        print_push(T, P_TERM, tail);
+        print_push(T, P_TERM, tail, 999);
       }
       continue;
     }
     r = heap_deref(T, a);
+    size_t max = prio & ~OPERAND;
+    int pri, assoc;
     switch (T->heap[r].tag) {
     case TAG_REF:
       if (T->answer_naming)
         print_answer_var(T, r, emit);
       else {
         fmt(buf, sizeof buf, "_G%zu", r);
-        emit(T, buf);
+        token(T, emit, buf);
       }
       break;
-    case TAG_ATOM:
+    case TAG_ATOM: {
+      bool bracket =
+          (prio & OPERAND) && op_kind(T, r, flags, &pri, &assoc) == OP_ATOM;
+      if (bracket)
+        token(T, emit, "(");
       print_atom(T, atom_name(T, T->heap[r].as.atom_id), flags & PRINT_QUOTED,
                  emit);
+      if (bracket)
+        token(T, emit, ")");
       break;
+    }
     case TAG_INT:
       fmt(buf, sizeof buf, "%lld", (long long)T->heap[r].as.ival);
-      emit(T, buf);
+      token(T, emit, buf);
       break;
     case TAG_FLT:
       fmt(buf, sizeof buf, "%g", T->heap[r].as.fval);
       if (!strpbrk(buf, ".eEnN")) // 2.0, not 2
         strncat(buf, ".0", sizeof buf - strlen(buf) - 1);
-      emit(T, buf);
+      token(T, emit, buf);
       break;
     case TAG_STR: {
       size_t f = T->heap[r].as.ptr;
       int32_t arity = T->heap[f].as.func.arity;
+      int32_t id = T->heap[f].as.func.atom_id;
       if (arity < 0) {
-        emit(T, "...");
+        token(T, emit, "...");
         break;
       }
-      if (is_cons(T, r)) {
-        if (!(flags & PRINT_IGNORE_OPS) && try_print_char_string(T, r, emit))
+      if (is_cons(T, r) && !(flags & PRINT_IGNORE_OPS)) {
+        if ((flags & PRINT_ANSWER) && try_print_char_string(T, r, emit))
           break;
-        emit(T, "[");
+        token(T, emit, "[");
         print_enter(T, f);
-        print_push(T, P_LIST, r);
-        print_push(T, P_TERM, f + 1);
+        print_push(T, P_LIST, r, 0);
+        print_push(T, P_TERM, f + 1, 999);
         break;
       }
       if ((flags & PRINT_NUMBERVARS) && print_var_name(T, f, emit))
         break;
-      if (arity == 1 && T->heap[f].as.func.atom_id == atom_curly) {
-        emit(T, "{");
+      if (arity == 1 && id == atom_curly) {
+        token(T, emit, "{");
         print_enter(T, f);
         print_text(T, "}");
-        print_push(T, P_TERM, f + 1);
+        print_push(T, P_TERM, f + 1, 1200);
         break;
       }
-      print_atom(T, atom_name(T, T->heap[f].as.func.atom_id),
-                 flags & PRINT_QUOTED, emit);
+      int kind = op_kind(T, r, flags, &pri, &assoc);
+      if (kind == OP_INFIX) {
+        bool open = (size_t)pri > max;
+        print_enter(T, f);
+        if (open)
+          print_text(T, ")");
+        print_push(T, P_TERM, f + 2,
+                   (size_t)(assoc == ASSOC_XFY ? pri : pri - 1) | OPERAND);
+        if (id == atom_comma)
+          print_text(T, ",");
+        else
+          print_push(T, P_NAME, (size_t)id, 0);
+        print_push(T, P_TERM, f + 1,
+                   (size_t)(assoc == ASSOC_YFX ? pri : pri - 1) | OPERAND);
+        if (open)
+          print_text(T, "(");
+        break;
+      }
+      if (kind == OP_PREFIX) {
+        size_t arg = heap_deref(T, f + 1);
+        int apri, aassoc;
+        int akind = op_kind(T, arg, flags, &apri, &aassoc);
+        int amax = assoc == ASSOC_FY ? pri : pri - 1;
+        bool bracket =
+            (id == atom_minus && (nonnegative_number(T, arg) ||
+                                  (akind == OP_INFIX && apri >= pri))) ||
+            akind == OP_ATOM || (akind != OP_NONE && apri > amax);
+        bool open = (size_t)pri > max;
+        print_enter(T, f);
+        if (open)
+          print_text(T, ")");
+        if (bracket) {
+          print_text(T, ")");
+          print_push(T, P_TERM, f + 1, 1200);
+          print_text(T, "(");
+        } else {
+          print_push(T, P_TERM, f + 1, (size_t)amax | OPERAND);
+        }
+        print_push(T, P_PREFIX, (size_t)id, 0);
+        if (open)
+          print_text(T, "(");
+        break;
+      }
+      print_atom(T, atom_name(T, id), flags & PRINT_QUOTED, emit);
       if (arity > 0) {
-        emit(T, "(");
+        token(T, emit, "(");
         print_enter(T, f);
         print_text(T, ")");
         for (int32_t i = arity - 1; i >= 1; i--) {
-          print_push(T, P_TERM, f + 1 + (size_t)i);
-          print_text(T, ", ");
+          print_push(T, P_TERM, f + 1 + (size_t)i, 999);
+          print_text(T, ",");
         }
-        print_push(T, P_TERM, f + 1);
+        print_push(T, P_TERM, f + 1, 999);
       }
       break;
     }

@@ -96,13 +96,13 @@ int main(void) {
                      "X is 1 / 4.0, Y is 2.5 * 2, Z is 1.5e10, W is 1 / 3.0, "
                      "V is -0.5, U is 100.0, R = [X, Y, Z, W, V, U]",
                      last, NULL) == TRILOG_TRUE);
-  CHECK(strcmp(answer, "[0.25, 5.0, 1.5e+10, 0.333333, -0.5, 100.0]") == 0);
+  CHECK(strcmp(answer, "[0.25,5.0,1.5e+10,0.333333,-0.5,100.0]") == 0);
   CHECK(trilog_query(t, "atom_codes('1.5e3', C), number_codes(X, C), Y = X",
                      last, NULL) == TRILOG_TRUE);
   CHECK(strcmp(answer, "1500.0") == 0);
   CHECK(trilog_query(t, "append(X, [3], [1, 2, 3])", first, NULL) ==
         TRILOG_TRUE);
-  CHECK(strcmp(answer, "[1, 2]") == 0);
+  CHECK(strcmp(answer, "[1,2]") == 0);
   CHECK(trilog_query(t,
                      "catch(get_time_ms(_), error(E, _), true), "
                      "E = existence_error(_, _), X = no_platform_predicates",

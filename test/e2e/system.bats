@@ -90,7 +90,7 @@ load common
     bagof(X, K^bagof_p(K,X), L).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"L = [1, 2, 3]"* ]]
+  [[ "$output" == *"L = [1,2,3]"* ]]
 }
 
 @test "bagof fails outright on no solutions, unlike findall's []" {
@@ -128,7 +128,7 @@ load common
 @test "setof sorts and dedups, built on bagof plus sort/2" {
   run "$TRILOG" -e "setof(X, member(X,[3,1,2,1]), L)."
   [ "$status" -eq 0 ]
-  [[ "$output" == *"L = [1, 2, 3]"* ]]
+  [[ "$output" == *"L = [1,2,3]"* ]]
 }
 
 @test "indexing finds the right clause on a bound first argument" {
@@ -250,13 +250,13 @@ load common
 
 @test "findall/3 applies the template, not just the goal's bindings" {
   run "$TRILOG" test/e2e/files/family.pl -e "findall(Y, (choice(X), Y = pair(X,X)), L)."
-  [[ "$output" == *"L = [pair(a, a), pair(b, b), pair(c, c)]"* ]]
+  [[ "$output" == *"L = [pair(a,a),pair(b,b),pair(c,c)]"* ]]
 }
 
 @test "nested findall/3 does not conflate inner and outer items (regression)" {
   # regression: unqualified '$findall_item' facts let a nested findall sweep up an outer call's leftover items; fixed via a unique id per call.
   run "$TRILOG" test/e2e/files/family.pl -e "findall(Outer, (choice(_), findall(Inner, inner_choice(Inner), Outer)), L)."
-  [[ "$output" == *'L = ["abc", "abc", "abc"]'* ]]
+  [[ "$output" == *'L = ["abc","abc","abc"]'* ]]
 }
 
 @test "unifying and comparing two cyclic terms terminates (regression)" {
@@ -271,7 +271,7 @@ load common
     write(r(O1, R1, R2, O2)), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"r(=, failed, different, <)"* ]]
+  [[ "$output" == *"r(=,failed,different,<)"* ]]
 }
 
 @test "copy_term/2 preserves variable sharing" {
@@ -317,7 +317,7 @@ load common
     ( unify_with_occurs_check(f(A,B), f(B,g(A))) -> R2 = unified ; R2 = failed ),
     write(r(R1, R2)), nl.
   "
-  [[ "$output" == *"r(failed, failed)"* ]]
+  [[ "$output" == *"r(failed,failed)"* ]]
 }
 
 @test "unify_with_occurs_check/2 unifies like =/2 otherwise" {
@@ -326,7 +326,7 @@ load common
     write(X-Y-H-T),
     nl.
   "
-  [[ "$output" == *"-(-(-(b, a), 1), [2])"* ]]
+  [[ "$output" == *"b-a-1-[2]"* ]]
 }
 
 @test "unify_with_occurs_check/2 terminates on an already-cyclic term" {
@@ -391,7 +391,7 @@ load common
     assertz(i(ant)), assertz(i(bee)), findall(Y, (i(Y), abolish(i/1)), B),
     write(A-B), nl.
   "
-  [[ "$output" == *"-([1, 2], [ant, bee])"* ]]
+  [[ "$output" == *"[1,2]-[ant,bee]"* ]]
 }
 
 @test "logical update view: clauses added or retracted during iteration are not seen" {
@@ -400,7 +400,7 @@ load common
     assertz(q(1)), assertz(q(2)), assertz(q(3)), findall(Z, (q(Z), retract(q(2))), B),
     write(A-B), nl.
   "
-  [[ "$output" == *"-([1], [1])"* ]]
+  [[ "$output" == *"[1]-[1]"* ]]
 }
 
 @test "a cut in a dynamic clause prunes its remaining clauses, through ; and -> too" {
@@ -411,7 +411,7 @@ load common
     findall(R1, e(1, R1), C), findall(R2, e(0, R2), D),
     write(r(A, B, C, D)), nl.
   "
-  [[ "$output" == *'r([one], [two], [pos], [neg, other])'* ]]
+  [[ "$output" == *'r([one],[two],[pos],[neg,other])'* ]]
 }
 
 @test "a cut inside call/1 or a variable goal in a dynamic clause stays local" {
@@ -421,7 +421,7 @@ load common
     findall(X, f(X), A), findall(Y, h(Y), B),
     write(A-B), nl.
   "
-  [[ "$output" == *"-([1, 2], [1, 2])"* ]]
+  [[ "$output" == *"[1,2]-[1,2]"* ]]
 }
 
 @test "lib/meta.pl: solve/1 runs goals with cut when consulted" {
@@ -431,7 +431,7 @@ load common
     findall(Y, solve((member(Y, [1, 2, 3]), Y > 1, !)), B),
     write(A-B), nl.
   "
-  [[ "$output" == *"-([2, 3], [2])"* ]]
+  [[ "$output" == *"[2,3]-[2]"* ]]
 }
 
 @test "assert/retract/abolish raise the ISO errors for bad arguments" {
@@ -443,7 +443,7 @@ load common
                  catch(G, E, true) ), Xs),
     write(Xs), nl.
   "
-  [[ "$output" == *"[instantiation_error, type_error(callable, 4), type_error(callable, 4), type_error(callable, 4), instantiation_error, type_error(predicate_indicator, foo), instantiation_error, type_error(integer, a), type_error(atom, 5), domain_error(not_less_than_zero, -1)]"* ]]
+  [[ "$output" == *"[instantiation_error,type_error(callable,4),type_error(callable,4),type_error(callable,4),instantiation_error,type_error(predicate_indicator,foo),instantiation_error,type_error(integer,a),type_error(atom,5),domain_error(not_less_than_zero,-1)]"* ]]
 }
 
 @test "an asserted predicate still exists, and fails, once its last clause is retracted (regression)" {
@@ -456,7 +456,7 @@ load common
     write(r(A, B, C)), nl.
   "
   [[ "$output" != *"existence_error"* ]]
-  [[ "$output" == *"r([], [], [])"* ]]
+  [[ "$output" == *"r([],[],[])"* ]]
 }
 
 @test "GC does not corrupt correctness under a forced low threshold" {
@@ -484,7 +484,7 @@ load common
     length(L,N).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"L = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]"* ]]
+  [[ "$output" == *"L = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]"* ]]
   [[ "$output" == *"N = 20"* ]]
 }
 
@@ -519,7 +519,7 @@ load common
   printf 'digits([D|Ds]) --> [D], { D >= 0, D =< 9 }, digits(Ds).\n' > /tmp/trilog_dcg2.pl
   printf 'digits([D]) --> [D], { D >= 0, D =< 9 }.\n' >> /tmp/trilog_dcg2.pl
   run "$TRILOG" /tmp/trilog_dcg2.pl -e "phrase(digits(Ds), [1,2,3])."
-  [[ "$output" == *"Ds = [1, 2, 3]"* ]]
+  [[ "$output" == *"Ds = [1,2,3]"* ]]
   rm -f /tmp/trilog_dcg2.pl
 }
 
@@ -561,7 +561,7 @@ EOF
     write(L).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"[1, 2]"* ]]
+  [[ "$output" == *"[1,2]"* ]]
 }
 
 @test "solve/2: a cut after a multi-clause call gives exactly one answer, not one per remaining alternative" {
@@ -582,7 +582,7 @@ EOF
     write(L).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"[3, 2, 1]"* ]]
+  [[ "$output" == *"[3,2,1]"* ]]
 }
 
 @test "solve/2: a recursive predicate's own cut never leaks into its own recursive call (regression)" {
@@ -664,7 +664,7 @@ EOF
 @test "asserta inserts before, assertz after" {
   result=$(printf "assert(c(bb)).\nasserta(c(aa)).\nassert(c(cc)).\nfindall(X,c(X),L), write(L).\n" \
     | "$TRILOG" 2>&1)
-  [[ "$result" == *"[aa, bb, cc]"* ]]
+  [[ "$result" == *"[aa,bb,cc]"* ]]
 }
 
 @test "copy_term preserves structure with fresh vars" {

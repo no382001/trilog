@@ -168,7 +168,7 @@ load common
 
 @test "pipe mode: query via stdin" {
   result=$(echo "append([1],[2],X)." | "$TRILOG" 2>&1)
-  [[ "$result" == *"X = [1, 2]"* ]]
+  [[ "$result" == *"X = [1,2]"* ]]
 }
 
 @test "pipe mode: no prompt in output" {

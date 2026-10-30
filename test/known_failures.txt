@@ -43,18 +43,11 @@ conformity	#128 X is 37'mod'2.
 conformity	#130 X is 1'+'1.
 conformity	#132 op(100,fx,' op'). ⏎ writeq(' op' '1').
 conformity	#133 op(100,fx,' op'). ⏎ writeq(' op'[]).
-conformity	#135 writeq(-(1)).
-conformity	#137 writeq(- (a*b)).
-conformity	#138 writeq(\ (a*b)).
-conformity	#139 writeq(-((a,b))).
-conformity	#140 writeq(-a).
 conformity	#147 op(9,fy,fy),op(9,yf,yf). ⏎ write_canonical(fy 1 yf).
 conformity	#148 op(9,fy,fy),op(9,yf,yf). ⏎ write_canonical(fy yf).
 conformity	#149 op(9,fy,fy),op(9,yf,yf). ⏎ writeq(fy(yf(1))).
 conformity	#15 writeq('\7\').
 conformity	#150 op(9,fy,fy),op(9,yf,yf). ⏎ writeq(yf(fy(1))).
-conformity	#151 op(9,fy,fy),op(9,yfx,yfx). ⏎ write_canonical(fy 1 yfx 2).
-conformity	#152 op(9,fy,fy),op(9,yfx,yfx). ⏎ writeq(fy(yfx(1,2))).
 conformity	#153 op(9,fy,fy),op(9,yfx,yfx). ⏎ writeq(yfx(fy (1),2)).
 conformity	#154 op(9,yf,yf),op (9,xfy,xfy). ⏎ write_canonical(1 xfy 2 yf).
 conformity	#155 op(9,yf,yf),op (9,xfy,xfy). ⏎ writeq(xfy(1,yf(2))).
@@ -75,21 +68,9 @@ conformity	#176 X is 0b1mod 2.
 conformity	#177 0'\t=0'	. % horiz. tab
 conformity	#18 writeq('\033\').
 conformity	#181 op(1105,xfy,'|'). ⏎ writeq((a-->b,c|d)).
-conformity	#182 writeq(-(-1)).
-conformity	#183 writeq(-(1^2)).
-conformity	#184 writeq(-(-)).
-conformity	#185 writeq(-[-]).
-conformity	#188 writeq(-p(c)).
-conformity	#189 writeq(-{}).
 conformity	#19 char_code('\e',C).
-conformity	#190 writeq(-{a}).
-conformity	#191 writeq(-(-a)).
-conformity	#192 writeq(-(-(-a))).
-conformity	#194 op(0,xfy,.),writeq((.)+(.)).
 conformity	#196 op(100,xf,''). ⏎ writeq(0 '').
 conformity	#197 op(100,xf,''). ⏎ writeq(0'').
-conformity	#200 op(900, fy, [$]). ⏎ write_canonical($a+b).
-conformity	#201 op(9,fy,f),op(9,yf,f). ⏎ writeq(f(f(0))).
 conformity	#202 op(9,fy,f),op(9,yf,f). ⏎ write_canonical(f 0 f).
 conformity	#204 op(9,xf,e). ⏎ writeq(1e).
 conformity	#205 op(100,xf,''). ⏎ (0 '') = ''(X).
@@ -103,13 +84,9 @@ conformity	#212 X is 1'\ ⏎ +'1.
 conformity	#213 X is 0'\ ⏎ +'1.
 conformity	#214 X is 0'\
 conformity	#215 op(100,yfx,~). ⏎ writeq(-(1~2~3)).
-conformity	#216 writeq(-(-(1))).
-conformity	#218 writeq(-(1*2)).
 conformity	#219 op(999,xfy,'|'). ⏎ [a|[]]=[a].
 conformity	#22 writeq('\u1').
 conformity	#220 op(9,xf,e). ⏎ writeq(1.0e).
-conformity	#222 writeq((-)-(-)).
-conformity	#223 writeq(((:-):-(:-))).
 conformity	#224 \ .
 conformity	#225 char_code(C,0), writeq(C).
 conformity	#226 write_canonical(_+_).
@@ -119,79 +96,43 @@ conformity	#229 set_prolog_flag(double_quotes,chars). ⏎ writeq("\z").
 conformity	#230 char_code('\^',X).
 conformity	#231 writeq(0'\c).
 conformity	#232 writeq(0'\ ).
-conformity	#234 op(400,fx,f). ⏎ writeq(f/*.*/(1,2)).
 conformity	#235 op(400,fx,f). ⏎ writeq(1 = f).
-conformity	#236 write_canonical(a- - -b).
 conformity	#238 op(699,xf,>). ⏎ writeq(>(>(a),b)).
 conformity	#241 writeq('\d').
 conformity	#248 op(100,yfx,~). ⏎ writeq(- (1~2)).
-conformity	#249 op(100,yfx,~). ⏎ writeq(1~2).
 conformity	#250 writeq('\0\').
-conformity	#251 op(9,yfx,[bop,bo,b,op,xor]). ⏎ writeq(0bop 2).
-conformity	#252 op(9,yfx,[bop,bo,b,op,xor]). ⏎ writeq(0bo 2).
-conformity	#253 op(9,yfx,[bop,bo,b,op,xor]). ⏎ writeq(0b 2).
-conformity	#254 op(9,yfx,[bop,bo,b,op,xor]). ⏎ writeq(0op 2).
-conformity	#255 op(9,yfx,[bop,bo,b,op,xor]). ⏎ writeq(0xor 2).
 conformity	#256 op(100,xf,f). ⏎ writeq(0f).
-conformity	#257 writeq([+{a},+[]]).
 conformity	#258 op(100,xfy,.). ⏎ writeq(ok).% ⏎ 1 = X.
 conformity	#259 X = 0'\ ⏎ +'/*'. %*/1.
-conformity	#260 writeq(-(a^2)).
 conformity	#262 op(100,xfx,'1'). ⏎ functor(2 '1'y, F, A).
-conformity	#263 op(9,yfx,[bop,bo,b,op,xor]). ⏎ writeq(0 bop 2).
 conformity	#266 op(9,yf,[b2,o8]). ⏎ writeq(0b2).
 conformity	#267 op(9,yf,[b2,o8]). ⏎ writeq(0o8).
-conformity	#27 writeq((*)=(*)).
 conformity	#270 get_char(C). %a
 conformity	#271 get_char(C).%a
-conformity	#274 op(20,fx,--),writeq(--(a)).
 conformity	#276 writeq(0xamod 2).
-conformity	#277 writeq(+1^2).
-conformity	#278 op(9,xfy,.), writeq(-[1]).
 conformity	#279 op(9,xf,'$VAR'), ⏎ writeq(- '$VAR'(0)).
-conformity	#28 writeq([:-,-]).
 conformity	#280 writeq(00'+'1).
-conformity	#283 op(100,xfy,.). ⏎ writeq(-[1]).
 conformity	#284 writeq('\^J').
 conformity	#288 (- 1^2) = ^(-1,2).
 conformity	#290 op(1105,xfy,'|'). ⏎ writeq([(a|b)]).
-conformity	#291 writeq([(a,b)]).
-conformity	#292 writeq(1= \\).
 conformity	#296 op(9,xf,'$VAR'), ⏎ writeq('$VAR'(0)).
-conformity	#298 writeq([a,b|c]).
-conformity	#299 (\+ (a,b)) = \+(T).
 conformity	#3 )
-conformity	#30 writeq(a*(b+c)).
 conformity	#300 set_prolog_flag(double_quotes,chars). ⏎ writeq("\0\").
 conformity	#301 writeq('\0\').
 conformity	#304 op(300,fy,~). writeq(~ (a=b)). 
-conformity	#305 writeq(\ (a=b)).
-conformity	#306 writeq(+ (a=b)).
-conformity	#309 writeq({a,b}).
-conformity	#31 writeq(f(;,'|',';;')).
 conformity	#312 writeq('\u0021').
 conformity	#314 writeq("\u0021").
 conformity	#315 writeq('\x21\').
 conformity	#316 writeq('\x0021\').
-conformity	#317 op(1105,xfy,'|'). ⏎ writeq([a,(b,c)|[]]).
-conformity	#318 writeq(+((1*2)^3)).
 conformity	#319 op(9,fy,fy),op(9,yf,yf). ⏎ writeq(yf(fy(yf(fy(1))))).
-conformity	#32 writeq([.,.(.,.,.)]).
-conformity	#320 writeq([a|\+2]).
 conformity	#322 op(1105,xfy,'|'). ⏎ write_canonical((a|b;c)).
 conformity	#323 op(1105,xfy,'|'). ⏎ write_canonical((a;b|c)).
-conformity	#327 writeq(-((1*2)^3)).
-conformity	#328 op(0,fy,-). ⏎ writeq([-]).
 conformity	#329 write_canonical(;(a)).
-conformity	#33 writeq((a :- b,c)).
 conformity	#331 write_canonical(;(a,b)).
 conformity	#332 writeq(1 is _).
-conformity	#333 op(9,fx,.),writeq(.(' ')).
 conformity	#335 op(9,yf,.>). ⏎ write_canonical(a.> .>).
 conformity	#336 op(9,yf,.>). ⏎ writeq(((a).>).>).
-conformity	#337 writeq([.|1]).
 conformity	#338 writeq(-'-'2).
-conformity	#34 write_canonical([a]).
 conformity	#341 op(699,xf,>.). ⏎ writeq(>(>.(a),b)).
 conformity	#342 op(699,xf,>.). ⏎ write_canonical(a>. >b).
 conformity	#343 op(699,xf,>.). ⏎ write_canonical(a>. =b).
@@ -201,7 +142,6 @@ conformity	#346 op(699,xf,>). ⏎ write_canonical ⏎ (a>b).
 conformity	#349 write_canonical((-,(1))).
 conformity	#35 writeq('/*').
 conformity	#355 op(9,xf,'$VAR'), ⏎ writeq('$VAR'(-1)).
-conformity	#359 writeq({a:-b}).
 conformity	#36 writeq('/**').
 conformity	#364 writeq(-0.0).
 conformity	#4 .

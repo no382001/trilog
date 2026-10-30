@@ -152,6 +152,8 @@ struct trilog {
   size_t answer_index_cap, answer_slots;
   int answer_fresh;
   bool answer_naming;
+  int print_last;    // the last char the printer wrote, 0 at the start
+  bool print_prefix; // a prefix operator was just written
 };
 
 static inline void wstack_push(trilog_t *T, size_t x) {

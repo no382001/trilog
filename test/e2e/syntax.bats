@@ -14,7 +14,7 @@ load common
     catch(atom_number('-99999999999999999999', _), error(E2, _), true),
     write(r(E1, E2)), nl.
   "
-  [[ "$output" == *"r(representation_error(max_integer), representation_error(min_integer))"* ]]
+  [[ "$output" == *"r(representation_error(max_integer),representation_error(min_integer))"* ]]
 }
 
 @test "input ending inside 0' or a quoted escape stops at the end (regression)" {
@@ -42,8 +42,8 @@ load common
   "
   [ "$status" -eq 0 ]
   [[ "$output" == *"foo(_G"* ]]
-  [[ "$output" == *"=(X, _G"* ]]
-  [[ "$output" == *"=(Y, _G"* ]]
+  [[ "$output" == *"X=_G"* ]]
+  [[ "$output" == *"Y=_G"* ]]
 }
 
 @test "0'c character-code literals, including escapes and the doubled quote" {
@@ -71,8 +71,8 @@ load common
     Z is -(5).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"X = -(1, 2)"* ]]
-  [[ "$output" == *"Y = ==(a, b)"* ]]
+  [[ "$output" == *"X = 1-2"* ]]
+  [[ "$output" == *"Y = (a==b)"* ]]
   [[ "$output" == *"Z = -5"* ]]
 
   run "$TRILOG" -e "
@@ -91,7 +91,7 @@ load common
   [ "$status" -eq 0 ]
   [[ "$output" == *"X = \\+"* ]]
   [[ "$output" == *"Y = -"* ]]
-  [[ "$output" == *"Z = [\\+, -, +]"* ]]
+  [[ "$output" == *"Z = [\\+,-,+]"* ]]
 }
 
 @test "printing a tail-cyclic list terminates (regression)" {
@@ -132,7 +132,7 @@ PLEOF
   "
   [ "$status" -eq 0 ]
   succeeded
-  [[ "$output" == *"===>(===>(a, b), c)"* ]]
+  [[ "$output" == *"(a===>b)===>c"* ]]
   rm -f /tmp/mi_op_test.pl /tmp/mi_op_test2.pl
 }
 
@@ -145,8 +145,8 @@ PLEOF
     write_term(T, [quoted(true), numbervars(false)]),
     nl.
   "
-  [[ "$output" == *"f(A, B, A, C)"* ]]
-  [[ "$output" == *"f('\$VAR'(0), '\$VAR'(1), '\$VAR'(0), '\$VAR'(2))"* ]]
+  [[ "$output" == *"f(A,B,A,C)"* ]]
+  [[ "$output" == *"f('\$VAR'(0),'\$VAR'(1),'\$VAR'(0),'\$VAR'(2))"* ]]
   [[ "$output" == *"End = 3"* ]]
 }
 
@@ -160,7 +160,7 @@ PLEOF
     nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"f(..., [a|...])"* ]]
+  [[ "$output" == *"f(...,[a|...])"* ]]
 }
 
 @test "write_canonical/1,2 quote atoms and ignore operators" {
@@ -170,8 +170,8 @@ PLEOF
     write_canonical(user_output, 'it''s' = a),
     nl.
   "
-  [[ "$output" == *"f('B c', +(1, 2), -(3), [1])"* ]]
-  [[ "$output" == *"=('it\\'s', a)"* ]]
+  [[ "$output" == *"f('B c',+(1,2),-(3),'.'(1,[]))"* ]]
+  [[ "$output" == *"=('it\\'s',a)"* ]]
 }
 
 @test "write_canonical/1 output reads back as the same term" {
@@ -190,7 +190,7 @@ PLEOF
     write(r(N, Bad)),
     nl.
   "
-  [[ "$output" == *"r(21, [])"* ]]
+  [[ "$output" == *"r(21,[])"* ]]
 }
 
 @test "curly terms print in curly notation" {
@@ -200,8 +200,8 @@ PLEOF
     write_canonical({a, b}),
     nl.
   "
-  [[ "$output" == *"f({x}, {y}, {})"* ]]
-  [[ "$output" == *"{','(a, b)}"* ]]
+  [[ "$output" == *"f({x},{y},{})"* ]]
+  [[ "$output" == *"{','(a,b)}"* ]]
 }
 
 @test "op/3 raises ISO permission errors for ',', '|' and infix/postfix clashes" {
@@ -215,7 +215,7 @@ PLEOF
     writeq(r(E1, E2, E3, E4, E5)),
     nl.
   "
-  [[ "$output" == *"r(permission_error(modify, operator, ','), permission_error(modify, operator, ','), permission_error(create, operator, '|'), permission_error(create, operator, >), instantiation_error)"* ]]
+  [[ "$output" == *"r(permission_error(modify,operator,','),permission_error(modify,operator,','),permission_error(create,operator,'|'),permission_error(create,operator,>),instantiation_error)"* ]]
 }
 
 @test "current_op/3 lists the standard operator table" {
@@ -225,7 +225,7 @@ PLEOF
     writeq(S),
     nl.
   "
-  [[ "$output" == *"[op(200, fy, +), op(200, fy, -), op(200, fy, \\), op(200, xfx, **), op(200, xfy, ^), op(400, yfx, *), op(400, yfx, /), op(400, yfx, //), op(400, yfx, /\\), op(400, yfx, <<), op(400, yfx, >>), op(400, yfx, mod), op(400, yfx, rem), op(400, yfx, xor), op(500, yfx, +), op(500, yfx, -), op(500, yfx, \\/), op(700, xfx, <), op(700, xfx, =), op(700, xfx, =..), op(700, xfx, =:=), op(700, xfx, =<), op(700, xfx, ==), op(700, xfx, =\\=), op(700, xfx, >), op(700, xfx, >=), op(700, xfx, @<), op(700, xfx, @=<), op(700, xfx, @>), op(700, xfx, @>=), op(700, xfx, \\=), op(700, xfx, \\==), op(700, xfx, is), op(900, fy, \\+), op(1000, xfy, ','), op(1050, xfy, ->), op(1100, xfy, ;), op(1200, fx, :-), op(1200, fx, ?-), op(1200, xfx, -->), op(1200, xfx, :-)]"* ]]
+  [[ "$output" == *"[op(200,fy,+),op(200,fy,-),op(200,fy,\\),op(200,xfx,**),op(200,xfy,^),op(400,yfx,*),op(400,yfx,/),op(400,yfx,//),op(400,yfx,/\\),op(400,yfx,<<),op(400,yfx,>>),op(400,yfx,mod),op(400,yfx,rem),op(400,yfx,xor),op(500,yfx,+),op(500,yfx,-),op(500,yfx,\\/),op(700,xfx,<),op(700,xfx,=),op(700,xfx,=..),op(700,xfx,=:=),op(700,xfx,=<),op(700,xfx,==),op(700,xfx,=\\=),op(700,xfx,>),op(700,xfx,>=),op(700,xfx,@<),op(700,xfx,@=<),op(700,xfx,@>),op(700,xfx,@>=),op(700,xfx,\\=),op(700,xfx,\\==),op(700,xfx,is),op(900,fy,\\+),op(1000,xfy,','),op(1050,xfy,->),op(1100,xfy,;),op(1200,fx,:-),op(1200,fx,?-),op(1200,xfx,-->),op(1200,xfx,:-)]"* ]]
 }
 
 @test "standard operators parse with their priority and associativity" {
@@ -244,17 +244,17 @@ PLEOF
   run "$TRILOG" -f "$BATS_TEST_TMPDIR/ops.pl" -e "
     forall(t(X), (write_canonical(X), nl)).
   "
-  [ "${lines[0]}" = ":-(a, ;(','(b, c), ->(d, e)))" ]
-  [ "${lines[1]}" = "-(-(1, 2), 3)" ]
-  [ "${lines[2]}" = "^(2, ^(3, 4))" ]
-  [ "${lines[3]}" = "+(1, *(2, 3))" ]
+  [ "${lines[0]}" = ":-(a,;(','(b,c),->(d,e)))" ]
+  [ "${lines[1]}" = "-(-(1,2),3)" ]
+  [ "${lines[2]}" = "^(2,^(3,4))" ]
+  [ "${lines[3]}" = "+(1,*(2,3))" ]
   [ "${lines[4]}" = "-(-(a))" ]
-  [ "${lines[5]}" = "\\+(=(a, b))" ]
-  [ "${lines[6]}" = "mod(rem(a, b), c)" ]
-  [ "${lines[7]}" = "**(2, 3)" ]
-  [ "${lines[8]}" = "-->(a, ','(b, c))" ]
-  [ "${lines[9]}" = "is(x, +(1, 2))" ]
-  [ "${lines[10]}" = "=(a, b)" ]
+  [ "${lines[5]}" = "\\+(=(a,b))" ]
+  [ "${lines[6]}" = "mod(rem(a,b),c)" ]
+  [ "${lines[7]}" = "**(2,3)" ]
+  [ "${lines[8]}" = "-->(a,','(b,c))" ]
+  [ "${lines[9]}" = "is(x,+(1,2))" ]
+  [ "${lines[10]}" = "=(a,b)" ]
 }
 
 @test "operators declared with op/3 in a file parse the rest of that file" {
@@ -267,9 +267,9 @@ PLEOF
   run "$TRILOG" -f "$BATS_TEST_TMPDIR/userops.pl" -e "
     forall(t(X), (write_canonical(X), nl)).
   "
-  [ "${lines[0]}" = "===(a, b)" ]
-  [ "${lines[1]}" = "&&(a, &&(b, c))" ]
-  [ "${lines[2]}" = "++(x, y)" ]
+  [ "${lines[0]}" = "===(a,b)" ]
+  [ "${lines[1]}" = "&&(a,&&(b,c))" ]
+  [ "${lines[2]}" = "++(x,y)" ]
 }
 
 @test "op/3 can redefine and remove a standard operator (regression)" {
@@ -286,7 +286,7 @@ PLEOF
     ( removed -> write(removed) ; write(still_an_operator) ),
     nl.
   "
-  [ "${lines[0]}" = "*(1, +(2, 3))" ]
+  [ "${lines[0]}" = "*(1,+(2,3))" ]
   [ "${lines[1]}" = "removed" ]
 }
 
@@ -305,5 +305,5 @@ PLEOF
 @test "term_to_atom and atom_to_term roundtrip" {
   result=$(printf "term_to_atom(foo(1,bar), A), atom_to_term(A, T, _), write(T).\n" \
     | "$TRILOG" 2>&1)
-  [[ "$result" == *"foo(1, bar)"* ]]
+  [[ "$result" == *"foo(1,bar)"* ]]
 }

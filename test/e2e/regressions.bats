@@ -25,9 +25,9 @@ load common
   [[ "$output" == *"U = error, C = off, D = off"* ]]
   [[ "$output" == *"N = 9"* ]]
   run "$TRILOG" -f -e "catch(current_prolog_flag(1, _), error(E, _), true)."
-  [[ "$output" == *"E = type_error(atom, 1)"* ]]
+  [[ "$output" == *"E = type_error(atom,1)"* ]]
   run "$TRILOG" -f -e "catch(current_prolog_flag(invalid_flag_atom, _), error(E, _), true)."
-  [[ "$output" == *"E = domain_error(prolog_flag, invalid_flag_atom)"* ]]
+  [[ "$output" == *"E = domain_error(prolog_flag,invalid_flag_atom)"* ]]
 }
 
 @test "key a prints all answers; stopping early prints ; ... . (#28)" {
@@ -56,9 +56,9 @@ load common
 
 @test "calling an undefined predicate raises existence_error, not failure (#15)" {
   run "$TRILOG" -f -e "catch(ex_nihilo, error(E, _), true)."
-  [[ "$output" == *"E = existence_error(procedure, /(ex_nihilo, 0))"* ]]
+  [[ "$output" == *"E = existence_error(procedure,ex_nihilo/0)"* ]]
   run "$TRILOG" -f -e "ex_nihilo."
-  [[ "$output" == *"uncaught exception: error(existence_error(procedure, /(ex_nihilo, 0))"* ]]
+  [[ "$output" == *"uncaught exception: error(existence_error(procedure,ex_nihilo/0)"* ]]
   [[ "$output" != *"false."* ]]
 }
 
@@ -82,11 +82,11 @@ load common
   "
   [[ "$output" == *"E1 = instantiation_error"* ]]
   [[ "$output" == *"E2 = instantiation_error"* ]]
-  [[ "$output" == *"C1 = /(is, 2)"* ]]
-  [[ "$output" == *"C2 = /(functor, 3)"* ]]
-  [[ "$output" == *"C3 = /(sort, 2)"* ]]
-  [[ "$output" == *"C4 = /(assertz, 1)"* ]]
-  [[ "$output" == *"C5 = /(compare, 3)"* ]]
+  [[ "$output" == *"C1 = (is)/2"* ]]
+  [[ "$output" == *"C2 = functor/3"* ]]
+  [[ "$output" == *"C3 = sort/2"* ]]
+  [[ "$output" == *"C4 = assertz/1"* ]]
+  [[ "$output" == *"C5 = compare/3"* ]]
 }
 
 @test "read_from_chars/2, read_term_from_chars/3, write_term_to_chars/3 exist (#20)" {
@@ -98,13 +98,13 @@ load common
     length(Vs, NV),
     catch(read_from_chars(\"g(\", _), error(E, C), true).
   "
-  [[ "$output" == *"Cs = \"f('A b', [x|y])\""* ]]
-  [[ "$output" == *"T = f('A b', [x|y])"* ]]
-  [[ "$output" == *"G = g(_A, _B, _A)"* ]]
-  [[ "$output" == *"Ns = [=('X', _C)], Vs = [_C, _D]"* ]]
+  [[ "$output" == *"Cs = \"f('A b',[x|y])\""* ]]
+  [[ "$output" == *"T = f('A b',[x|y])"* ]]
+  [[ "$output" == *"G = g(_A,_B,_A)"* ]]
+  [[ "$output" == *"Ns = ['X'=_C], Vs = [_C,_D]"* ]]
   [[ "$output" == *"NV = 2"* ]]
   [[ "$output" == *"E = syntax_error("* ]]
-  [[ "$output" == *"C = /(read_from_chars, 2)"* ]]
+  [[ "$output" == *"C = read_from_chars/2"* ]]
 }
 
 @test "compound arity is unbounded: functor/3, arg/3, =../2, the parser and abolish/1 (#26)" {
@@ -128,7 +128,7 @@ load common
     write(r(N1, N2, R1, M, E)),
     nl.
   "
-  [[ "$output" == *"r(5000, 20000, same, unbounded, resource_error(memory))"* ]]
+  [[ "$output" == *"r(5000,20000,same,unbounded,resource_error(memory))"* ]]
 }
 
 @test "the interactive toplevel prompts with ?- (#3)" {
@@ -153,7 +153,7 @@ load common
     writeq(r(R1, C, Cs)),
     nl.
   "
-  [[ "$output" == *"r(chars, h, \"ello\")"* ]]
+  [[ "$output" == *"r(chars,h,[e,l,l,o])"* ]]
 }
 
 @test "writeq('\\n') prints the escape, not a raw newline (#12)" {
@@ -177,7 +177,7 @@ load common
     write(r(R, A)),
     nl.
   "
-  [[ "$output" == *"r(integers, unbounded)"* ]]
+  [[ "$output" == *"r(integers,unbounded)"* ]]
 }
 
 @test "answers hide _, leave out unbound variables and name fresh ones _A, _B (regression)" {
@@ -186,17 +186,17 @@ load common
   answer "_ = 1." "true."
   answer "X = 1, _ = 2." "X = 1."
   answer "X = f(_)." "X = f(_A)."
-  answer "X = f(_, _)." "X = f(_A, _B)."
-  answer "length(L, 2)." "L = [_A, _B]."
+  answer "X = f(_, _)." "X = f(_A,_B)."
+  answer "length(L, 2)." "L = [_A,_B]."
   answer "X = f(Y)." "X = f(Y)."
   answer "X = _, Y = X." "X = Y."
   answer "X = Y, Z = f(Y)." "X = Y, Z = f(Y)."
   answer "X = f(_), _A = 1." "X = f(_B), _A = 1."
-  answer "X = f(A, _), A = g(_)." "X = f(g(_A), _B), A = g(_A)."
+  answer "X = f(A, _), A = g(_)." "X = f(g(_A),_B), A = g(_A)."
   answer "X = '\$VAR'(1)." "X = '\$VAR'(1)."
-  answer "X = f(_A, _)." "X = f(_A, _B)."
-  answer "X = f(_, _A)." "X = f(_B, _A)."
-  answer "X = f(_A, _), _A = 1." "X = f(1, _B), _A = 1."
-  answer "X = f('_A', _)." "X = f('_A', _A)."
-  answer "X = f(_A1, _, _B)." "X = f(_A1, _A, _B)."
+  answer "X = f(_A, _)." "X = f(_A,_B)."
+  answer "X = f(_, _A)." "X = f(_B,_A)."
+  answer "X = f(_A, _), _A = 1." "X = f(1,_B), _A = 1."
+  answer "X = f('_A', _)." "X = f('_A',_A)."
+  answer "X = f(_A1, _, _B)." "X = f(_A1,_A,_B)."
 }

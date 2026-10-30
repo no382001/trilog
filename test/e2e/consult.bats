@@ -39,7 +39,7 @@ PLEOF
     findall(X, a(X), A),
     findall(Y, b(Y), B).
   "
-  [[ "$output" == *"A = [1, 2]"* ]]
+  [[ "$output" == *"A = [1,2]"* ]]
   [[ "$output" == *"B = [1]"* ]]
   rm -rf /tmp/mi_nest_test
 }
@@ -76,7 +76,7 @@ PLEOF
     consult('$BATS_TEST_TMPDIR/r.pl'),
     findall(X, p(X), L).
   "
-  [[ "$output" == *"L = [99, 1, 2]"* ]]
+  [[ "$output" == *"L = [99,1,2]"* ]]
 }
 
 @test "unconsult/1 removes only the file's clauses and fails when not loaded" {
@@ -121,7 +121,7 @@ PLEOF
   # regression: run-time parsing overwrote the consult's parse position.
   printf "a(1).\n:- atom_to_term('foo(X, Y)', _, _).\na(2).\na(3).\n" > "$BATS_TEST_TMPDIR/att.pl"
   run "$TRILOG" -f "$BATS_TEST_TMPDIR/att.pl" -e "findall(X, a(X), L)."
-  [[ "$output" == *"L = [1, 2, 3]"* ]]
+  [[ "$output" == *"L = [1,2,3]"* ]]
 }
 
 @test "positional file arg loads clauses and -e can query them" {
@@ -173,5 +173,5 @@ PLEOF
     write(r(L1, E)),
     nl.
   "
-  [[ "$output" == *"r([1], existence_error(procedure, /(v, 1)))"* ]]
+  [[ "$output" == *"r([1],existence_error(procedure,v/1))"* ]]
 }

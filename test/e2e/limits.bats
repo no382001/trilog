@@ -24,7 +24,7 @@ load common
     write(r(O, N1, N2, N3)), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"r(=, 300000, 300000, 300000)"* ]]
+  [[ "$output" == *"r(=,300000,300000,300000)"* ]]
 }
 
 @test "copy_term/2 keeps more than 64 variables distinct (regression)" {
@@ -91,7 +91,7 @@ print('wide(f(' + args + '), g(' + ', '.join('V%d' % i for i in reversed(range(4
     write(r(S, NV, Shared)),
     nl.
   "
-  [[ "$output" == *"r(199, 400, shared)"* ]]
+  [[ "$output" == *"r(199,400,shared)"* ]]
   run "$TRILOG" -f -e "$query."
   [[ "$output" == *"query_ran"* ]]
 }
