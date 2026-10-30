@@ -12,6 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: checkout code
         uses: actions/checkout@v4
@@ -34,6 +35,7 @@ jobs:
 
   platforms:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: checkout code
         uses: actions/checkout@v4
@@ -62,6 +64,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 75
     needs: build
     strategy:
       fail-fast: false
@@ -91,16 +94,20 @@ jobs:
         run: make trilog-hostile
 
       - name: run quad tests
+        timeout-minutes: 20
         run: make quad-junit
 
       - name: run system tests
+        timeout-minutes: 20
         run: make syscheck-junit
 
       - name: run conformity tests
+        timeout-minutes: 20
         run: make conformity-junit
 
       - name: run API tests
         if: matrix.variant == 'posix'
+        timeout-minutes: 10
         run: make api-junit
 
       - name: compare with the known failures
@@ -127,6 +134,7 @@ jobs:
 
   report:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: test
     if: always() && github.event_name == 'pull_request'
     permissions:
