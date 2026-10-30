@@ -763,7 +763,7 @@ number_chars(N, Chars) :-
 
 '$codes_list'(L) :- '$text_list'(L, '$check_code').
 '$check_code'(C) :- var(C), !, throw(error(instantiation_error, _)).
-'$check_code'(C) :- integer(C), C >= 0, C =< 1114111, !.
+'$check_code'(C) :- integer(C), C >= 1, C =< 1114111, !.
 '$check_code'(C) :- throw(error(representation_error(character_code), _)).
 
 % Walks the elements before the tail first, so a bad element in a partial list

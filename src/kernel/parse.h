@@ -24,7 +24,8 @@ typedef enum {
   NUMBER_TEXT_OK,
   NUMBER_TEXT_BAD,
   NUMBER_TEXT_TOO_BIG,
-  NUMBER_TEXT_TOO_SMALL
+  NUMBER_TEXT_TOO_SMALL,
+  NUMBER_TEXT_FLOAT_OVERFLOW
 } number_text_t;
 // *out is in the scratch arena, as for parse_term_from_string.
 number_text_t parse_number_text(trilog_t *T, const char *text, tterm_t **out);

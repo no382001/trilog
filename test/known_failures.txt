@@ -31,7 +31,6 @@ conformity	#170 set_prolog_flag( ⏎  double_quotes,chars).
 conformity	#172 X is 10.0** -323, writeq(X).
 conformity	#181 writeq((a-->b,c|d)).
 conformity	#215 op(100,yfx,~). ⏎ writeq(-(1~2~3)).
-conformity	#225 char_code(C,0), writeq(C).
 conformity	#235 writeq(1 = f).
 conformity	#248 writeq(- (1~2)).
 conformity	#250 writeq('\0\').
@@ -49,7 +48,6 @@ conformity	#355 writeq('$VAR'(-1)).
 conformity	#36 writeq('/**').
 conformity	#364 writeq(-0.0).
 conformity	#4 .
-conformity	#53 writeq(1.0e100).
 conformity	#77 - = - .
 conformity	#82 (- -) = -(-).
 conformity	#83 (- - -) = -(-(-)).
@@ -99,12 +97,10 @@ iso_quad	sub_atom('Bartók Béla', 4, L, 5, S)
 iso_quad	sub_atom('Bartók Béla', B, 2, 5, S)
 iso_quad	sub_atom('Pécs',B,2,A,S)
 member_quad	member(X, X)
-member_quad	member(X, [_Y, _Z|nonlist])
 nth_quad	nth0(-1, Es, E)
 nth_quad	nth0(0, [A,B|non_list], E)
 nth_quad	nth0(N, [[]|Es], Es)
 nth_quad	nth0(non_integer, Es, E)
-number_chars_quad	L=['1'|L], number_chars(N,L)
 select_quad	select(E, Xs, Xs)
 select_quad	select(X, [Y|nonlist], Xs)
 solver_quad	sub_atom(abcabc, B, _, _, abc)

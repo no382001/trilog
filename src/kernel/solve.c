@@ -150,7 +150,7 @@ static size_t make_existence_error(trilog_t *T, const char *obj_type,
 }
 
 static size_t make_cyclic_term_error(trilog_t *T) {
-  size_t args[1] = {heap_new_atom(T, atom_intern(T, "cyclic_term"))};
+  size_t args[1] = {heap_new_atom(T, atom_intern(T, "term"))};
   return make_error(
       T, heap_new_struct(T, atom_intern(T, "representation_error"), 1, args));
 }
@@ -2142,7 +2142,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     }
     if (T->heap[a].tag == TAG_FLT) {
       char buf[64];
-      fmt(buf, sizeof buf, "%g", T->heap[a].as.fval);
+      float_text(buf, sizeof buf, T->heap[a].as.fval);
       *ok = unify(T, f + 2, codes_from_cstr(T, buf));
       return 1;
     }
@@ -2156,11 +2156,12 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     }
     tterm_t *num;
     number_text_t got = parse_number_text(T, buf, &num);
-    if (got == NUMBER_TEXT_TOO_BIG || got == NUMBER_TEXT_TOO_SMALL) {
+    if (got != NUMBER_TEXT_OK && got != NUMBER_TEXT_BAD) {
       arena_temp_reset(T);
       size_t args[1] = {heap_new_atom(
-          T, atom_intern(T, got == NUMBER_TEXT_TOO_BIG ? "max_integer"
-                                                       : "min_integer"))};
+          T, atom_intern(T, got == NUMBER_TEXT_TOO_BIG     ? "max_integer"
+                            : got == NUMBER_TEXT_TOO_SMALL ? "min_integer"
+                                                           : "max_float"))};
       T->pending_error_ball = make_error(
           T,
           heap_new_struct(T, atom_intern(T, "representation_error"), 1, args));

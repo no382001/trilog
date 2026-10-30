@@ -571,7 +571,42 @@ load common
 @test "number_chars/2 on a cyclic list throws a catchable error instead of dying (regression)" {
   # regression: the heap grew until GC's scratch arrays failed to allocate, killing the process.
   run bash -c "ulimit -v 524288; timeout 60 $TRILOG -e \"L = ['1'|L], catch(number_chars(_, L), error(E, _), true), write(caught(E)), nl.\""
-  [[ "$output" == *"caught(representation_error(cyclic_term))"* ]]
+  [[ "$output" == *"caught(representation_error(term))"* ]]
+}
+
+@test "floats with an exponent print with a fraction, so their text reads back (regression)" {
+  # regression: 1.0e-8 printed as 1e-08, which is not a number token, so number_chars could not read its own output.
+  run "$TRILOG" -e "
+    X is 1.0e-8, number_chars(X, Cs), atom_chars(A, Cs), number_chars(Y, Cs),
+    writeq(r(A, 1.0e100, -2.5e-300)), nl,
+    ( Y =:= X -> write(same) ; write(differs) ), nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"r('1.0e-08',1.0e+100,-2.5e-300)"* ]]
+  [[ "$output" == *"same"* ]]
+}
+
+@test "number text for a float too large to represent raises representation_error(max_float) (regression)" {
+  # regression: number_chars(N, \"9.9e999\") gave N = inf.
+  run "$TRILOG" -e "
+    atom_chars('9.9e999', Cs), atom_codes('-9.9e999', Ds),
+    catch(number_chars(_, Cs), error(E1, _), true),
+    catch(number_codes(_, Ds), error(E2, _), true),
+    write(r(E1, E2)), nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"r(representation_error(max_float),representation_error(max_float))"* ]]
+}
+
+@test "character code 0 raises representation_error(character_code), since atoms cannot hold NUL (regression)" {
+  # regression: char_code(N, 0) raised type_error(character, '').
+  run "$TRILOG" -e "
+    catch(char_code(_, 0), error(E1, _), true),
+    catch(atom_codes(_, [0'a, 0]), error(E2, _), true),
+    write(r(E1, E2)), nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"r(representation_error(character_code),representation_error(character_code))"* ]]
 }
 
 @test "text builtins and arg/3 raise ISO argument errors" {

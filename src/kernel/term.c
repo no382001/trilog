@@ -225,6 +225,18 @@ static void token(trilog_t *T, emit_fn emit, const char *s) {
   T->print_last = (unsigned char)s[strlen(s) - 1];
 }
 
+// A float needs a fraction to read back: 2.0 and 1.0e-8, not 2 and 1e-8.
+void float_text(char *buf, size_t cap, double v) {
+  size_t n = fmt(buf, cap, "%g", v);
+  if (n + 2 >= cap || strpbrk(buf, ".nN"))
+    return;
+  char *e = strpbrk(buf, "eE");
+  size_t at = e ? (size_t)(e - buf) : n;
+  memmove(buf + at + 2, buf + at, n - at + 1);
+  buf[at] = '.';
+  buf[at + 1] = '0';
+}
+
 static void print_quoted_char(trilog_t *T, emit_fn emit, int c, int quote) {
   char buf[8];
   char e = escape_letter(c);
@@ -555,9 +567,7 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
       token(T, emit, buf);
       break;
     case TAG_FLT:
-      fmt(buf, sizeof buf, "%g", T->heap[r].as.fval);
-      if (!strpbrk(buf, ".eEnN")) // 2.0, not 2
-        strncat(buf, ".0", sizeof buf - strlen(buf) - 1);
+      float_text(buf, sizeof buf, T->heap[r].as.fval);
       token(T, emit, buf);
       break;
     case TAG_STR: {

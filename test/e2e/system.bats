@@ -290,7 +290,7 @@ load common
     catch(copy_term(X, _), error(E, _), (write(caught(E)), nl)).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"caught(representation_error(cyclic_term))"* ]]
+  [[ "$output" == *"caught(representation_error(term))"* ]]
 }
 
 @test "findall/3 throws on a cyclic solution instead of crashing (regression)" {
@@ -299,7 +299,7 @@ load common
     catch(findall(X, true, _), error(E, _), (write(caught(E)), nl)).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"caught(representation_error(cyclic_term))"* ]]
+  [[ "$output" == *"caught(representation_error(term))"* ]]
 }
 
 @test "assertz/1 throws on a cyclic term instead of crashing (regression)" {
@@ -308,7 +308,7 @@ load common
     catch(assertz(p(X)), error(E, _), (write(caught(E)), nl)).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"caught(representation_error(cyclic_term))"* ]]
+  [[ "$output" == *"caught(representation_error(term))"* ]]
 }
 
 @test "unify_with_occurs_check/2 fails where the variable occurs in the term" {

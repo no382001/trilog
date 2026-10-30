@@ -307,6 +307,7 @@ static int radix(int c) {
 }
 
 #define INTEGER_OVERFLOW "integer literal out of range"
+#define FLOAT_OVERFLOW "float literal out of range"
 
 static tterm_t *parse_number(trilog_t *T, bool negative) {
   if (T->P[0] == '0' && T->P[1] == '\'' && char_code_follows(T->P + 2)) {
@@ -349,8 +350,12 @@ static tterm_t *parse_number(trilog_t *T, bool negative) {
     perr(T, "number literal too long");
   memcpy(buf + n, start, (size_t)(T->P - start));
   buf[n + (size_t)(T->P - start)] = '\0';
-  if (is_float)
-    return tt_flt(T, trilog_parse_float(buf, NULL));
+  if (is_float) {
+    double v = trilog_parse_float(buf, NULL);
+    if (__builtin_isinf(v))
+      perr(T, FLOAT_OVERFLOW);
+    return tt_flt(T, v);
+  }
   int64_t v;
   if (!parse_int(buf, NULL, &v))
     perr(T, INTEGER_OVERFLOW);
@@ -995,11 +1000,14 @@ static number_text_t parse_number_text_(trilog_t *T, const char *text,
                                         tterm_t **out) {
   T->P = text;
   volatile bool negative = false;
-  if (setjmp(T->err_jmp))
+  if (setjmp(T->err_jmp)) {
+    if (!strncmp(T->err_msg, FLOAT_OVERFLOW, strlen(FLOAT_OVERFLOW)))
+      return NUMBER_TEXT_FLOAT_OVERFLOW;
     return strncmp(T->err_msg, INTEGER_OVERFLOW, strlen(INTEGER_OVERFLOW))
                ? NUMBER_TEXT_BAD
            : negative ? NUMBER_TEXT_TOO_SMALL
                       : NUMBER_TEXT_TOO_BIG;
+  }
   skip_ws(T);
   if (T->P[0] == '-' && !is_symbol_char((unsigned char)T->P[1])) {
     T->P++;

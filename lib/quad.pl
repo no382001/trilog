@@ -168,8 +168,58 @@ parse_expected(AnswerRaw, Expected, Mode) :-
 
 % A line starting with "|" begins another acceptable outcome.
 quad_alternatives(Raw, Alts) :-
-    split_nl(Raw, Lines),
-    qalt_group(Lines, [], Alts).
+    split_nl(Raw, Lines0),
+    Lines0 \== [],
+    exclude(quad_unexpected, Lines0, Lines1),
+    maplist(quad_strip_sto, Lines1, Lines2),
+    exclude(quad_open_line, Lines2, Lines),
+    Lines \== [],
+    qalt_group(Lines, [], Alts0),
+    exclude(quad_untestable, Alts0, Alts1),
+    maplist(quad_renderings, Alts1, Altss),
+    flatten(Altss, Alts).
+
+quad_unexpected(L) :-
+    trim_trailing(L, T),
+    ( atom_concat(_, ', unexpected.', T) ; atom_concat(_, ', unexpected', T) ),
+    !.
+
+quad_strip_sto(L, Out) :-
+    trim_leading(L, T),
+    (   atom_concat('|', R0, T)
+    ->  trim_leading(R0, R),
+        ( atom_concat('sto, ', R1, R) -> atom_concat('| ', R1, Out) ; Out = L )
+    ;   atom_concat('sto, ', R1, T)
+    ->  Out = R1
+    ;   Out = L
+    ).
+
+quad_open_line(L) :- trim_leading(L, T), trim_trailing(T, '... ; ... .').
+
+quad_untestable(Alt) :-
+    trim_leading(Alt, T0), trim_trailing(T0, T),
+    ( T == loops ; T == 'loops.' ).
+
+quad_renderings(Alt, Rs) :-
+    atom_codes(Alt, Cs),
+    rs(Cs, out, 0' , [], Parts),
+    exclude(==(''), Parts, Rs0),
+    ( Rs0 = [_, _|_] -> Rs = Rs0 ; Rs = [Alt] ).
+
+rs([], _, _, Cur, [P]) :- reverse(Cur, Cs), atom_codes(P0, Cs), trim_leading(P0, P).
+rs([0'0, 0'\', C|Cs], out, _, Cur, Ps) :- !,
+    rs(Cs, out, C, [C, 0'\', 0'0|Cur], Ps).
+rs([Q|Cs], out, _, Cur, Ps) :- ( Q =:= 0'\' ; Q =:= 0'" ), !,
+    rs(Cs, Q, Q, [Q|Cur], Ps).
+rs([0'\\, C|Cs], Q, _, Cur, Ps) :- Q \== out, !, rs(Cs, Q, C, [C, 0'\\|Cur], Ps).
+rs([Q|Cs], Q, _, Cur, Ps) :- !, rs(Cs, out, Q, [Q|Cur], Ps).
+rs([0'., W|Cs], out, Prev, Cur, [P|Ps]) :-
+    ws_code(W), \+ quad_symbol_code(Prev), !,
+    reverse(Cur, PCs), atom_codes(P0, PCs), trim_leading(P0, P),
+    rs([W|Cs], out, W, [], Ps).
+rs([C|Cs], St, _, Cur, Ps) :- rs(Cs, St, C, [C|Cur], Ps).
+
+quad_symbol_code(C) :- atom_codes('+-*/\\^<>=~:.?@#&$', Cs), memberchk(C, Cs).
 
 qalt_group([], Cur, [Alt]) :- reverse(Cur, Ls), join_nl(Ls, Alt).
 qalt_group([L|Ls], Cur, Alts) :-
@@ -227,7 +277,7 @@ collect_solutions(Query, NameVars, Max, Strs, Snaps) :-
 % Cyclic bindings can't be copied - text comparison only.
 capped_snapshot(Query, NameVars, Max, Str, Snap) :-
     capped_solution(Query, NameVars, Max, Str),
-    ( catch(copy_term(NameVars, _), error(representation_error(cyclic_term), _), fail)
+    ( catch(copy_term(NameVars, _), error(representation_error(term), _), fail)
     -> Snap = NameVars
     ;  Snap = none
     ).
@@ -281,7 +331,7 @@ quad_now(T) :-
 run_one_test(QueryRaw, AnswerRaw, Pass) :-
     strip_query_prefix(QueryRaw, Query0),
     strip_terminating_dot(Query0, Query),
-    quad_alternatives(AnswerRaw, Alts),
+    ( quad_alternatives(AnswerRaw, Alts) -> true ; Alts = ['no answer to test'] ),
     quad_display(Query, Display),
     quad_ckpt_before(Display),
     quad_now(T0),
@@ -398,9 +448,17 @@ quad_answer_match(ExpAtom, Snap) :-
     \+ \+ ( qa_mark_unbound(Snap),
             qa_link_names(ENames, Snap),
             qa_got_pairs(Snap, GPairs0),
-            msort(EPairs0, EPairs),
-            msort(GPairs0, GPairs),
+            qa_drop_any(EPairs0, GPairs0, EPairs1, GPairs1),
+            msort(EPairs1, EPairs),
+            msort(GPairs1, GPairs),
             qa_variant(EPairs, GPairs) ).
+
+qa_drop_any(E0, G0, E, G) :-
+    findall(N, member(N = '...', E0), Any),
+    exclude(qa_named(Any), E0, E),
+    exclude(qa_named(Any), G0, G).
+
+qa_named(Names, N = _) :- memberchk(N, Names).
 
 % "X = a, Y = b" -> ['X'=a, 'Y'=b]; "true" -> [].
 qa_exp_pairs(true, _, []) :- !.
@@ -545,14 +603,18 @@ run_quad_file(File, Skip) :-
 
 qf_loop(S, ClauseBuf, AnswerBuf, Mode, Skip, SeenCount) :-
     read_line_to_atom(S, Line0),
-    ( Line0 == end_of_file
-    -> true
-    ;  strip_line_comment(Line0, Line),
+    ( Line0 \== end_of_file
+    -> strip_line_comment(Line0, Line),
        trim_leading(Line, Trimmed),
        ( Mode == answer
        -> qf_answer_step(S, ClauseBuf, AnswerBuf, Line, Trimmed, Skip, SeenCount)
+       ;  Mode == done
+       -> qf_done_step(S, ClauseBuf, AnswerBuf, Line, Trimmed, Skip, SeenCount)
        ;  qf_clause_step(S, ClauseBuf, Line, Trimmed, Skip, SeenCount)
        )
+    ;  Mode == done
+    -> qf_run(ClauseBuf, AnswerBuf, Skip, SeenCount, _)
+    ;  true
     ).
 
 qf_answer_step(S, QueryBuf, AnswerBuf0, Line, Trimmed, Skip, SeenCount) :-
@@ -562,17 +624,30 @@ qf_answer_step(S, QueryBuf, AnswerBuf0, Line, Trimmed, Skip, SeenCount) :-
        ;  atom_concat(AnswerBuf0, '\n', AB1), atom_concat(AB1, Line, AnswerBuf1)
        ),
        ( has_complete_clause(AnswerBuf1)
-       -> SeenCount1 is SeenCount + 1,
-          ( SeenCount1 =< Skip
-          -> true
-          ;  once(run_one_test(QueryBuf, AnswerBuf1, _Pass))
-          ),
-          qf_loop(S, '', '', query, Skip, SeenCount1)
+       -> qf_loop(S, QueryBuf, AnswerBuf1, done, Skip, SeenCount)
        ;  qf_loop(S, QueryBuf, AnswerBuf1, answer, Skip, SeenCount)
        )
     ).
 
-qf_clause_step(S, ClauseBuf0, Line, Trimmed, Skip, SeenCount) :-
+% Ulrich continues an answer on indented lines.
+qf_done_step(S, QueryBuf, AnswerBuf, Line, Trimmed, Skip, SeenCount) :-
+    (   Trimmed \== '', Line \== Trimmed,
+        \+ sub_atom(Trimmed, 0, 2, _, '?-'),
+        quad_strip_id(Trimmed, Trimmed), \+ sub_atom(Trimmed, 0, 1, _, ':')
+    ->  qf_answer_step(S, QueryBuf, AnswerBuf, Line, Trimmed, Skip, SeenCount)
+    ;   qf_run(QueryBuf, AnswerBuf, Skip, SeenCount, SeenCount1),
+        (   Trimmed == ''
+        ->  qf_loop(S, '', '', query, Skip, SeenCount1)
+        ;   qf_clause_step(S, '', Line, Trimmed, Skip, SeenCount1)
+        )
+    ).
+
+qf_run(QueryBuf, AnswerBuf, Skip, SeenCount, SeenCount1) :-
+    SeenCount1 is SeenCount + 1,
+    ( SeenCount1 =< Skip -> true ; once(run_one_test(QueryBuf, AnswerBuf, _)) ).
+
+qf_clause_step(S, ClauseBuf0, Line, Trimmed0, Skip, SeenCount) :-
+    ( ClauseBuf0 == '' -> quad_strip_id(Trimmed0, Trimmed) ; Trimmed = Trimmed0 ),
     dcg_accumulate(ClauseBuf0, Trimmed, ClauseBuf1),
     ( has_complete_clause(ClauseBuf1)
     -> ( sub_atom(ClauseBuf1, 0, 2, _, '?-')
@@ -595,6 +670,21 @@ qf_clause_step(S, ClauseBuf0, Line, Trimmed, Skip, SeenCount) :-
        )
     ;  qf_loop(S, ClauseBuf1, '', query, Skip, SeenCount)
     ).
+
+quad_strip_id(T0, T) :-
+    atom_codes(T0, Cs),
+    (   Cs = [D|_], D >= 0'0, D =< 0'9,
+        append(Ds, [0' |Rest0], Cs), quad_all_digits(Ds),
+        quad_skip_spaces(Rest0, Rest), Rest = [0'?, 0'-|_]
+    ->  atom_codes(T, Rest)
+    ;   T = T0
+    ).
+
+quad_all_digits([]).
+quad_all_digits([D|Ds]) :- D >= 0'0, D =< 0'9, quad_all_digits(Ds).
+
+quad_skip_spaces([0' |Cs], Rest) :- !, quad_skip_spaces(Cs, Rest).
+quad_skip_spaces(Cs, Cs).
 
 % --- CLI entry point: exit code 0 if all pass, 1 if any failed ---
 

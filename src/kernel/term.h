@@ -32,6 +32,7 @@ size_t heap_copy_goal(trilog_t *T, tterm_t *t, size_t *rename,
                       size_t cut_barrier);
 size_t heap_rebake_cuts(trilog_t *T, size_t r, size_t cut_barrier);
 
+void float_text(char *buf, size_t cap, double v);
 void print_term(trilog_t *T, size_t r);
 void print_term_quoted(trilog_t *T, size_t r);
 typedef void (*emit_fn)(trilog_t *T, const char *s);
