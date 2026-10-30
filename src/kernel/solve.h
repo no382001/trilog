@@ -96,3 +96,5 @@ int op_lookup_infix(trilog_t *T, int32_t name_atom_id, int *pri,
                     int *assoc_code);
 int op_lookup_prefix(trilog_t *T, int32_t name_atom_id, int *pri,
                      int *assoc_code);
+int op_lookup_postfix(trilog_t *T, int32_t name_atom_id, int *pri,
+                      int *assoc_code);

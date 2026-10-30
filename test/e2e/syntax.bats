@@ -124,15 +124,15 @@ PLEOF
   cat > /tmp/mi_op_test2.pl <<'PLEOF'
 :- op(700, xfx, ===>).
 :- op(600, xfx, ===>).
-lower_prec(X) :- X = (a ===> b ===> c).
+lower_prec(X) :- X = (a ===> b = c).
 PLEOF
   run "$TRILOG" /tmp/mi_op_test2.pl -e "
     lower_prec(X),
-    write(X).
+    write_canonical(X).
   "
   [ "$status" -eq 0 ]
   succeeded
-  [[ "$output" == *"(a===>b)===>c"* ]]
+  [[ "$output" == *"=(===>(a,b),c)"* ]]
   rm -f /tmp/mi_op_test.pl /tmp/mi_op_test2.pl
 }
 

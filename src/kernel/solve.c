@@ -2375,8 +2375,11 @@ C:
   }
 }
 
-static int op_lookup(trilog_t *T, int32_t name_atom_id, int want_infix,
-                     int *pri, int *assoc_code) {
+enum { OP_CLASS_PREFIX, OP_CLASS_INFIX, OP_CLASS_POSTFIX };
+
+// Assoc codes: 0 xfx, 1 xfy, 2 yfx, 3 fx, 4 fy, 5 xf, 6 yf.
+static int op_lookup(trilog_t *T, int32_t name_atom_id, int want, int *pri,
+                     int *assoc_code) {
   pred_bucket_t *b = pred_bucket_find(T, atom_op_pred, 3);
   if (!b)
     return 0;
@@ -2402,9 +2405,16 @@ static int op_lookup(trilog_t *T, int32_t name_atom_id, int want_infix,
       code = 3;
     else if (tid == atom_optype_fy)
       code = 4;
+    else if (tid == atom_optype_xf)
+      code = 5;
+    else if (tid == atom_optype_yf)
+      code = 6;
     else
       continue; // unrecognized Type atom
-    if ((code <= 2) != want_infix)
+    int class = code <= 2   ? OP_CLASS_INFIX
+                : code <= 4 ? OP_CLASS_PREFIX
+                            : OP_CLASS_POSTFIX;
+    if (class != want)
       continue;
     *pri = (int)pri_t->as.ival;
     *assoc_code = code;
@@ -2415,9 +2425,13 @@ static int op_lookup(trilog_t *T, int32_t name_atom_id, int want_infix,
 
 int op_lookup_infix(trilog_t *T, int32_t name_atom_id, int *pri,
                     int *assoc_code) {
-  return op_lookup(T, name_atom_id, 1, pri, assoc_code);
+  return op_lookup(T, name_atom_id, OP_CLASS_INFIX, pri, assoc_code);
 }
 int op_lookup_prefix(trilog_t *T, int32_t name_atom_id, int *pri,
                      int *assoc_code) {
-  return op_lookup(T, name_atom_id, 0, pri, assoc_code);
+  return op_lookup(T, name_atom_id, OP_CLASS_PREFIX, pri, assoc_code);
+}
+int op_lookup_postfix(trilog_t *T, int32_t name_atom_id, int *pri,
+                      int *assoc_code) {
+  return op_lookup(T, name_atom_id, OP_CLASS_POSTFIX, pri, assoc_code);
 }

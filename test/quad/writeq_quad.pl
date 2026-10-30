@@ -1,4 +1,4 @@
-% writeq/1 with operators (ISO 7.10.5); expected output from Scryer Prolog.
+% writeq/1 with operators expected output from Scryer Prolog.
 
 ?- with_output_to(chars(Cs), writeq(a=b)).
    Cs = "a=b".

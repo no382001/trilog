@@ -61,6 +61,8 @@
   X(atom_optype_yfx, "yfx")                                                    \
   X(atom_optype_fx, "fx")                                                      \
   X(atom_optype_fy, "fy")                                                      \
+  X(atom_optype_xf, "xf")                                                      \
+  X(atom_optype_yf, "yf")                                                      \
   X(atom_is, "is")                                                             \
   X(atom_unify_op, "=")                                                        \
   X(atom_unify_oc, "unify_with_occurs_check")                                  \

@@ -15,7 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef enum { XFX, XFY, YFX, FX, FY } assoc_t;
+typedef enum { XFX, XFY, YFX, FX, FY, XF, YF } assoc_t;
 typedef struct {
   const char *name;
   int pri;
@@ -58,6 +58,18 @@ static int find_infix(trilog_t *T, const char *name, op_t *out) {
   int32_t id = atom_intern(T, name);
   if (op_lookup_infix(T, id, &pri, &assoc_code)) {
     out->name = atom_name(T, id); // permanent atom-table storage, not `name`
+    out->pri = pri;
+    out->assoc = (assoc_t)assoc_code;
+    return 1;
+  }
+  return 0;
+}
+
+static int find_postfix(trilog_t *T, const char *name, op_t *out) {
+  int pri, assoc_code;
+  int32_t id = atom_intern(T, name);
+  if (op_lookup_postfix(T, id, &pri, &assoc_code)) {
+    out->name = atom_name(T, id);
     out->pri = pri;
     out->assoc = (assoc_t)assoc_code;
     return 1;
@@ -314,25 +326,26 @@ static tterm_t *parse_number(trilog_t *T) {
   return tt_int(T, v);
 }
 
-// tries to read an infix operator name at the current position without
-// consuming it if it doesn't turn out to be one; returns 0 if none.
-static int peek_infix_op(trilog_t *T, size_t *len_out, op_t *out) {
+// tries to read an operator name that find accepts at the current position,
+// without consuming it; returns 0 if none.
+static int peek_op(trilog_t *T, size_t *len_out, op_t *out,
+                   int (*find)(trilog_t *, const char *, op_t *)) {
   skip_ws(T);
   if (*T->P == '\0' || *T->P == ')' || *T->P == ']' || *T->P == '|' ||
       at_clause_end(T))
     return 0;
   if (*T->P == ',') {
     *len_out = 1;
-    return find_infix(T, ",", out);
+    return find(T, ",", out);
   }
   if (*T->P == ';') {
     *len_out = 1;
-    return find_infix(T, ";", out);
+    return find(T, ";", out);
   }
   if (is_symbol_char((unsigned char)*T->P)) {
     const char *save = T->P;
     const char *name = read_while(T, is_symbol_char);
-    int found = find_infix(T, name, out);
+    int found = find(T, name, out);
     size_t len = (size_t)(T->P - save);
     T->P = save;
     if (found)
@@ -342,7 +355,7 @@ static int peek_infix_op(trilog_t *T, size_t *len_out, op_t *out) {
   if (ascii_lower((unsigned char)*T->P)) {
     const char *save = T->P;
     const char *name = read_while(T, is_ident_char);
-    int found = find_infix(T, name, out);
+    int found = find(T, name, out);
     size_t len = (size_t)(T->P - save);
     T->P = save;
     if (found)
@@ -356,13 +369,13 @@ static int peek_infix_op(trilog_t *T, size_t *len_out, op_t *out) {
 enum {
   K_DONE,
   K_INFIX, // a = prec
-  K_RIGHT, // a = prec, b = op, c = left
+  K_RIGHT, // a = prec | op priority << 16, b = op, c = left
   K_PAREN,
   K_BRACE,
   K_ARGS,   // a = name, b = base, c = argc
   K_LIST,   // b = base
   K_TAIL,   // b = base
-  K_PREFIX, // a = op
+  K_PREFIX, // a = op, b = its priority
 };
 
 static void frame_push(trilog_t *T, size_t kind, size_t a, size_t b, size_t c) {
@@ -398,13 +411,17 @@ static int prefix_applies(trilog_t *T) {
          *T->P != ']' && *T->P != '|';
 }
 
+// vpri is the priority of the term v just read: an operator's, or 0. It must
+// fit the operand an infix or postfix operator after it takes, so a = b = c
+// is a syntax error.
 static tterm_t *parse_expr(trilog_t *T, int max_prec) {
   size_t wbase = T->wsp;
-  int prec = max_prec;
+  int prec = max_prec, vpri = 0;
   tterm_t *v;
   frame_push(T, K_DONE, 0, 0, 0);
 
 start:
+  vpri = 0;
   frame_push(T, K_INFIX, (size_t)prec, 0, 0);
   skip_ws(T);
   if (*T->P == '\0')
@@ -490,11 +507,15 @@ start:
     op_t pre, dummy;
     if (find_prefix(T, name, &pre) && prefix_applies(T) &&
         !(lower && find_infix(T, name, &dummy))) {
-      frame_push(T, K_PREFIX, PTR(name), 0, 0);
+      frame_push(T, K_PREFIX, PTR(name), (size_t)pre.pri, 0);
       prec = pre.assoc == FY ? pre.pri : pre.pri - 1;
       goto start;
     }
     v = tt_atom(T, name);
+    // An operator as a plain atom cannot be an operand without brackets.
+    if (find_prefix(T, name, &dummy) || find_infix(T, name, &dummy) ||
+        find_postfix(T, name, &dummy))
+      vpri = 1201;
     goto produced;
   }
 
@@ -511,26 +532,37 @@ produced:
     case K_RIGHT: {
       tterm_t *args[2] = {TERM(c), v};
       v = tt_struct(T, NAME(b), 2, args);
+      vpri = (int)(a >> 16);
+      a &= 0xFFFF;
     }
       // fall through
     case K_INFIX: {
       size_t len;
       op_t op;
-      if (!peek_infix_op(T, &len, &op) || op.pri > (int)a)
+      while (peek_op(T, &len, &op, find_postfix) && op.pri <= (int)a &&
+             vpri <= (op.assoc == YF ? op.pri : op.pri - 1)) {
+        T->P += len;
+        v = tt_struct(T, op.name, 1, &v);
+        vpri = op.pri;
+      }
+      if (!peek_op(T, &len, &op, find_infix) || op.pri > (int)a ||
+          vpri > (op.assoc == YFX ? op.pri : op.pri - 1))
         continue;
       T->P += len;
       skip_ws(T);
-      frame_push(T, K_RIGHT, a, PTR(op.name), PTR(v));
+      frame_push(T, K_RIGHT, a | (size_t)op.pri << 16, PTR(op.name), PTR(v));
       prec = op.assoc == XFY ? op.pri : op.pri - 1;
       goto start;
     }
     case K_PAREN:
       expect(T, ')', "expected ')'");
+      vpri = 0;
       continue;
     case K_BRACE: {
       expect(T, '}', "expected '}'");
       tterm_t *args[1] = {v};
       v = tt_struct(T, "{}", 1, args);
+      vpri = 0;
       continue;
     }
     case K_ARGS:
@@ -547,6 +579,7 @@ produced:
       expect(T, ')', "expected ')'");
       v = tt_struct(T, NAME(a), (int32_t)c, T->pstack + b);
       T->psp = b;
+      vpri = 0;
       continue;
     case K_LIST:
       pstack_push(T, v);
@@ -560,13 +593,16 @@ produced:
       }
       expect(T, ']', "expected ']'");
       v = build_list(T, b, tt_atom(T, "[]"));
+      vpri = 0;
       continue;
     case K_TAIL:
       expect(T, ']', "expected ']'");
       v = build_list(T, b, v);
+      vpri = 0;
       continue;
     case K_PREFIX:
       v = tt_struct(T, NAME(a), 1, &v);
+      vpri = (int)b;
       continue;
     }
   }

@@ -93,12 +93,12 @@
 catch_inst(C) :- catch(X is Y, error(instantiation_error, C), true), X = 0, Y = 0.
 
 ?- catch_inst(C).
-   C = is/2.
+   C = (is)/2.
 
 catch_div(C) :- catch(X is 5 / 0, error(evaluation_error(zero_divisor), C), true), X = 0.
 
 ?- catch_div(C).
-   C = is/2.
+   C = (is)/2.
 
 catch_functor(C) :- catch(functor(X, Y, Z), error(instantiation_error, C), true), X = 0, Y = 0, Z = 0.
 

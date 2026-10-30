@@ -443,18 +443,27 @@ static void print_answer_var(trilog_t *T, size_t r, emit_fn emit) {
   token(T, emit, buf);
 }
 
-enum { OP_NONE, OP_INFIX, OP_PREFIX, OP_ATOM };
-enum { ASSOC_XFX, ASSOC_XFY, ASSOC_YFX, ASSOC_FX, ASSOC_FY };
+enum { OP_NONE, OP_INFIX, OP_PREFIX, OP_POSTFIX, OP_ATOM };
+enum {
+  ASSOC_XFX,
+  ASSOC_XFY,
+  ASSOC_YFX,
+  ASSOC_FX,
+  ASSOC_FY,
+  ASSOC_XF,
+  ASSOC_YF
+};
 
-// How r prints with operators: an infix or prefix operator term, an atom that
-// is an operator, or neither
+// How r prints with operators: an infix, prefix or postfix operator term, an
+// atom that is an operator, or neither
 static int op_kind(trilog_t *T, size_t r, int flags, int *pri, int *assoc) {
   if (flags & PRINT_IGNORE_OPS)
     return OP_NONE;
   if (T->heap[r].tag == TAG_ATOM) {
     int32_t id = T->heap[r].as.atom_id;
     return op_lookup_infix(T, id, pri, assoc) ||
-                   op_lookup_prefix(T, id, pri, assoc)
+                   op_lookup_prefix(T, id, pri, assoc) ||
+                   op_lookup_postfix(T, id, pri, assoc)
                ? OP_ATOM
                : OP_NONE;
   }
@@ -466,6 +475,8 @@ static int op_kind(trilog_t *T, size_t r, int flags, int *pri, int *assoc) {
     return OP_INFIX;
   if (arity == 1 && id != atom_curly && op_lookup_prefix(T, id, pri, assoc))
     return OP_PREFIX;
+  if (arity == 1 && id != atom_curly && op_lookup_postfix(T, id, pri, assoc))
+    return OP_POSTFIX;
   return OP_NONE;
 }
 
@@ -599,8 +610,9 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
         int akind = op_kind(T, arg, flags, &apri, &aassoc);
         int amax = assoc == ASSOC_FY ? pri : pri - 1;
         bool bracket =
-            (id == atom_minus && (nonnegative_number(T, arg) ||
-                                  (akind == OP_INFIX && apri >= pri))) ||
+            (id == atom_minus &&
+             (nonnegative_number(T, arg) ||
+              ((akind == OP_INFIX || akind == OP_POSTFIX) && apri >= pri))) ||
             akind == OP_ATOM || (akind != OP_NONE && apri > amax);
         bool open = (size_t)pri > max;
         print_enter(T, f);
@@ -614,6 +626,32 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
           print_push(T, P_TERM, f + 1, (size_t)amax | OPERAND);
         }
         print_push(T, P_PREFIX, (size_t)id, 0);
+        if (open)
+          print_text(T, "(");
+        break;
+      }
+      if (kind == OP_POSTFIX) {
+        size_t arg = heap_deref(T, f + 1);
+        int apri, aassoc;
+        int akind = op_kind(T, arg, flags, &apri, &aassoc);
+        // The operator would bind to the operand's own right side, as
+        // 1 xfy 2 yf reads xfy(1, yf(2)), so that operand is bracketed.
+        int right = aassoc == ASSOC_XFY || aassoc == ASSOC_FY ? apri : apri - 1;
+        bool bracket =
+            (akind == OP_INFIX || akind == OP_PREFIX) && pri <= right;
+        bool open = (size_t)pri > max;
+        print_enter(T, f);
+        if (open)
+          print_text(T, ")");
+        print_push(T, P_NAME, (size_t)id, 0);
+        if (bracket) {
+          print_text(T, ")");
+          print_push(T, P_TERM, f + 1, 1200);
+          print_text(T, "(");
+        } else {
+          print_push(T, P_TERM, f + 1,
+                     (size_t)(assoc == ASSOC_YF ? pri : pri - 1) | OPERAND);
+        }
         if (open)
           print_text(T, "(");
         break;
