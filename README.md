@@ -12,6 +12,7 @@ Tri as in three, is a play on the 3 states of the the stack machine that is the 
 - [Embedding](#embedding)
 - [Libraries](#libraries)
 - [History](#history)
+- [License](#license)
 
 ## Build
 
@@ -135,3 +136,7 @@ Both engines were measured on the same machine with `perf stat`: the current eng
 On average (geometric mean) the new engine is 12.8x faster, runs 10.3x fewer instructions and uses 10.4x less memory.
 
 Without `-n`, the CLI also loads its four libraries, and start-up takes 5.2 ms, 10.1M instructions and 2.7 MB.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
