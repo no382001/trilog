@@ -1201,8 +1201,9 @@ bar(X) :- true.
 ?- atom_length( 'enchanted evening', N).
    N = 17.
 
-?- atom_length( 'enchanted\ evening', N).
-   N = 17.
+% a backslash before a space is a syntax error.
+?- catch(term_to_atom(_, '\'enchanted\\ evening\''), error(syntax_error(_), _), true).
+   true.
 
 ?- atom_length('', N).
    N = 0.

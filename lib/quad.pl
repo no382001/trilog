@@ -23,8 +23,15 @@ strip_line_comment(Line, Stripped) :-
     atom_codes(Stripped, Out).
 
 slc([], _, []) :- !.
+slc([0'0, 0'\', 0'\', 0'\'|Cs], out, [0'0, 0'\', 0'\', 0'\'|Out]) :- !, slc(Cs, out, Out).
 slc([0'0, 0'\', 0'\\, Esc|Cs], out, [0'0, 0'\', 0'\\, Esc|Out]) :- !, slc(Cs, out, Out).
 slc([0'0, 0'\', Ch|Cs], out, [0'0, 0'\', Ch|Out]) :- !, slc(Cs, out, Out).
+slc([0'\\|Cs0], Q, [0'\\|Out]) :-
+    ( Q == dq ; Q == sq ),
+    numeric_escape(Cs0, Esc, Cs),
+    !,
+    append(Esc, Out1, Out),
+    slc(Cs, Q, Out1).
 slc([0'\\, E|Cs], dq, [0'\\, E|Out]) :- !, slc(Cs, dq, Out).
 slc([0'\\, E|Cs], sq, [0'\\, E|Out]) :- !, slc(Cs, sq, Out).
 slc([0'\', 0'\'|Cs], sq, [0'\', 0'\'|Out]) :- !, slc(Cs, sq, Out).
@@ -35,13 +42,30 @@ slc([0'\'|Cs], out, [0'\'|Out]) :- !, slc(Cs, sq, Out).
 slc([0'%|_], out, []) :- !.
 slc([C|Cs], State, [C|Out]) :- slc(Cs, State, Out).
 
+% numeric_escape(+Codes, -Escape, -Rest): Codes, just after a backslash, start
+% an octal \141\ or hex \x61\ escape, which runs to the next backslash.
+numeric_escape([C|Cs], [C|Esc], Rest) :-
+    ( C == 0'x ; C >= 0'0, C =< 0'7 ),
+    numeric_escape_rest(Cs, Esc, Rest).
+
+numeric_escape_rest([0'\\|Rest], [0'\\], Rest) :- !.
+numeric_escape_rest([C|Cs], [C|Esc], Rest) :-
+    ( C >= 0'0, C =< 0'9 ; C >= 0'a, C =< 0'f ; C >= 0'A, C =< 0'F ),
+    numeric_escape_rest(Cs, Esc, Rest).
+
 % has_complete_clause(+Buf): true if Buf contains a terminating '.' at
 % bracket depth 0, outside any quoted region, not part of "=..".
 has_complete_clause(Buf) :- atom_codes(Buf, Cs), hcc(Cs, out, 0, 32).
 
 hcc([], _, _, _) :- fail.
+hcc([0'0, 0'\', 0'\', 0'\'|Cs], out, D, _) :- !, hcc(Cs, out, D, 0'0).
 hcc([0'0, 0'\', 0'\\, _Esc|Cs], out, D, _) :- !, hcc(Cs, out, D, 0'0).
 hcc([0'0, 0'\', _Ch|Cs], out, D, _) :- !, hcc(Cs, out, D, 0'0).
+hcc([0'\\|Cs0], Q, D, _) :-
+    ( Q == dq ; Q == sq ),
+    numeric_escape(Cs0, _, Cs),
+    !,
+    hcc(Cs, Q, D, 0'\\).
 hcc([0'\\, _|Cs], dq, D, _) :- !, hcc(Cs, dq, D, 0'\\).
 hcc([0'\\, _|Cs], sq, D, _) :- !, hcc(Cs, sq, D, 0'\\).
 hcc([0'\', 0'\'|Cs], sq, D, _) :- !, hcc(Cs, sq, D, 0'\').

@@ -49,7 +49,7 @@ load common
 @test "0'c character-code literals, including escapes and the doubled quote" {
   run "$TRILOG" -e "
     A is 0'a,
-    B is 0'\\ ,
+    B is 0' ,
     C is 0'\\n,
     D is 0'\\t,
     E is 0'\\\\,
@@ -306,4 +306,10 @@ PLEOF
   result=$(printf "term_to_atom(foo(1,bar), A), atom_to_term(A, T, _), write(T).\n" \
     | "$TRILOG" 2>&1)
   [[ "$result" == *"foo(1,bar)"* ]]
+}
+
+@test "a backslash before a newline continues quoted text on the next line" {
+  printf "t('a\\\\\nb').\nu(\"c\\\\\nd\").\n" > "$BATS_TEST_TMPDIR/cont.pl"
+  run "$TRILOG" -n -f "$BATS_TEST_TMPDIR/cont.pl" -e "t(X), atom_length(X, N), u(Y)."
+  [[ "$output" == *'X = ab, N = 2, Y = "cd".'* ]]
 }

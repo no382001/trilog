@@ -225,6 +225,28 @@ static void token(trilog_t *T, emit_fn emit, const char *s) {
   T->print_last = (unsigned char)s[strlen(s) - 1];
 }
 
+static void print_quoted_char(trilog_t *T, emit_fn emit, int c, int quote) {
+  char buf[8];
+  char e = escape_letter(c);
+  if (c == quote || c == '\\')
+    fmt(buf, sizeof buf, "\\%c", c);
+  else if (e)
+    fmt(buf, sizeof buf, "\\%c", e);
+  else if (c < 0x20 || c == 0x7F) {
+    char *p = buf + sizeof buf - 1;
+    *p = '\0';
+    *--p = '\\';
+    do
+      *--p = (char)('0' + c % 8);
+    while ((c /= 8) > 0);
+    *--p = '\\';
+    emit(T, p);
+    return;
+  } else
+    fmt(buf, sizeof buf, "%c", c);
+  emit(T, buf);
+}
+
 static void print_atom(trilog_t *T, const char *name, int quoted,
                        emit_fn emit) {
   if (!quoted || !atom_needs_quote(name)) {
@@ -233,21 +255,8 @@ static void print_atom(trilog_t *T, const char *name, int quoted,
   }
   glue(T, emit, '\'');
   emit(T, "'");
-  for (const char *p = name; *p; p++) {
-    switch (*p) {
-    case '\'':
-      emit(T, "\\'");
-      break;
-    case '\\':
-      emit(T, "\\\\");
-      break;
-    default: {
-      char e = escape_letter(*p);
-      char c[3] = {e ? '\\' : *p, e, '\0'};
-      emit(T, c);
-    }
-    }
-  }
+  for (const char *p = name; *p; p++)
+    print_quoted_char(T, emit, (unsigned char)*p, '\'');
   emit(T, "'");
   T->print_last = '\'';
 }
@@ -284,19 +293,7 @@ static int try_print_char_string(trilog_t *T, size_t r, emit_fn emit) {
   for (cell = r;;) {
     size_t cf = T->heap[cell].as.ptr;
     char c = atom_name(T, T->heap[heap_deref(T, cf + 1)].as.atom_id)[0];
-    switch (c) {
-    case '"':
-      emit(T, "\\\"");
-      break;
-    case '\\':
-      emit(T, "\\\\");
-      break;
-    default: {
-      char e = escape_letter(c);
-      char s[3] = {e ? '\\' : c, e, '\0'};
-      emit(T, s);
-    }
-    }
+    print_quoted_char(T, emit, (unsigned char)c, '"');
     size_t tail = heap_deref(T, cf + 2);
     if (T->heap[tail].tag == TAG_ATOM && T->heap[tail].as.atom_id == atom_nil)
       break;

@@ -21,22 +21,11 @@ call_nth_quad	call_nth(true, 1.0)
 call_nth_quad	call_nth(true, Nth)
 call_nth_quad	call_nth(true, non_integer)
 conformity	#10 writeq('a\ ⏎  b'). % "a\\\n b"
-conformity	#101 a = '\141\'.
-conformity	#102 a = '\141'.
-conformity	#103 X = '\141\141'.
-conformity	#104 X = '\9'.
-conformity	#105 X = '\N'.
 conformity	#106 X = '\\' .
-conformity	#108 a = '\x61\'.
-conformity	#11 writeq('\ ').
 conformity	#117 integer(0'').
 conformity	#119 op(100,xfx,''). ⏎ functor(0 ''1,F, A).
-conformity	#12 writeq('\ '). % "\\\t"
 conformity	#120 op(100,xfx,''). ⏎ functor(0''1, F, A).
 conformity	#122 op(100,xfx,'1'). ⏎ functor(2'1'y, F, A).
-conformity	#123 X =0'\x41\ .
-conformity	#124 X =0'\x41\.
-conformity	#125 X =0'\x1\.
 conformity	#126 X = 0'\ ⏎ .\
 conformity	#127 X is 16'mod'2.
 conformity	#128 X is 37'mod'2.
@@ -46,19 +35,16 @@ conformity	#133 op(100,fx,' op'). ⏎ writeq(' op'[]).
 conformity	#147 op(9,fy,fy),op(9,yf,yf). ⏎ write_canonical(fy 1 yf).
 conformity	#148 op(9,fy,fy),op(9,yf,yf). ⏎ write_canonical(fy yf).
 conformity	#149 op(9,fy,fy),op(9,yf,yf). ⏎ writeq(fy(yf(1))).
-conformity	#15 writeq('\7\').
 conformity	#150 op(9,fy,fy),op(9,yf,yf). ⏎ writeq(yf(fy(1))).
 conformity	#153 op(9,fy,fy),op(9,yfx,yfx). ⏎ writeq(yfx(fy (1),2)).
 conformity	#154 op(9,yf,yf),op (9,xfy,xfy). ⏎ write_canonical(1 xfy 2 yf).
 conformity	#155 op(9,yf,yf),op (9,xfy,xfy). ⏎ writeq(xfy(1,yf(2))).
 conformity	#156 op(9,yf,yf),op (9,xfy,xfy). ⏎ writeq(yf(xfy (1,2))).
-conformity	#16 writeq('\ca').
 conformity	#160 op(9,fy,f),op(9,yf,f). ⏎ write_canonical(0 f f).
 conformity	#161 op(9,fy,f),op(9,yf,f). ⏎ write_canonical ⏎ (f f).
 conformity	#163 op(9,fy,p),op(9,xfy,p). ⏎ write_canonical(1 p p p 2).
 conformity	#164 op(7,fy,p),op(9,yfx,p). ⏎ write_canonical(1 p p p 2).
 conformity	#169 op(0,xfy,.),op(9,yf,.). ⏎ writeq(.(.)).
-conformity	#17 writeq('\e').
 conformity	#170 set_prolog_flag(double_quotes,chars).
 conformity	#171 set_prolog_flag(double_quotes,chars). ⏎ writeq("a").
 conformity	#172 X is 10.0** -323, writeq(X).
@@ -66,9 +52,7 @@ conformity	#174 -1 = -0x1.
 conformity	#175 T = t(0b1,0o1,0x1).
 conformity	#176 X is 0b1mod 2.
 conformity	#177 0'\t=0'	. % horiz. tab
-conformity	#18 writeq('\033\').
 conformity	#181 op(1105,xfy,'|'). ⏎ writeq((a-->b,c|d)).
-conformity	#19 char_code('\e',C).
 conformity	#196 op(100,xf,''). ⏎ writeq(0 '').
 conformity	#197 op(100,xf,''). ⏎ writeq(0'').
 conformity	#202 op(9,fy,f),op(9,yf,f). ⏎ write_canonical(f 0 f).
@@ -77,28 +61,18 @@ conformity	#205 op(100,xf,''). ⏎ (0 '') = ''(X).
 conformity	#207 op(100,xf,f). ⏎ writeq(0'f'f').
 conformity	#208 op(100,xf,'f '). ⏎ writeq(0 'f ').
 conformity	#209 op(100,xf,f). ⏎ writeq(0'ff).
-conformity	#21 char_code('\d',C).
-conformity	#210 X = 0'\.
-conformity	#211 X = 0'\. .
 conformity	#212 X is 1'\ ⏎ +'1.
 conformity	#213 X is 0'\ ⏎ +'1.
 conformity	#214 X is 0'\
 conformity	#215 op(100,yfx,~). ⏎ writeq(-(1~2~3)).
 conformity	#219 op(999,xfy,'|'). ⏎ [a|[]]=[a].
-conformity	#22 writeq('\u1').
 conformity	#220 op(9,xf,e). ⏎ writeq(1.0e).
 conformity	#224 \ .
 conformity	#225 char_code(C,0), writeq(C).
 conformity	#226 write_canonical(_+_).
 conformity	#227 write_canonical(B+B).
-conformity	#228 writeq(0'\z).
-conformity	#229 set_prolog_flag(double_quotes,chars). ⏎ writeq("\z").
-conformity	#230 char_code('\^',X).
-conformity	#231 writeq(0'\c).
-conformity	#232 writeq(0'\ ).
 conformity	#235 op(400,fx,f). ⏎ writeq(1 = f).
 conformity	#238 op(699,xf,>). ⏎ writeq(>(>(a),b)).
-conformity	#241 writeq('\d').
 conformity	#248 op(100,yfx,~). ⏎ writeq(- (1~2)).
 conformity	#250 writeq('\0\').
 conformity	#256 op(100,xf,f). ⏎ writeq(0f).
@@ -112,7 +86,6 @@ conformity	#271 get_char(C).%a
 conformity	#276 writeq(0xamod 2).
 conformity	#279 op(9,xf,'$VAR'), ⏎ writeq(- '$VAR'(0)).
 conformity	#280 writeq(00'+'1).
-conformity	#284 writeq('\^J').
 conformity	#288 (- 1^2) = ^(-1,2).
 conformity	#290 op(1105,xfy,'|'). ⏎ writeq([(a|b)]).
 conformity	#296 op(9,xf,'$VAR'), ⏎ writeq('$VAR'(0)).
@@ -120,10 +93,6 @@ conformity	#3 )
 conformity	#300 set_prolog_flag(double_quotes,chars). ⏎ writeq("\0\").
 conformity	#301 writeq('\0\').
 conformity	#304 op(300,fy,~). writeq(~ (a=b)). 
-conformity	#312 writeq('\u0021').
-conformity	#314 writeq("\u0021").
-conformity	#315 writeq('\x21\').
-conformity	#316 writeq('\x0021\').
 conformity	#319 op(9,fy,fy),op(9,yf,yf). ⏎ writeq(yf(fy(yf(fy(1))))).
 conformity	#322 op(1105,xfy,'|'). ⏎ write_canonical((a|b;c)).
 conformity	#323 op(1105,xfy,'|'). ⏎ write_canonical((a;b|c)).

@@ -145,6 +145,65 @@ static const char *read_while(trilog_t *T, int (*pred)(int)) {
 
 static int is_ident_char(int c) { return ascii_alnum(c) || c == '_'; }
 
+// The escape after a backslash: a control or meta escape, octal \NNN\ or
+// hex \xHH\.
+static int read_escape(trilog_t *T) {
+  int c = (unsigned char)*T->P;
+  if (c == '\n' || c == '\\' || c == '\'' || c == '"' || c == '`') {
+    T->P++;
+    return c == '\n' ? -1 : c;
+  }
+  int e = escape_char(c);
+  if (e >= 0) {
+    T->P++;
+    return e;
+  }
+  int base = 8;
+  if (c == 'x') {
+    base = 16;
+    T->P++;
+  }
+  const char *start = T->P;
+  long v = 0;
+  for (;;) {
+    int d = *T->P;
+    int digit = ascii_digit(d) && d - '0' < base     ? d - '0'
+                : base == 16 && d >= 'a' && d <= 'f' ? d - 'a' + 10
+                : base == 16 && d >= 'A' && d <= 'F' ? d - 'A' + 10
+                                                     : -1;
+    if (digit < 0)
+      break;
+    v = v * base + digit;
+    if (v > 0x10FFFF)
+      perr(T, "character code out of range in escape");
+    T->P++;
+  }
+  if (T->P == start || *T->P != '\\')
+    perr(T, "undefined escape sequence");
+  T->P++;
+  return (int)v;
+}
+
+// Codes above 127 are stored as their UTF-8 bytes, as source text is.
+static size_t put_code(trilog_t *T, size_t n, int c) {
+  if (c < 0x80) {
+    tok_put(T, n++, (char)c);
+  } else if (c < 0x800) {
+    tok_put(T, n++, (char)(0xC0 | c >> 6));
+    tok_put(T, n++, (char)(0x80 | (c & 0x3F)));
+  } else if (c < 0x10000) {
+    tok_put(T, n++, (char)(0xE0 | c >> 12));
+    tok_put(T, n++, (char)(0x80 | (c >> 6 & 0x3F)));
+    tok_put(T, n++, (char)(0x80 | (c & 0x3F)));
+  } else {
+    tok_put(T, n++, (char)(0xF0 | c >> 18));
+    tok_put(T, n++, (char)(0x80 | (c >> 12 & 0x3F)));
+    tok_put(T, n++, (char)(0x80 | (c >> 6 & 0x3F)));
+    tok_put(T, n++, (char)(0x80 | (c & 0x3F)));
+  }
+  return n;
+}
+
 static const char *read_quoted(trilog_t *T, char quote) {
   T->P++; // opening quote
   size_t n = 0;
@@ -160,17 +219,16 @@ static const char *read_quoted(trilog_t *T, char quote) {
       T->P++;
       break;
     }
-    char v = *T->P;
-    if (*T->P == '\\') {
-      T->P++;
-      if (*T->P == '\0')
-        perr(T, "unterminated quoted token");
-      char c = *T->P++;
-      int e = escape_char(c);
-      v = e < 0 ? c : (char)e;
-    } else
-      T->P++;
-    tok_put(T, n++, v);
+    if (*T->P != '\\') {
+      tok_put(T, n++, *T->P++);
+      continue;
+    }
+    T->P++;
+    int c = read_escape(T);
+    if (c == 0)
+      perr(T, "\\0\\ cannot be stored in quoted text");
+    if (c > 0)
+      n = put_code(T, n, c);
   }
   tok_put(T, n, '\0');
   return T->tok;
@@ -207,9 +265,9 @@ static tterm_t *parse_char_code(trilog_t *T) {
     perr(T, "unexpected end of input in 0' character code");
   if (*T->P == '\\') {
     T->P++;
-    char c = *T->P++;
-    int e = escape_char(c);
-    code = e < 0 ? (unsigned char)c : e;
+    code = read_escape(T);
+    if (code < 0)
+      perr(T, "a 0' character code cannot be a line continuation");
   } else if (T->P[0] == '\'' && T->P[1] == '\'') {
     code = '\'';
     T->P += 2;
