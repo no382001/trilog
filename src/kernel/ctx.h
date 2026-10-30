@@ -34,6 +34,8 @@ struct trilog {
   unsigned yield_every, yield_count;
 
   struct chunk *arena_current;
+  struct chunk *arena_temp;
+  bool arena_use_temp;
 
   cell_t *heap;
   size_t heap_cap, heap_top, heap_peak;
@@ -138,6 +140,8 @@ struct trilog {
   int capture_sp;
   size_t tta_pos; // in scratch
   int in_peeked;  // the byte peek_char/1 saw on user_input, or -2
+  char *read_buf; // the text of the term read/1 is reading
+  size_t read_buf_cap;
 
   bool in_query;
   bool in_callback;

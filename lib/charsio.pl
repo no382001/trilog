@@ -11,7 +11,7 @@ read_from_chars(Cs, T) :-
     '$with_context'('$read_term_from_chars'(Cs, T, []), read_from_chars/2).
 
 %!  read_term_from_chars(+Chars, -Term, +Options) is det.
-%   Options: variable_names(-Pairs), variables(-Vars).
+%   Options: variable_names(-Pairs), variables(-Vars), singletons(-Pairs).
 %   Blank Chars read as end_of_file.
 read_term_from_chars(Cs, T, Opts) :-
     '$with_context'('$read_term_from_chars'(Cs, T, Opts), read_term_from_chars/3).
@@ -27,21 +27,8 @@ read_term_from_chars(Cs, T, Opts) :-
               throw(error(syntax_error(M), _)))
     ),
     term_variables(T0, Vars),
-    '$read_options_bind'(Opts, Names, Vars),
+    '$read_options_bind'(Opts, T0, Names, Vars),
     T = T0.
-
-'$read_options_check'([]).
-'$read_options_check'([O|Os]) :-
-    '$read_option_check'(O),
-    '$read_options_check'(Os).
-'$read_option_check'(O) :- var(O), !, throw(error(instantiation_error, _)).
-'$read_option_check'(variable_names(_)) :- !.
-'$read_option_check'(variables(_)) :- !.
-'$read_option_check'(O) :- throw(error(domain_error(read_option, O), _)).
-
-'$read_options_bind'([], _, _).
-'$read_options_bind'([variable_names(Names)|Os], Names, Vars) :- !, '$read_options_bind'(Os, Names, Vars).
-'$read_options_bind'([variables(Vars)|Os], Names, Vars) :- '$read_options_bind'(Os, Names, Vars).
 
 '$blank_chars'([]).
 '$blank_chars'([C|Cs]) :- memberchk(C, [' ', '\t', '\n', '\r']), '$blank_chars'(Cs).

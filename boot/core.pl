@@ -373,7 +373,7 @@ setof(Template, Goal, Set) :-
     sort(Bag, Set).
 
 % --- I/O ---
-% put_code/1, get_code/1 are native.
+% put_code/1 is native.
 
 '$stream_alias'(user_output, 0).
 '$stream_alias'(user_error, 1).
@@ -473,15 +473,110 @@ char_code(Char, Code) :-
 
 %!  get_char(-Char), get_char(+Stream, -Char) is det.
 %!  peek_char(-Char), peek_char(+Stream, -Char) is det.
-%!  get_code(+Stream, -Code), peek_code(-Code), peek_code(+Stream, -Code) is det.
-%   At end of file Char is end_of_file and Code is -1, on every read.
-get_char(C) :- '$with_context'('$get_char'(user_input, 0, C), get_char/1).
+%!  get_code(-Code), get_code(+Stream, -Code) is det.
+%!  peek_code(-Code), peek_code(+Stream, -Code) is det.
+%   Without a Stream they read the current input. At end of file Char is
+%   end_of_file and Code is -1, on every read.
+get_char(C) :-
+    '$with_context'(('$current_input'(S), '$get_char'(S, 0, C)), get_char/1).
 get_char(S, C) :- '$with_context'('$get_char'(S, 0, C), get_char/2).
-peek_char(C) :- '$with_context'('$get_char'(user_input, 1, C), peek_char/1).
+peek_char(C) :-
+    '$with_context'(('$current_input'(S), '$get_char'(S, 1, C)), peek_char/1).
 peek_char(S, C) :- '$with_context'('$get_char'(S, 1, C), peek_char/2).
+get_code(C) :-
+    '$with_context'(('$current_input'(S), '$get_code'(S, 0, C)), get_code/1).
 get_code(S, C) :- '$with_context'('$get_code'(S, 0, C), get_code/2).
-peek_code(C) :- '$with_context'('$get_code'(user_input, 1, C), peek_code/1).
+peek_code(C) :-
+    '$with_context'(('$current_input'(S), '$get_code'(S, 1, C)), peek_code/1).
 peek_code(S, C) :- '$with_context'('$get_code'(S, 1, C), peek_code/2).
+
+%!  read(-Term), read(+Stream, -Term) is det.
+%!  read_term(-Term, +Options), read_term(+Stream, -Term, +Options) is det.
+%   Reads the next term, through its end '.'; Term is end_of_file at the end.
+%   Options: variables(-Vars), variable_names(-Pairs), singletons(-Pairs).
+read(T) :-
+    '$with_context'(('$current_input'(S), '$read_term'(S, T, [])), read/1).
+read(S, T) :- '$with_context'('$read_term'(S, T, []), read/2).
+read_term(T, Opts) :-
+    '$with_context'(('$current_input'(S), '$read_term'(S, T, Opts)),
+                    read_term/2).
+read_term(S, T, Opts) :-
+    '$with_context'('$read_term'(S, T, Opts), read_term/3).
+
+'$read_term'(S, T, Opts) :-
+    '$options_list'(Opts),
+    '$read_options_check'(Opts),
+    '$read_byte'(S, 1, _),
+    '$$read_term'(S, T0, Names),
+    term_variables(T0, Vars),
+    '$read_options_bind'(Opts, T0, Names, Vars),
+    T = T0.
+
+'$read_options_check'([]).
+'$read_options_check'([O|Os]) :-
+    '$read_option_check'(O),
+    '$read_options_check'(Os).
+'$read_option_check'(O) :- var(O), !, throw(error(instantiation_error, _)).
+'$read_option_check'(variable_names(_)) :- !.
+'$read_option_check'(variables(_)) :- !.
+'$read_option_check'(singletons(_)) :- !.
+'$read_option_check'(O) :- throw(error(domain_error(read_option, O), _)).
+
+'$read_options_bind'([], _, _, _).
+'$read_options_bind'([O|Os], T, Names, Vars) :-
+    '$read_option_bind'(O, T, Names, Vars),
+    '$read_options_bind'(Os, T, Names, Vars).
+
+'$read_option_bind'(variable_names(Names), _, Names, _).
+'$read_option_bind'(variables(Vars), _, _, Vars).
+'$read_option_bind'(singletons(Ss), T, Names, _) :- '$singletons'(Names, T, Ss).
+
+'$singletons'([], _, []).
+'$singletons'([N=V|NVs], T, Ss) :-
+    '$occurrences'(T, V, 0, K),
+    ( K =:= 1 -> Ss = [N=V|Ss1] ; Ss = Ss1 ),
+    '$singletons'(NVs, T, Ss1).
+
+'$occurrences'(X, V, K0, K) :- var(X), !, ( X == V -> K is K0 + 1 ; K = K0 ).
+'$occurrences'(X, V, K0, K) :-
+    compound(X), !,
+    X =.. [_|As],
+    '$occurrences_list'(As, V, K0, K).
+'$occurrences'(_, _, K, K).
+
+'$occurrences_list'([], _, K, K).
+'$occurrences_list'([A|As], V, K0, K) :-
+    '$occurrences'(A, V, K0, K1),
+    '$occurrences_list'(As, V, K1, K).
+
+:- dynamic('$input'/1).
+'$input'(user_input).
+
+%!  current_input(?Stream) is det.
+%!  set_input(+Stream) is det.
+%   Closing the current input makes user_input current again.
+current_input(S) :-
+    (   ( var(S) ; S = '$stream'(_) ; S == user_input )
+    ->  '$current_input'(C),
+        S = C
+    ;   throw(error(domain_error(stream, S), current_input/1))
+    ).
+
+'$current_input'(S) :-
+    '$input'(S0),
+    (   S0 = '$stream'(_), '$$get_byte'(S0, 1, B), B =:= -2
+    ->  S = user_input
+    ;   S = S0
+    ).
+
+set_input(S) :- '$with_context'('$set_input'(S), set_input/1).
+
+'$set_input'(S) :-
+    ( var(S) -> throw(error(instantiation_error, _)) ; true ),
+    '$input_stream'(S),
+    ( S == user_input -> true ; '$read_byte'(S, 1, _) ),
+    ( '$$retract'('$input'(_)) -> true ; true ),
+    '$$assertz'('$input'(S)).
 
 '$get_char'(S, Peek, C) :-
     '$check_in_char'(C),

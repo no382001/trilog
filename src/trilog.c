@@ -139,6 +139,7 @@ void trilog_free(trilog_t *t) {
   mem_free(t, t->path_buf);
   mem_free(t, t->path_tmp);
   mem_free(t, t->scratch);
+  mem_free(t, t->read_buf);
   mem_free(t, t->wstack);
   mem_free(t, t->var_names);
   for (int i = 0; i < t->query_bufs_len; i++)

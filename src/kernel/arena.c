@@ -16,44 +16,67 @@ typedef struct chunk {
   char data[];
 } chunk_t;
 
-static chunk_t *new_chunk(trilog_t *T, size_t at_least) {
+static chunk_t *new_chunk(trilog_t *T, chunk_t *next, size_t at_least) {
   size_t cap = at_least > ARENA_CHUNK_SIZE ? at_least : ARENA_CHUNK_SIZE;
   if (cap > SIZE_MAX - sizeof(chunk_t))
     mem_fail(T);
   chunk_t *c = mem_grow_n(T, NULL, 1, sizeof(chunk_t) + cap);
-  c->next = T->arena_current;
+  c->next = next;
   c->used = 0;
   c->cap = cap;
   return c;
 }
 
-void *arena_alloc(trilog_t *T, size_t n) {
+static void *alloc_in(trilog_t *T, chunk_t **head, size_t n) {
   n = (n + 7u) & ~(size_t)7u; // align to 8 bytes for mixed-size allocations
-  if (!T->arena_current || T->arena_current->used + n > T->arena_current->cap)
-    T->arena_current = new_chunk(T, n);
-  void *p = T->arena_current->data + T->arena_current->used;
-  T->arena_current->used += n;
+  if (!*head || (*head)->used + n > (*head)->cap)
+    *head = new_chunk(T, *head, n);
+  void *p = (*head)->data + (*head)->used;
+  (*head)->used += n;
   return p;
 }
 
+void *arena_alloc(trilog_t *T, size_t n) {
+  return alloc_in(T, T->arena_use_temp ? &T->arena_temp : &T->arena_current, n);
+}
+
+// Atom names outlive any one parse, so they never go to the scratch arena.
 char *arena_strdup(trilog_t *T, const char *s) {
   size_t n = strlen(s) + 1;
-  char *p = arena_alloc(T, n);
+  char *p = alloc_in(T, &T->arena_current, n);
   memcpy(p, s, n);
   return p;
 }
 
-size_t arena_bytes(trilog_t *T) {
+static size_t chunk_bytes(chunk_t *c) {
   size_t n = 0;
-  for (chunk_t *c = T->arena_current; c; c = c->next)
+  for (; c; c = c->next)
     n += c->cap;
   return n;
 }
 
-void arena_free(trilog_t *T) {
-  while (T->arena_current) {
-    chunk_t *next = T->arena_current->next;
-    mem_free(T, T->arena_current);
-    T->arena_current = next;
+size_t arena_bytes(trilog_t *T) {
+  return chunk_bytes(T->arena_current) + chunk_bytes(T->arena_temp);
+}
+
+static void free_chunks(trilog_t *T, chunk_t *c) {
+  while (c) {
+    chunk_t *next = c->next;
+    mem_free(T, c);
+    c = next;
   }
+}
+
+void arena_temp_reset(trilog_t *T) {
+  if (!T->arena_temp)
+    return;
+  free_chunks(T, T->arena_temp->next);
+  T->arena_temp->next = NULL;
+  T->arena_temp->used = 0;
+}
+
+void arena_free(trilog_t *T) {
+  free_chunks(T, T->arena_current);
+  free_chunks(T, T->arena_temp);
+  T->arena_current = T->arena_temp = NULL;
 }

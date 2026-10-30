@@ -928,7 +928,10 @@ bool parse_term_from_string(trilog_t *T, const char *src, tterm_t **term_out,
   size_t saved_psp = T->psp;
   jmp_buf saved_jmp;
   memcpy(saved_jmp, T->err_jmp, sizeof(jmp_buf));
+  bool saved_temp = T->arena_use_temp;
+  T->arena_use_temp = true;
   bool ok = parse_term_from_string_(T, src, term_out, nvars_out, varnames_out);
+  T->arena_use_temp = saved_temp;
   T->P = saved_P;
   T->psp = saved_psp;
   memcpy(T->err_jmp, saved_jmp, sizeof(jmp_buf));

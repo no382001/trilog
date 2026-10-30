@@ -15,5 +15,7 @@ bool parse_query(trilog_t *T, const char *src, tterm_t ***goals_out,
                  int32_t *ngoals_out, int32_t *nvars_out,
                  const char ***varnames_out);
 
+// The term is built in the scratch arena: copy it to the heap, then call
+// arena_temp_reset.
 bool parse_term_from_string(trilog_t *T, const char *src, tterm_t **term_out,
                             int32_t *nvars_out, const char ***varnames_out);

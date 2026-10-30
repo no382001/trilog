@@ -1,6 +1,7 @@
 #include "solve.h"
 #include "arena.h"
 #include "atoms.h"
+#include "chars.h"
 #include "ctx.h"
 #include "fmt.h"
 #include "gc.h"
@@ -1178,7 +1179,9 @@ size_t foreign_error_ball(trilog_t *T, const char *formal) {
   size_t term;
   if (parse_term_from_string(T, formal, &tmpl, &nvars, &names)) {
     term = heap_copy(T, tmpl, tmp_rename(T, nvars), 0);
+    arena_temp_reset(T);
   } else {
+    arena_temp_reset(T);
     size_t text[1] = {heap_new_atom(T, atom_intern(T, formal))};
     term = heap_new_struct(T, atom_intern(T, "syntax_error"), 1, text);
   }
@@ -1258,6 +1261,141 @@ static int call_foreign(trilog_t *T, const foreign_t *f, size_t goal,
       return 0;
   }
   return 1;
+}
+
+// Copies a term parse_term_from_string built to the heap and empties the
+// scratch arena. With namevars, also builds 'Name'=Var for each named source
+// variable, skipping bare "_".
+static size_t copy_parsed(trilog_t *T, tterm_t *t, int32_t nvars,
+                          const char **names, size_t *namevars) {
+  size_t *rn = tmp_rename(T, nvars);
+  size_t term = heap_copy(T, t, rn, 0);
+  if (namevars) {
+    *namevars = heap_new_atom(T, atom_nil);
+    for (int32_t i = nvars - 1; i >= 0; i--) {
+      if (!strcmp(names[i], "_") || rn[i] == (size_t)-1)
+        continue;
+      size_t pair[2] = {heap_new_atom(T, atom_intern(T, names[i])), rn[i]};
+      size_t cons[2] = {heap_new_struct(T, atom_unify_op, 2, pair), *namevars};
+      *namevars = heap_new_struct(T, atom_dot, 2, cons);
+    }
+  }
+  arena_temp_reset(T);
+  return term;
+}
+
+static int read_byte(trilog_t *T, int sid, bool peek) {
+  if (sid < 0)
+    return peek ? io_peek_char(T) : io_read_char(T);
+  int c = stream_byte(T, sid, peek);
+  return c < 0 ? -1 : c;
+}
+
+static void read_put(trilog_t *T, size_t *n, int c) {
+  mem_reserve(T, (void **)&T->read_buf, &T->read_buf_cap, *n + 2);
+  T->read_buf[(*n)++] = (char)c;
+}
+
+static bool octal_or_hex(int c) {
+  return ascii_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+// The rest of an escape after its backslash: one character, or the digits of
+// \NNN\ or \xHH\ through their closing backslash. False at end of file.
+static bool read_escape_text(trilog_t *T, int sid, size_t *n) {
+  int c = read_byte(T, sid, false);
+  if (c < 0)
+    return false;
+  read_put(T, n, c);
+  if (c != 'x' && !(c >= '0' && c <= '7'))
+    return true;
+  for (;;) {
+    int d = read_byte(T, sid, true);
+    if (d < 0)
+      return false;
+    if (d != '\\' && !octal_or_hex(d))
+      return true;
+    read_put(T, n, read_byte(T, sid, false));
+    if (d == '\\')
+      return true;
+  }
+}
+
+// Reads the text of one term into T->read_buf, through its end: a '.' that
+// is followed by layout, % or end of file and is not part of a symbol atom.
+// What follows the '.' stays unread. Returns 1 for a term, 0 at end of file
+// with only layout and comments, -1 at end of file inside a term.
+static int read_term_text(trilog_t *T, int sid) {
+  size_t n = 0;
+  int quote = 0, prev = ' ', prev2 = ' ';
+  bool any = false;
+  for (;;) {
+    int c = read_byte(T, sid, false);
+    if (c < 0)
+      return any ? -1 : 0;
+    read_put(T, &n, c);
+    if (quote) {
+      if (c == '\\' && !read_escape_text(T, sid, &n))
+        return -1;
+      if (c == quote) {
+        if (read_byte(T, sid, true) == quote)
+          read_put(T, &n, read_byte(T, sid, false));
+        else
+          quote = 0;
+      }
+      continue;
+    }
+    if (c == '%') {
+      while ((c = read_byte(T, sid, false)) >= 0 && c != '\n')
+        ;
+      read_put(T, &n, '\n');
+      prev = ' ';
+      if (c < 0)
+        return any ? -1 : 0;
+      continue;
+    }
+    if (c == '*' && prev == '/') {
+      int last = 0;
+      while ((c = read_byte(T, sid, false)) >= 0 && !(last == '*' && c == '/'))
+        last = c;
+      read_put(T, &n, '*');
+      read_put(T, &n, '/');
+      prev = ' ';
+      if (c < 0)
+        return -1;
+      continue;
+    }
+    if (c == '\'' && prev == '0' && !ascii_alnum(prev2) && prev2 != '_') {
+      int d = read_byte(T, sid, false);
+      if (d < 0)
+        return -1;
+      read_put(T, &n, d);
+      if (d == '\\' && !read_escape_text(T, sid, &n))
+        return -1;
+      if (d == '\'' && read_byte(T, sid, true) == '\'')
+        read_put(T, &n, read_byte(T, sid, false));
+      any = true;
+      prev2 = prev;
+      prev = 'a';
+      continue;
+    }
+    if (c == '\'' || c == '"' || c == '`') {
+      quote = c;
+      any = true;
+      continue;
+    }
+    if (c == '.' && !ascii_symbol(prev)) {
+      int d = read_byte(T, sid, true);
+      if (d < 0 || ascii_space(d) || d == '%') {
+        T->read_buf[n] = '\0';
+        return 1;
+      }
+    }
+    if (!ascii_space(c))
+      any = true;
+    prev2 = prev;
+    prev = c;
+  }
 }
 
 static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok);
@@ -1396,11 +1534,6 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     char c[2] = {(char)T->heap[a].as.ival, '\0'};
     io_write_str(T, c);
     *ok = 1;
-    return 1;
-  }
-  if (arity == 1 && id == atom_get_code) {
-    int c = io_read_char(T);
-    *ok = unify(T, f + 1, heap_new_int(T, c == -1 ? -1 : c));
     return 1;
   }
   if (arity == 3 && id == atom_write_raw) {
@@ -1708,11 +1841,12 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     tterm_t *t;
     if (!parse_term_from_string(T, atom_name(T, T->heap[atom_arg].as.atom_id),
                                 &t, &nvars, &names)) {
+      arena_temp_reset(T);
       T->pending_error_ball = make_syntax_error(T);
       *ok = 0;
       return 1;
     }
-    *ok = unify(T, term_arg, fresh_copy_term(T, t, nvars));
+    *ok = unify(T, term_arg, copy_parsed(T, t, nvars, names, NULL));
     return 1;
   }
   if (arity == 3 && id == atom_atom_to_term) {
@@ -1726,23 +1860,50 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     tterm_t *t;
     if (!parse_term_from_string(T, atom_name(T, T->heap[atom_arg].as.atom_id),
                                 &t, &nvars, &names)) {
+      arena_temp_reset(T);
       T->pending_error_ball = make_syntax_error(T);
       *ok = 0;
       return 1;
     }
-    size_t *rn = tmp_rename(T, nvars);
-    size_t term_copy = heap_copy(T, t, rn, 0);
-    // 'Name'=Var per named source variable; skips bare "_" and any slot
-    // heap_copy never visited.
-    size_t namevars = heap_new_atom(T, atom_nil);
-    for (int32_t i = nvars - 1; i >= 0; i--) {
-      if (!strcmp(names[i], "_") || rn[i] == (size_t)-1)
-        continue;
-      size_t pair_args[2] = {heap_new_atom(T, atom_intern(T, names[i])), rn[i]};
-      size_t cons_args[2] = {heap_new_struct(T, atom_unify_op, 2, pair_args),
-                             namevars};
-      namevars = heap_new_struct(T, atom_dot, 2, cons_args);
+    size_t namevars;
+    size_t term_copy = copy_parsed(T, t, nvars, names, &namevars);
+    *ok = unify(T, f + 2, term_copy) && unify(T, f + 3, namevars);
+    return 1;
+  }
+  // '$$read_term'(+Stream, -Term, -NameVars): the next term from user_input or
+  // a stream, end_of_file at its end, with 'Name'=Var for its named variables.
+  if (arity == 3 && id == atom_read_term) {
+    size_t sd = heap_deref(T, f + 1);
+    int sid = -1;
+    if ((T->heap[sd].tag != TAG_ATOM ||
+         T->heap[sd].as.atom_id != atom_user_input) &&
+        !resolve_stream_id(T, f + 1, &sid)) {
+      *ok = 0;
+      return 1;
     }
+    int got = read_term_text(T, sid);
+    if (got <= 0) {
+      if (got < 0) {
+        fmt(T->err_msg, sizeof T->err_msg, "end of file inside a term");
+        T->pending_error_ball = make_syntax_error(T);
+        *ok = 0;
+        return 1;
+      }
+      *ok = unify(T, f + 2, heap_new_atom(T, atom_end_of_file)) &&
+            unify(T, f + 3, heap_new_atom(T, atom_nil));
+      return 1;
+    }
+    int32_t nvars;
+    const char **names;
+    tterm_t *t;
+    if (!parse_term_from_string(T, T->read_buf, &t, &nvars, &names)) {
+      arena_temp_reset(T);
+      T->pending_error_ball = make_syntax_error(T);
+      *ok = 0;
+      return 1;
+    }
+    size_t namevars;
+    size_t term_copy = copy_parsed(T, t, nvars, names, &namevars);
     *ok = unify(T, f + 2, term_copy) && unify(T, f + 3, namevars);
     return 1;
   }
