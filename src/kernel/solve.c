@@ -208,6 +208,10 @@ static idx_key_t key_of_template(tterm_t *head) {
   return k;
 }
 
+static idx_key_t clause_key(const clause_t *c) {
+  return key_of_template(c->head);
+}
+
 static idx_key_t key_of_goal(trilog_t *T, size_t goal) {
   idx_key_t k = {.pred_id = -1, .pred_arity = 0, .kind = IDX_ANY};
   size_t g = heap_deref(T, goal);
@@ -246,23 +250,21 @@ static idx_key_t key_of_goal(trilog_t *T, size_t goal) {
   return k;
 }
 
-static int keys_conflict(idx_key_t a, idx_key_t b) {
-  if (a.pred_id != b.pred_id || a.pred_arity != b.pred_arity)
-    return 1;
-  if (a.kind == IDX_ANY || b.kind == IDX_ANY)
-    return 0;
-  if (a.kind != b.kind)
-    return 1;
-  switch (a.kind) {
-  case IDX_ATOM:
-    return a.atom_id != b.atom_id;
-  case IDX_INT:
-    return a.ival != b.ival;
-  case IDX_STRUCT:
-    return a.atom_id != b.atom_id || a.arity != b.arity;
-  default:
-    return 0;
+static arg_key_t arg_key_of(idx_key_t k) {
+  arg_key_t a = {.kind = k.kind, .a = k.atom_id, .b = k.arity};
+  if (k.kind == IDX_INT) {
+    a.a = (int32_t)(uint32_t)(uint64_t)k.ival;
+    a.b = (int32_t)(uint32_t)((uint64_t)k.ival >> 32);
   }
+  return a;
+}
+
+// c is in key's predicate bucket, so only the first argument is compared.
+static int first_arg_conflicts(arg_key_t k, const clause_t *c) {
+  if (k.kind == IDX_ANY || c->arg.kind == IDX_ANY)
+    return 0;
+  return k.kind != c->arg.kind || k.a != c->arg.a ||
+         (k.kind != IDX_ATOM && k.b != c->arg.b);
 }
 
 // db index of the first clause at or after from_idx that matches key, or -1.
@@ -279,8 +281,9 @@ static int32_t next_candidate(trilog_t *T, int32_t from_idx, idx_key_t key) {
     else
       hi = mid;
   }
+  arg_key_t arg = arg_key_of(key);
   for (; lo < b->count; lo++)
-    if (!keys_conflict(key, T->db[b->indices[lo]].key))
+    if (!first_arg_conflicts(arg, &T->db[b->indices[lo]]))
       return b->indices[lo];
   return -1;
 }
@@ -349,8 +352,8 @@ void db_add(trilog_t *T, tterm_t *head, tterm_t **body, int32_t nbody,
                           .body = body,
                           .nbody = nbody,
                           .nvars = nvars,
-                          .key = key,
-                          .source = mark_static ? T->consulting_atom : -1};
+                          .source = mark_static ? T->consulting_atom : -1,
+                          .arg = arg_key_of(key)};
   pred_bucket_add_index(T, key.pred_id, key.pred_arity, idx);
 }
 
@@ -372,8 +375,8 @@ static void db_add_front(trilog_t *T, tterm_t *head, tterm_t **body,
                         .body = body,
                         .nbody = nbody,
                         .nvars = nvars,
-                        .key = key,
-                        .source = -1};
+                        .source = -1,
+                        .arg = arg_key_of(key)};
   db_fixup_choice_points_insert_at(T, 0);
   pred_index_fixup_insert_at(T, 0);
   pred_bucket_add_index_front(T, key.pred_id, key.pred_arity, 0);
@@ -408,8 +411,8 @@ static void db_compact(trilog_t *T) {
 // shifting or fixups per removal; db_compact reclaims slots once dead ones
 // outnumber live ones.
 static void db_kill(trilog_t *T, int32_t idx) {
-  pred_bucket_remove_index(T, T->db[idx].key.pred_id, T->db[idx].key.pred_arity,
-                           idx);
+  idx_key_t key = clause_key(&T->db[idx]);
+  pred_bucket_remove_index(T, key.pred_id, key.pred_arity, idx);
   T->db[idx].head = NULL;
   T->db_dead++;
 }
@@ -428,7 +431,7 @@ void db_unload(trilog_t *T, int32_t source) {
   for (int32_t i = 0; i < T->db_count; i++) {
     if (!T->db[i].head || T->db[i].source != source)
       continue;
-    idx_key_t key = T->db[i].key;
+    idx_key_t key = clause_key(&T->db[i]);
     db_kill(T, i);
     pred_bucket_t *b = pred_bucket_find(T, key.pred_id, key.pred_arity);
     if (!b || b->count == 0)
@@ -1811,9 +1814,10 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       return 1;
     }
     pred_bucket_t *bucket = pred_bucket_find(T, want.pred_id, want.pred_arity);
+    arg_key_t want_arg = arg_key_of(want);
     for (int32_t bi = bucket ? bucket->count - 1 : -1; bi >= 0; bi--) {
       clause_t *c = &T->db[bucket->indices[bi]];
-      if (keys_conflict(want, c->key))
+      if (first_arg_conflicts(want_arg, c))
         continue;
       size_t h2, b2;
       fresh_copy_clause(T, c, &h2, &b2);
@@ -2391,13 +2395,14 @@ A:
         split_clause_whole(T, clause, &want_head, &want_body);
 
         idx_key_t want_key = key_of_goal(T, want_head);
+        arg_key_t want_arg = arg_key_of(want_key);
         pred_bucket_t *bucket =
             pred_bucket_find(T, want_key.pred_id, want_key.pred_arity);
         size_t rmark = heap_mark(T), rtmark = trail_mark(T);
         int found = 0;
         for (int32_t bi = 0; bucket && bi < bucket->count; bi++) {
           int32_t ci = bucket->indices[bi];
-          if (keys_conflict(want_key, T->db[ci].key))
+          if (first_arg_conflicts(want_arg, &T->db[ci]))
             continue;
           trail_release(T, rtmark);
           heap_release(T, rmark);

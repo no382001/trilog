@@ -14,13 +14,19 @@ typedef struct {
   int32_t arity;
 } idx_key_t;
 
+// A head's first argument; ints are split to keep 4-byte alignment.
+typedef struct {
+  idx_kind_t kind;
+  int32_t a, b; // atom and arity, or the int's low and high halves
+} arg_key_t;
+
 typedef struct {
   tterm_t *head;
   tterm_t **body;
   int32_t nbody;
   int32_t nvars;
-  idx_key_t key;
   int32_t source; // atom of the file it was consulted from, -1 if asserted
+  arg_key_t arg;
 } clause_t;
 
 typedef struct {
