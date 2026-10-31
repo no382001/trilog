@@ -10,7 +10,8 @@ dcg_constr((_ ; _)).
 dcg_constr((_ -> _)).
 dcg_constr({_}).
 dcg_constr(!).
-dcg_constr(call(_)).
+dcg_constr(\+ _).
+dcg_constr(G) :- compound(G), functor(G, call, N), N >= 1.
 
 dcg_body(Var, S0, S, phrase(Var, S0, S)) :- var(Var), !.
 dcg_body(GRBody, S0, S, Body) :-
@@ -47,7 +48,19 @@ dcg_cbody((A -> B), S0, S, (AT -> BT)) :-
     dcg_body(B, S1, S, BT).
 dcg_cbody({G}, S0, S, (G, S0 = S)) :- !.
 dcg_cbody(!, S0, S, (!, S0 = S)) :- !.
-dcg_cbody(call(G), S0, S, call(G, S0, S)) :- !.
+dcg_cbody(\+ G, S0, S, (\+ GT, S0 = S)) :- !, dcg_body(G, S0, _, GT).
+dcg_cbody(Call, S0, S, '$dcg_call'(G, Extra, S0, S)) :- Call =.. [call, G|Extra].
+
+% call//N compiles the nonterminal it builds, as a direct call would.
+'$dcg_call'(G, Extra, S0, S) :-
+    G =.. Parts0,
+    append(Parts0, Extra, Parts),
+    NonTerminal =.. Parts,
+    functor(NonTerminal, Name, Arity),
+    '$dcg_ensure'(Name, Arity),
+    append(Parts, [S0, S], GoalParts),
+    Goal =.. GoalParts,
+    call(Goal).
 
 dcg_terminals(Terminals, S0, S, S0 = List) :-
     append(Terminals, S, List).
@@ -67,20 +80,41 @@ phrase(GRBody, S0, S) :-
 '$dcg_ensure'(Name, Arity) :- '$dcg_compiled'(Name, Arity), !.
 '$dcg_ensure'(Name, Arity) :-
     functor(Skel, Name, Arity),
-    '$$clause_candidates'('-->'(Skel, _), Cands),
-    ( Cands == []
+    '$dcg_rules'(Skel, Rules),
+    ( Rules == []
     -> true % hand-written Name/Arity+2, or undefined: the call decides
     ;  assertz('$dcg_compiled'(Name, Arity)),
-       forall(member('-->'(H, B) - true, Cands), '$dcg_compile'(H, B))
+       forall(member('-->'(H, B), Rules), '$dcg_compile'(H, B))
     ).
 
+% Skel's rules in source order; a pushback rule's head is (Skel, Pushback).
+'$dcg_rules'(Skel, Rules) :-
+    '$$clause_candidates'('-->'((Skel, _), _), Pushback),
+    (   Pushback == []
+    ->  '$$clause_candidates'('-->'(Skel, _), Cands)
+    ;   '$$clause_candidates'('-->'(_, _), Cands)
+    ),
+    findall('-->'(H, B),
+            ( member('-->'(H, B) - true, Cands), ( H = (Skel, _) ; H = Skel ) ),
+            Rules).
+
+'$dcg_compile'((H, Pushback), B) :-
+    !,
+    '$dcg_head'(H, S0, S, H2),
+    dcg_body(B, S0, S1, Body0),
+    dcg_terminals(Pushback, S, S1, Back),
+    '$dcg_fold_head'((Body0, Back), S0, Body),
+    '$$assertz'((H2 :- Body)).
 '$dcg_compile'(H, B) :-
-    H =.. [Name|Args],
-    append(Args, [S0, S], Args2),
-    H2 =.. [Name|Args2],
+    '$dcg_head'(H, S0, S, H2),
     dcg_body(B, S0, S, Body0),
     '$dcg_fold_head'(Body0, S0, Body),
     '$$assertz'((H2 :- Body)).
+
+'$dcg_head'(H, S0, S, H2) :-
+    H =.. [Name|Args],
+    append(Args, [S0, S], Args2),
+    H2 =.. [Name|Args2].
 
 % A body starting with S0 = T unifies the head's input list first thing
 % anyway, so do it in the head: count([_|S1], ...) instead of S0 = [_|S1].
