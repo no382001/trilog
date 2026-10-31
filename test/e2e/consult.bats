@@ -15,6 +15,15 @@ load common
   [[ "$output" == *"W = ann"* ]]
 }
 
+@test "a directive runs once, not to exhaustion (regression)" {
+  # regression: consult backtracked into a directive for more solutions; reconsulting lib/lists.pl under another path then retried ensure_loaded through duplicated reverse/2 clauses for ever.
+  printf ':- member(X, [a, b, c]), write(X), nl.\n' >"$BATS_TEST_TMPDIR/once.pl"
+  run "$TRILOG" -f "$BATS_TEST_TMPDIR/once.pl" -e "true."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"a"* ]]
+  [[ "$output" != *"b"* ]]
+}
+
 @test "a consult-time directive can call a core.pl-defined predicate (regression)" {
   cat > /tmp/mi_directive_test.pl <<'PLEOF'
 :- ( member(x, [x, y]) -> true ; throw(should_not_happen) ).

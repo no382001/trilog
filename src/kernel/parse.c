@@ -724,16 +724,16 @@ static tterm_t **flatten_conj(trilog_t *T, tterm_t *t, int32_t *n_out) {
   return out;
 }
 
-static int all_solutions(void *ud, int has_more) {
+static int first_solution(void *ud, int has_more) {
   (void)ud;
   (void)has_more;
-  return 1;
+  return 0;
 }
 
 static void run_directive(trilog_t *T, tterm_t *goal, int32_t nvars) {
   int32_t n;
   tterm_t **goals = flatten_conj(T, goal, &n);
-  if (run_query(T, goals, n, nvars, all_solutions, NULL) == QUERY_ERROR) {
+  if (run_query(T, goals, n, nvars, first_solution, NULL) == QUERY_ERROR) {
     io_write_err(T, "uncaught exception: ");
     print_term_via(T, query_error_ball(T), 0, io_write_err);
     io_write_err(T, "\n");
