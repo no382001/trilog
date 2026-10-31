@@ -6,6 +6,8 @@
 
 void bags_drop(trilog_t *T, int32_t from);
 
+struct chunk;
+
 typedef enum { IDX_ANY, IDX_ATOM, IDX_INT, IDX_STRUCT } idx_kind_t;
 typedef struct {
   int32_t pred_id;
@@ -29,6 +31,7 @@ typedef struct {
   int32_t nvars;
   int32_t source; // atom of the file it was consulted from, -1 if asserted
   arg_key_t arg;
+  struct chunk *mem; // an asserted clause's own memory, freed with it
 } clause_t;
 
 typedef struct {

@@ -699,6 +699,24 @@ q(X, 4) :- X == a.' >"$BATS_TEST_TMPDIR/q.pl"
   [[ "$output" == *"r(full,reused)"* ]]
 }
 
+@test "retract/1 frees an asserted clause, so assert and retract in a loop runs in bounded memory (regression)" {
+  # regression: asserted clauses lived in the arena, which never frees, so every round leaked the clause.
+  for op in assertz asserta; do
+    run bash -c "ulimit -v 65536; timeout 60 $TRILOG -f -e \"numlist(1, 50, L), ( between(1, 60000, _), $op(t(L)), retract(t(_)), fail ; true ), write(done), nl.\""
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"done"* ]]
+  done
+}
+
+@test "copy_term/2 and throw/1 free their intermediate copy, so they run in bounded memory in a loop (regression)" {
+  # regression: both copied the term into the arena, which never frees, so every call leaked the copy.
+  for goal in "copy_term(f(L, _), _)" "catch(throw(e(L)), _, true)"; do
+    run bash -c "ulimit -v 65536; timeout 60 $TRILOG -f -e \"numlist(1, 50, L), ( between(1, 60000, _), $goal, fail ; true ), write(done), nl.\""
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"done"* ]]
+  done
+}
+
 @test "text builtins and arg/3 raise ISO argument errors" {
   run "$TRILOG" -f -e "
     catch(atom_chars(f(a), _), error(E1, C1), true),

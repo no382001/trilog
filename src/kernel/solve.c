@@ -409,6 +409,8 @@ static void db_compact(trilog_t *T) {
 static void db_kill(trilog_t *T, int32_t idx) {
   idx_key_t key = clause_key(&T->db[idx]);
   pred_bucket_remove_index(T, key.pred_id, key.pred_arity, idx);
+  arena_free_chunks(T, T->db[idx].mem);
+  T->db[idx].mem = NULL;
   T->db[idx].head = NULL;
   T->db_dead++;
 }
@@ -517,6 +519,20 @@ static size_t body_as_term(trilog_t *T, size_t *goals, int32_t n) {
 }
 
 static void rename_init(size_t *rename, int32_t n);
+
+// The caller frees the result or gives it an owner before anything allocates.
+static int pending_templates(trilog_t *T, size_t *terms, int32_t n,
+                             tterm_t **out, int32_t *nvars) {
+  T->arena_into = &T->arena_pending;
+  int ok = heap_terms_to_templates(T, terms, n, out, nvars);
+  T->arena_into = NULL;
+  return ok;
+}
+
+static void pending_free(trilog_t *T) {
+  arena_free_chunks(T, T->arena_pending);
+  T->arena_pending = NULL;
+}
 
 void bags_drop(trilog_t *T, int32_t from) {
   while (T->bag_count > from) {
@@ -1818,10 +1834,13 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
         b->cap = cap;
       }
       int32_t nvars;
-      T->arena_into = &b->chunks;
-      tterm_t *t = heap_to_template(T, f + 2, &nvars);
-      T->arena_into = NULL;
-      if (!t) {
+      tterm_t *t;
+      T->arena_pending = b->chunks;
+      b->chunks = NULL;
+      int whole = pending_templates(T, &(size_t){f + 2}, 1, &t, &nvars);
+      b->chunks = T->arena_pending;
+      T->arena_pending = NULL;
+      if (!whole) {
         T->pending_error_ball = make_cyclic_term_error(T);
         *ok = 0;
         return 1;
@@ -1846,13 +1865,16 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
   }
   if (arity == 2 && id == atom_copy_term) {
     int32_t nvars;
-    tterm_t *tmpl = heap_to_template(T, f + 1, &nvars);
-    if (!tmpl) {
+    tterm_t *tmpl;
+    if (!pending_templates(T, &(size_t){f + 1}, 1, &tmpl, &nvars)) {
+      pending_free(T);
       T->pending_error_ball = make_cyclic_term_error(T);
       *ok = 0;
       return 1;
     }
-    *ok = unify(T, f + 2, heap_copy(T, tmpl, tmp_rename(T, nvars), 0));
+    size_t copy = heap_copy(T, tmpl, tmp_rename(T, nvars), 0);
+    pending_free(T);
+    *ok = unify(T, f + 2, copy);
     return 1;
   }
   if (arity == 2 && id == atom_clause_candidates) {
@@ -2251,12 +2273,16 @@ size_t query_binding(trilog_t *T, int32_t i) { return T->solution_rename[i]; }
 static int do_throw(trilog_t *T, size_t ball, size_t *cn_out,
                     size_t *active_catch_ptr) {
   int32_t nballvars;
-  tterm_t *ball_template = heap_to_template(T, ball, &nballvars);
-  if (!ball_template)
-    ball_template = heap_to_template(T, make_cyclic_term_error(T), &nballvars);
+  tterm_t *ball_template;
+  if (!pending_templates(T, &ball, 1, &ball_template, &nballvars)) {
+    pending_free(T);
+    size_t cyclic = make_cyclic_term_error(T);
+    pending_templates(T, &cyclic, 1, &ball_template, &nballvars);
+  }
   size_t idx = *active_catch_ptr;
   for (;;) {
     if (idx == (size_t)-1) {
+      pending_free(T);
       T->uncaught_ball = ball;
       return 0;
     }
@@ -2266,6 +2292,7 @@ static int do_throw(trilog_t *T, size_t ball, size_t *cn_out,
     T->sp = entry.sp_at_entry;
     size_t ball_copy = fresh_copy_term(T, ball_template, nballvars);
     if (unify(T, entry.catcher, ball_copy)) {
+      pending_free(T);
       *active_catch_ptr = entry.outer_active_catch;
       *cn_out = build_conj_tail(T, &entry.recovery, 1, entry.continuation);
       return 1;
@@ -2428,22 +2455,29 @@ A:
         for (int32_t i = 0; i < nbody; i++)
           all_terms[1 + i] = body_refs[i];
 
+        T->arena_into = &T->arena_pending;
         tterm_t **templates =
             arena_alloc(T, (size_t)(1 + nbody) * sizeof(tterm_t *));
+        T->arena_into = NULL;
         int32_t nvars;
-        if (!heap_terms_to_templates(T, all_terms, 1 + nbody, templates,
-                                     &nvars)) {
+        if (!pending_templates(T, all_terms, 1 + nbody, templates, &nvars)) {
+          pending_free(T);
           if (do_throw(T, make_cyclic_term_error(T), &cn, &active_catch))
             goto A;
           return QUERY_ERROR;
         }
+        templates = templates_flatten(T, templates, 1 + nbody);
 
-        if (fd_id == atom_asserta)
+        if (fd_id == atom_asserta) {
           db_add_front(T, templates[0], nbody > 0 ? templates + 1 : NULL, nbody,
                        nvars);
-        else
+          T->db[0].mem = T->arena_pending;
+        } else {
           db_add(T, templates[0], nbody > 0 ? templates + 1 : NULL, nbody,
                  nvars, 0);
+          T->db[T->db_count - 1].mem = T->arena_pending;
+        }
+        T->arena_pending = NULL;
         cn = rest;
         goto A;
       }

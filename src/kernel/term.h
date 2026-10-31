@@ -29,6 +29,8 @@ tterm_t *tt_struct(trilog_t *T, const char *name, int32_t arity,
 
 size_t heap_copy(trilog_t *T, tterm_t *t, size_t *rename, size_t cut_barrier);
 int unify_template(trilog_t *T, tterm_t *t, size_t goal, size_t *rename);
+// Returns roots, moved with the templates under them into one exact chunk.
+tterm_t **templates_flatten(trilog_t *T, tterm_t **roots, int32_t n);
 size_t heap_copy_goal(trilog_t *T, tterm_t *t, size_t *rename,
                       size_t cut_barrier);
 size_t heap_rebake_cuts(trilog_t *T, size_t r, size_t cut_barrier);

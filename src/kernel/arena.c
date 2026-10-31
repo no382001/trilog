@@ -75,6 +75,34 @@ void arena_free_chunks(trilog_t *T, struct chunk *c) {
   }
 }
 
+struct chunk *arena_flatten(trilog_t *T, struct chunk *list) {
+  size_t total = 0;
+  for (chunk_t *c = list; c; c = c->next)
+    total += c->used;
+  chunk_t *flat = new_chunk(T, list, total ? total : 8);
+  for (chunk_t *c = list; c; c = c->next) {
+    memcpy(flat->data + flat->used, c->data, c->used);
+    flat->used += c->used;
+  }
+  return flat;
+}
+
+void *arena_moved(struct chunk *flat, const void *p) {
+  size_t base = 0;
+  for (chunk_t *c = flat->next; c; c = c->next) {
+    const char *b = c->data;
+    if ((const char *)p >= b && (const char *)p < b + c->used)
+      return flat->data + base + (size_t)((const char *)p - b);
+    base += c->used;
+  }
+  return NULL;
+}
+
+void arena_drop_rest(trilog_t *T, struct chunk *flat) {
+  arena_free_chunks(T, flat->next);
+  flat->next = NULL;
+}
+
 void arena_temp_reset(trilog_t *T) {
   if (!T->arena_temp)
     return;

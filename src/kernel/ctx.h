@@ -47,8 +47,9 @@ struct trilog {
   struct chunk *arena_current;
   struct chunk *arena_temp;
   bool arena_use_temp;
-  struct chunk **arena_into; // when set, arena_alloc allocates there
-  bag_t *bags;               // a stack: findalls nest
+  struct chunk **arena_into;   // when set, arena_alloc allocates there
+  struct chunk *arena_pending; // a copy being built, freed if it is cut short
+  bag_t *bags;                 // a stack: findalls nest
   int32_t bag_count, bag_cap;
 
   cell_t *heap;

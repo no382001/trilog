@@ -26,6 +26,8 @@ static const trilog_term_t invalid_term = {(size_t)-1};
 
 static trilog_status_t unwound(trilog_t *t) {
   t->arena_into = NULL;
+  arena_free_chunks(t, t->arena_pending);
+  t->arena_pending = NULL;
   bags_drop(t, 0);
   t->heap_top = 0;
   t->trail_top = 0;
@@ -128,6 +130,7 @@ void trilog_free(trilog_t *t) {
     stream_close(t, i);
   bags_drop(t, 0);
   mem_free(t, t->bags);
+  arena_free_chunks(t, t->arena_pending);
   for (int i = 0; i < PRED_HASH_SIZE; i++)
     while (t->pred_hash[i]) {
       pred_bucket_t *next = t->pred_hash[i]->next;
@@ -135,6 +138,8 @@ void trilog_free(trilog_t *t) {
       mem_free(t, t->pred_hash[i]);
       t->pred_hash[i] = next;
     }
+  for (int32_t i = 0; i < t->db_count; i++)
+    arena_free_chunks(t, t->db[i].mem);
   mem_free(t, t->db);
   mem_free(t, t->tok);
   mem_free(t, t->answer_vars);

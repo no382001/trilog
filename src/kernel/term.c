@@ -181,6 +181,29 @@ int unify_template(trilog_t *T, tterm_t *t, size_t goal, size_t *rename) {
   }
 }
 
+tterm_t **templates_flatten(trilog_t *T, tterm_t **roots, int32_t n) {
+  struct chunk *flat = arena_flatten(T, T->arena_pending);
+  T->arena_pending = flat;
+  tterm_t **moved = arena_moved(flat, roots);
+  size_t wbase = T->wsp;
+  for (int32_t i = 0; i < n; i++) {
+    moved[i] = arena_moved(flat, moved[i]);
+    wstack_push(T, (size_t)(uintptr_t)moved[i]);
+  }
+  while (T->wsp > wbase) {
+    tterm_t *t = (tterm_t *)(uintptr_t)T->wstack[--T->wsp];
+    if (t->tag != T_STR || t->as.str.arity <= 0)
+      continue;
+    t->as.str.args = arena_moved(flat, t->as.str.args);
+    for (int32_t j = 0; j < t->as.str.arity; j++) {
+      t->as.str.args[j] = arena_moved(flat, t->as.str.args[j]);
+      wstack_push(T, (size_t)(uintptr_t)t->as.str.args[j]);
+    }
+  }
+  arena_drop_rest(T, flat);
+  return moved;
+}
+
 static int is_bang(tterm_t *t) {
   return t->tag == T_ATOM && t->as.atom_id == atom_bang;
 }
