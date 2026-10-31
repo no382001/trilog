@@ -126,19 +126,21 @@ static void ensure_index_cap(trilog_t *T, size_t n) {
   T->new_index_cap = new_cap;
 }
 
-// scratch arrays only grow; unlike heap_cap, shrinking them here is free.
+// Shrinking on every collection would realloc and fault the pages back in.
+#define SHRINK_SLACK 4
+
 static void shrink_scratch_to(trilog_t *T, size_t n) {
   if (n < 1024)
     n = 1024;
-  if (T->marked_cap > n) {
+  if (T->marked_cap / SHRINK_SLACK > n) {
     T->marked = gc_shrink(T, T->marked, n);
     T->marked_cap = n;
   }
-  if (T->new_index_cap > n) {
+  if (T->new_index_cap / SHRINK_SLACK > n) {
     T->new_index = gc_shrink(T, T->new_index, n * sizeof(size_t));
     T->new_index_cap = n;
   }
-  if (T->trail_new_index_cap > n) {
+  if (T->trail_new_index_cap / SHRINK_SLACK > n) {
     T->trail_new_index = gc_shrink(T, T->trail_new_index, n * sizeof(size_t));
     T->trail_new_index_cap = n;
   }
@@ -388,10 +390,11 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
   T->gc_threshold = next > floor ? next : floor;
 
   // tie capacity to gc_threshold so it can shrink after a big collection.
-  if (GC_SHRINK || T->gc_threshold > heap_capacity(T))
+  if (T->gc_threshold > heap_capacity(T) ||
+      (GC_SHRINK && heap_capacity(T) / SHRINK_SLACK > T->gc_threshold))
     heap_set_capacity(T, T->gc_threshold);
   if (GC_SHRINK)
-    shrink_scratch_to(T, new_top + 1);
+    shrink_scratch_to(T, T->gc_threshold + 1);
 
   if (T->gc_debug) {
     char msg[300];
