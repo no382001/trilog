@@ -126,6 +126,7 @@
   X(atom_dollar_var, "$VAR")                                                   \
   X(atom_clause_candidates, "$$clause_candidates")                             \
   X(atom_bag_open, "$$bag_open")                                               \
+  X(atom_predicates, "$$predicates")                                           \
   X(atom_bag_add, "$$bag_add")                                                 \
   X(atom_bag_collect, "$$bag_collect")                                         \
   X(atom_bag_drop, "$$bag_drop")                                               \

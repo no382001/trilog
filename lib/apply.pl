@@ -1,3 +1,5 @@
+:- '$builtin_file'.
+
 %!  maplist(:Goal, ?List[, ?List2[, ?List3]]) is nondet.
 maplist(_, []).
 maplist(G, [X|Xs]) :- call(G, X), maplist(G, Xs).

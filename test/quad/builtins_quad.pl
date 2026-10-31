@@ -851,3 +851,38 @@ bcapply(G) :- call(G).
 
 ?- X is pi, X > 3.14159, X < 3.1416.
    X = 3.141592653589793.
+
+% --- current_predicate/1 lists user-defined predicates only ---
+
+cp_mine(1).
+cp_mine(2).
+
+?- current_predicate(cp_mine/1).
+   true.
+
+?- current_predicate(cp_mine/A).
+   A = 1.
+
+?- current_predicate(current_predicate/1).
+   false.
+
+?- current_predicate(append/3).
+   false.
+
+?- current_predicate('$dyn_call'/1).
+   false.
+
+?- current_predicate(no_such_pred/0).
+   false.
+
+?- assertz(cp_dyn(1)), current_predicate(cp_dyn/1).
+   true.
+
+?- abolish(cp_dyn/1), current_predicate(cp_dyn/1).
+   false.
+
+?- catch(current_predicate(foo), error(E, _), true).
+   E = type_error(predicate_indicator,foo).
+
+?- catch(current_predicate(f/a), error(E, _), true).
+   E = type_error(predicate_indicator,f/a).

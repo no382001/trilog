@@ -1,4 +1,3 @@
-% mi standard library.
 % '$$name' = raw kernel primitive; 
 % '$name' = private helper.
 
@@ -74,6 +73,11 @@ consult(File) :-
 
 % library(Name) resolves next to the core: lib/Name.pl beside boot/.
 :- '$$loading_file'(F), '$$assertz'('$boot_file'(F)).
+
+%   A file whose first directive is '$builtin_file' holds built-ins:
+%   current_predicate/1 will not list them.
+'$builtin_file' :- '$$loading_file'(F), '$$assertz'('$builtin_file'(F)).
+:- '$builtin_file'.
 
 %!  ensure_loaded(+File) is det.
 %   File is a file name or library(Name); it is loaded unless already loaded.
@@ -305,6 +309,21 @@ findall(Template, Goal, List) :-
     catch(( call(Goal), '$$bag_add'(Bag, Template), fail ; true ), Error,
           ( '$$bag_drop'(Bag), throw(Error) )),
     '$$bag_collect'(Bag, List).
+
+%!  current_predicate(?PI) is nondet.
+%   PI is Name/Arity of a user-defined predicate with at least one clause.
+current_predicate(PI) :-
+    '$with_context'('$current_predicate'(PI), current_predicate/1).
+'$current_predicate'(PI) :-
+    (   var(PI) -> true
+    ;   PI = N/A, ( var(N) ; atom(N) ), ( var(A) ; integer(A) ) -> true
+    ;   throw(error(type_error(predicate_indicator, PI), _))
+    ),
+    '$$predicates'(Ps),
+    member(N/A-F, Ps),
+    \+ '$builtin_file'(F),
+    \+ atom_concat('$', _, N),
+    PI = N/A.
 
 %!  clause(?Head, ?Body) is nondet.
 clause(Head, Body) :-

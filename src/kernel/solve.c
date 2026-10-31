@@ -1877,6 +1877,23 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     *ok = unify(T, f + 2, copy);
     return 1;
   }
+  if (arity == 1 && id == atom_predicates) {
+    size_t list = heap_new_atom(T, atom_nil);
+    for (int i = 0; i < PRED_HASH_SIZE; i++)
+      for (pred_bucket_t *b = T->pred_hash[i]; b; b = b->next) {
+        if (b->count == 0)
+          continue;
+        int32_t source = T->db[b->indices[0]].source;
+        size_t pi[2] = {heap_new_atom(T, b->pred_id),
+                        heap_new_int(T, b->pred_arity)};
+        size_t entry[2] = {heap_new_struct(T, atom_slash, 2, pi),
+                           heap_new_atom(T, source >= 0 ? source : atom_nil)};
+        size_t cell[2] = {heap_new_struct(T, atom_minus, 2, entry), list};
+        list = heap_new_struct(T, atom_dot, 2, cell);
+      }
+    *ok = unify(T, f + 1, list);
+    return 1;
+  }
   if (arity == 2 && id == atom_clause_candidates) {
     idx_key_t want = key_of_goal(T, f + 1);
     size_t list = heap_new_atom(T, atom_nil);

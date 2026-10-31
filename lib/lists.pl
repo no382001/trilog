@@ -1,3 +1,4 @@
+:- '$builtin_file'.
 
 %!  append(?List1, ?List2, ?List3) is nondet.
 append([], L, L).

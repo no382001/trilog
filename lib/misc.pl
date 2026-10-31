@@ -1,3 +1,5 @@
+:- '$builtin_file'.
+
 %!  forall(:Cond, :Action) is semidet.
 forall(Cond, Action) :- \+ (Cond, \+ Action).
 

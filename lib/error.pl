@@ -1,3 +1,5 @@
+:- '$builtin_file'.
+
 %!  boolean(@Term) is semidet.
 boolean(true).
 boolean(false).
