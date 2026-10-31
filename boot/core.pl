@@ -809,7 +809,7 @@ retractall(Head) :-
     '$retractall'(Head).
 
 '$retractall'(Head) :-
-    ( copy_term(Head, Fresh), '$$retract'(Fresh) -> '$retractall'(Head) ; true ).
+    ( copy_term(Head, Fresh), '$$retract'((Fresh :- _)) -> '$retractall'(Head) ; true ).
 
 %!  abolish(+Name/Arity) is det.
 %   the predicate stops existing

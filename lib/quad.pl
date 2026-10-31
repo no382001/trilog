@@ -609,7 +609,7 @@ run_quad_file(File, Skip) :-
     close(S),
     maplist(uncommented, Lines0, Lines),
     phrase(quad_items(Items), Lines, _),
-    run_items(Items, Skip, 0),
+    run_items(Items, Skip),
     quad_stat(Total, Passed, Failed, TotalMs),
     ms_to_secs_atom(TotalMs, TotalTimeAtom),
     write('# '), write(File), write(': '), write(Total), write(' tests, '),
@@ -625,15 +625,19 @@ read_lines(S, Lines) :-
         read_lines(S, Lines1)
     ).
 
-run_items([], _, _).
-run_items([I|Is], Skip, Seen0) :-
-    run_item(I, Skip, Seen0, Seen),
-    run_items(Is, Skip, Seen).
+% Each run of clauses between tests is a small consult: the first clause a
+% block gives a predicate replaces what earlier blocks defined for it.
+run_items(Items, Skip) :- run_items(Items, Skip, 0, []).
 
-run_item(test(Query, Answer), Skip, Seen0, Seen) :-
+run_items([], _, _, _).
+run_items([I|Is], Skip, Seen0, Block0) :-
+    run_item(I, Skip, Seen0, Seen, Block0, Block),
+    run_items(Is, Skip, Seen, Block).
+
+run_item(test(Query, Answer), Skip, Seen0, Seen, _, []) :-
     Seen is Seen0 + 1,
     ( Seen =< Skip -> true ; once(run_one_test(Query, Answer, _)) ).
-run_item(directive(Cs), _, Seen, Seen) :-
+run_item(directive(Cs), _, Seen, Seen, _, []) :-
     strip_terminating_dot(Cs, Text),
     atom_chars(A, Text),
     (   catch((atom_to_term(A, Goal, _),
@@ -641,10 +645,30 @@ run_item(directive(Cs), _, Seen, Seen) :-
     ->  true
     ;   true
     ).
-run_item(clause(Cs), _, Seen, Seen) :-
+run_item(clause(Cs), _, Seen, Seen, Block0, Block) :-
     strip_terminating_dot(Cs, Text),
     atom_chars(A, Text),
-    ( catch((atom_to_term(A, Term, _), assertz(Term)), _, fail) -> true ; true ).
+    (   catch(atom_to_term(A, Term, _), _, fail),
+        clause_predicate(Term, PI)
+    ->  block_predicate(PI, Block0, Block),
+        catch(add_clause(Term), _, true)
+    ;   Block = Block0
+    ).
+
+clause_predicate((H --> _), N/A) :- !, dcg_head(H, H0), functor(H0, N, A0), A is A0 + 2.
+clause_predicate((H :- _), N/A) :- !, callable(H), functor(H, N, A).
+clause_predicate(H, N/A) :- callable(H), functor(H, N, A).
+
+dcg_head((H, _), H) :- !.
+dcg_head(H, H).
+
+block_predicate(PI, Block, Block) :- memberchk(PI, Block), !.
+block_predicate(N/A, Block, [N/A|Block]) :-
+    functor(Skel, N, A),
+    catch(retractall(Skel), _, true).
+
+add_clause((H --> B)) :- !, '$dcg_compile'(H, B).
+add_clause(Clause) :- assertz(Clause).
 
 % --- CLI entry point: exit code 0 if all pass, 1 if any failed ---
 

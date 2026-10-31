@@ -1092,37 +1092,6 @@ insect(bee).
 foo(X) :- call(@X), call(@X).
 foo(X) :- call(@X) -> call(@X).
 
-:- dynamic(legs/2).
-legs(A, 4) :- animal(A).
-legs(A, 6) :- insect(A).
-legs(spider, 8).
-:- dynamic(insect/1).
-insect(ant).
-insect(bee).
-:- dynamic(foo/1).
-foo(X) :- call(@X), call(@X).
-foo(X) :- call(@X) -> call(@X).
-
-:- dynamic(legs/2).
-legs(A, 4) :- animal(A).
-legs(A, 6) :- insect(A).
-legs(spider, 8).
-legs(B, 2) :- bird(B).
-:- dynamic(insect/1).
-insect(ant).
-insect(bee).
-:- dynamic(foo/1).
-foo(X) :- call(@X), call(@X).
-foo(X) :- call(@X) -> call(@X).
-
-:- dynamic(legs/2).
-:- dynamic(insect/1).
-insect(ant).
-insect(bee).
-:- dynamic(foo/1).
-foo(X) :- call(@X), call(@X).
-foo(X) :- call(@X) -> call(@X).
-
 ?- retract(legs(octopus, 8)).
    true.
 
