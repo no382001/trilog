@@ -2517,9 +2517,7 @@ B: {
     heap_release(T, hmark);
 
     size_t *r2 = tmp_rename(T, c->nvars);
-    size_t h = heap_copy(T, c->head, r2, cut_barrier);
-
-    if (!unify(T, h, first))
+    if (!unify_template(T, c->head, first, r2))
       goto B;
 
     size_t *bodies = tmp_goals(T, c->nbody);

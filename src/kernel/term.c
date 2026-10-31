@@ -121,6 +121,66 @@ size_t heap_copy(trilog_t *T, tterm_t *t, size_t *rename, size_t cut_barrier) {
   }
 }
 
+// Same as unify(heap_copy(t), goal) but builds only the parts of t
+// that meet an unbound variable in goal.
+int unify_template(trilog_t *T, tterm_t *t, size_t goal, size_t *rename) {
+  size_t wbase = T->wsp;
+  for (;;) {
+    size_t g = heap_deref(T, goal);
+    int ok = 1;
+    if (t->tag == T_VAR) {
+      size_t *v = &rename[t->as.slot];
+      if (*v == (size_t)-1)
+        *v = g;
+      else
+        ok = unify(T, *v, g);
+    } else if (T->heap[g].tag == TAG_REF) {
+      heap_bind(T, g, heap_copy(T, t, rename, 0));
+    } else {
+      switch (t->tag) {
+      case T_ATOM:
+        ok = T->heap[g].tag == TAG_ATOM &&
+             T->heap[g].as.atom_id == t->as.atom_id;
+        break;
+      case T_INT:
+        ok = T->heap[g].tag == TAG_INT && T->heap[g].as.ival == t->as.ival;
+        break;
+      case T_FLT:
+        ok = T->heap[g].tag == TAG_FLT && T->heap[g].as.fval == t->as.fval;
+        break;
+      default: {
+        if (T->heap[g].tag != TAG_STR) {
+          ok = 0;
+          break;
+        }
+        size_t f = T->heap[g].as.ptr;
+        int32_t arity = t->as.str.arity;
+        if (T->heap[f].as.func.atom_id != t->as.str.atom_id ||
+            T->heap[f].as.func.arity != arity) {
+          ok = 0;
+          break;
+        }
+        for (int32_t i = arity - 1; i >= 1; i--) {
+          wstack_push(T, (size_t)(uintptr_t)t->as.str.args[i - 1]);
+          wstack_push(T, f + (size_t)i);
+        }
+        t = t->as.str.args[arity - 1];
+        goal = f + (size_t)arity;
+        continue;
+      }
+      }
+    }
+    if (!ok) {
+      T->wsp = wbase;
+      return 0;
+    }
+    if (T->wsp == wbase)
+      return 1;
+    goal = T->wstack[--T->wsp];
+    t = (tterm_t *)(uintptr_t)T->wstack[--T->wsp];
+  }
+}
+
 static int is_bang(tterm_t *t) {
   return t->tag == T_ATOM && t->as.atom_id == atom_bang;
 }
