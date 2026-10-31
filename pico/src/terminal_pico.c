@@ -12,6 +12,11 @@ bool terminal_read_line(char *buf, size_t cap) {
     int c = getchar();
     if (c == EOF)
       return false;
+    if (c == 3) {
+      fputs("^C\n", stdout);
+      i = 0;
+      break;
+    }
     if (c == '\r' || c == '\n') {
       putchar('\n');
       break;
