@@ -267,12 +267,8 @@ static int first_arg_conflicts(arg_key_t k, const clause_t *c) {
          (k.kind != IDX_ATOM && k.b != c->arg.b);
 }
 
-// db index of the first clause at or after from_idx that matches key, or -1.
-// Walks only key's predicate bucket, whose indices stay sorted ascending.
-static int32_t next_candidate(trilog_t *T, int32_t from_idx, idx_key_t key) {
-  pred_bucket_t *b = pred_bucket_find(T, key.pred_id, key.pred_arity);
-  if (!b)
-    return -1;
+// First position in b at or after db index from_idx; b's indices are sorted.
+static int32_t bucket_seek(const pred_bucket_t *b, int32_t from_idx) {
   int32_t lo = 0, hi = b->count;
   while (lo < hi) {
     int32_t mid = lo + (hi - lo) / 2;
@@ -281,16 +277,16 @@ static int32_t next_candidate(trilog_t *T, int32_t from_idx, idx_key_t key) {
     else
       hi = mid;
   }
-  arg_key_t arg = arg_key_of(key);
-  for (; lo < b->count; lo++)
-    if (!first_arg_conflicts(arg, &T->db[b->indices[lo]]))
-      return b->indices[lo];
-  return -1;
+  return lo;
 }
 
-static int no_more_candidates(trilog_t *T, int32_t from_idx,
-                              idx_key_t caller_key) {
-  return next_candidate(T, from_idx, caller_key) < 0;
+// Position in b of the first clause from pos on that matches arg, or -1.
+static int32_t bucket_match(trilog_t *T, const pred_bucket_t *b, int32_t pos,
+                            arg_key_t arg) {
+  for (; pos < b->count; pos++)
+    if (!first_arg_conflicts(arg, &T->db[b->indices[pos]]))
+      return pos;
+  return -1;
 }
 
 static void db_reserve(trilog_t *T, int32_t cap) {
@@ -2264,6 +2260,7 @@ static query_result_t run_query_body(trilog_t *T, tterm_t **goals,
 
   size_t first, rest;
   int32_t clause_idx = 0;
+  int32_t next_match = -1; // the db index after clause_idx that matches, or -1
   idx_key_t caller_key = {.kind = IDX_ANY};
   size_t active_catch = (size_t)-1;
   int predicate_known = 0;
@@ -2480,8 +2477,9 @@ B: {
   pred_bucket_t *bk =
       pred_bucket_find(T, caller_key.pred_id, caller_key.pred_arity);
   predicate_known = bk && bk->count > 0;
-  int32_t next = next_candidate(T, clause_idx, caller_key);
-  if (next < 0) {
+  arg_key_t arg = arg_key_of(caller_key);
+  int32_t pos = bk ? bucket_match(T, bk, bucket_seek(bk, clause_idx), arg) : -1;
+  if (pos < 0) {
     if (clause_idx > 0)
       goto C; // resuming a call that already matched: out of clauses is a
               // plain fail, even if the predicate was abolished meanwhile
@@ -2508,26 +2506,31 @@ B: {
     }
     goto C;
   }
-  clause_idx = next;
+  clause_idx = bk->indices[pos];
+  int32_t after = bucket_match(T, bk, pos + 1, arg);
+  next_match = after < 0 ? -1 : bk->indices[after];
 }
   {
     clause_t *c = &T->db[clause_idx];
-    clause_idx++;
     trail_release(T, tmark);
     heap_release(T, hmark);
 
     size_t *r2 = tmp_rename(T, c->nvars);
-    if (!unify_template(T, c->head, first, r2))
+    if (!unify_template(T, c->head, first, r2)) {
+      if (next_match < 0)
+        goto C;
+      clause_idx = next_match;
       goto B;
+    }
 
     size_t *bodies = tmp_goals(T, c->nbody);
     for (int32_t i = 0; i < c->nbody; i++)
       bodies[i] = heap_copy_goal(T, c->body[i], r2, cut_barrier);
     size_t newcn = build_conj_tail(T, bodies, c->nbody, rest);
 
-    if (!no_more_candidates(T, clause_idx, caller_key))
+    if (next_match >= 0)
       stack_push(T, (frame_t){.goals = cn,
-                              .clause_idx = clause_idx,
+                              .clause_idx = next_match,
                               .heap_mark = hmark,
                               .trail_mark = tmark,
                               .cut_barrier = cut_barrier,
