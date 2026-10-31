@@ -302,3 +302,20 @@ gt2(X) :- X > 2.
 
 ?- findall(P, permutation([1,2,3], P), L), length(L, N).
    L = [[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1]], N = 6.
+
+% --- acyclic_term/1 ---
+
+?- acyclic_term(f(X, g(X), [a, b])).
+   true.
+
+?- acyclic_term(_).
+   true.
+
+?- X = f(X), acyclic_term(X).
+   false.
+
+?- X = [a|X], acyclic_term(g(1, X)).
+   false.
+
+?- Y = f(a), acyclic_term(t(Y, Y, Y)).
+   Y = f(a).

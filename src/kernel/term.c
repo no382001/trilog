@@ -896,6 +896,52 @@ done:
   return first;
 }
 
+bool heap_acyclic(trilog_t *T, size_t r) {
+  size_t base = T->template_marks_len, wbase = T->wsp;
+  bool acyclic = true;
+  for (;;) {
+    r = heap_deref(T, r);
+    if (T->heap[r].tag == TAG_STR) {
+      size_t f = T->heap[r].as.ptr;
+      int32_t arity = T->heap[f].as.func.arity;
+      if (arity < 0) {
+        acyclic = false;
+        break;
+      }
+      if (arity > 0) {
+        template_mark(T, f);
+        wstack_push(T, TEMPLATE_EXIT);
+        wstack_push(T, f);
+        for (int32_t i = arity - 1; i >= 1; i--) {
+          wstack_push(T, f + 1 + (size_t)i);
+          wstack_push(T, 0);
+        }
+        r = f + 1;
+        continue;
+      }
+    }
+    for (;;) {
+      if (T->wsp == wbase)
+        goto done;
+      T->wsp--;
+      size_t a = T->wstack[--T->wsp];
+      if (a != TEMPLATE_EXIT) {
+        r = a;
+        break;
+      }
+      size_t f = T->template_marks[--T->template_marks_len];
+      T->heap[f].as.func.arity = -1 - T->heap[f].as.func.arity;
+    }
+  }
+done:
+  while (T->template_marks_len > base) {
+    size_t f = T->template_marks[--T->template_marks_len];
+    T->heap[f].as.func.arity = -1 - T->heap[f].as.func.arity;
+  }
+  T->wsp = wbase;
+  return acyclic;
+}
+
 // 0 if any of terms is cyclic.
 int heap_terms_to_templates(trilog_t *T, size_t *terms, int32_t n,
                             tterm_t **out, int32_t *nvars_out) {

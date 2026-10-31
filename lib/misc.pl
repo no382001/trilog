@@ -43,3 +43,31 @@ atom_number(A, N) :-
 atom_number(A, N) :-
     '$$number_codes'(N, C),
     '$$atom_codes'(A, C).
+
+%!  countall(:Goal, ?N) is det.
+%   N is the number of answers of Goal.
+countall(G, N) :-
+    '$must_be_callable'(G),
+    '$must_be_count'(N),
+    findall(t, G, Ts),
+    length(Ts, N).
+
+%!  call_nth(:Goal, ?Nth) is nondet.
+%   Goal's Nth answer; with Nth unbound, each answer with its position.
+call_nth(G, Nth) :-
+    '$must_be_count'(Nth),
+    Nth \== 0,
+    State = count(0),
+    call(G),
+    arg(1, State, C0),
+    C is C0 + 1,
+    '$$nb_setarg'(1, State, C),
+    ( integer(Nth) -> C =:= Nth, ! ; Nth = C ).
+
+'$must_be_callable'(G) :- var(G), !, throw(error(instantiation_error, _)).
+'$must_be_callable'(G) :- callable(G), !.
+'$must_be_callable'(G) :- throw(error(type_error(callable, G), _)).
+
+'$must_be_count'(N) :- var(N), !.
+'$must_be_count'(N) :- integer(N), !, ( N >= 0 -> true ; throw(error(domain_error(not_less_than_zero, N), _)) ).
+'$must_be_count'(N) :- throw(error(type_error(integer, N), _)).

@@ -33,13 +33,17 @@
 
 '->'(Cond, Then) :- Cond, !, Then.
 
-%!  call(:Goal), call(:Goal, +A1..+A3) is nondet.
-%   call/1: fresh cut scope (native). call/2-4: extend via univ, then call/1.
+%!  call(:Goal), call(:Goal, +A1..+A7) is nondet.
+%   call/1: fresh cut scope (native). call/2-8: extend via univ, then call/1.
 call(G) :- G.
 
 call(G, A1) :- G =.. L, append(L, [A1], L2), G2 =.. L2, call(G2).
 call(G, A1, A2) :- G =.. L, append(L, [A1,A2], L2), G2 =.. L2, call(G2).
 call(G, A1, A2, A3) :- G =.. L, append(L, [A1,A2,A3], L2), G2 =.. L2, call(G2).
+call(G, A1, A2, A3, A4) :- G =.. L, append(L, [A1,A2,A3,A4], L2), G2 =.. L2, call(G2).
+call(G, A1, A2, A3, A4, A5) :- G =.. L, append(L, [A1,A2,A3,A4,A5], L2), G2 =.. L2, call(G2).
+call(G, A1, A2, A3, A4, A5, A6) :- G =.. L, append(L, [A1,A2,A3,A4,A5,A6], L2), G2 =.. L2, call(G2).
+call(G, A1, A2, A3, A4, A5, A6, A7) :- G =.. L, append(L, [A1,A2,A3,A4,A5,A6,A7], L2), G2 =.. L2, call(G2).
 
 %!  once(:Goal) is semidet.
 once(G) :- call(G), !.

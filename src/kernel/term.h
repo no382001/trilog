@@ -53,6 +53,7 @@ void answer_name_claim(trilog_t *T, size_t ref, const char *name);
 const char *answer_name(trilog_t *T, size_t ref);
 
 tterm_t *heap_to_template(trilog_t *T, size_t r, int32_t *nvars_out);
+bool heap_acyclic(trilog_t *T, size_t r);
 
 int heap_terms_to_templates(trilog_t *T, size_t *terms, int32_t n,
                             tterm_t **out, int32_t *nvars_out);

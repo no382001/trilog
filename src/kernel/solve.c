@@ -1877,6 +1877,27 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     *ok = unify(T, f + 2, copy);
     return 1;
   }
+  if (arity == 1 && id == atom_acyclic_term) {
+    *ok = heap_acyclic(T, f + 1);
+    return 1;
+  }
+  if (arity == 3 && id == atom_nb_setarg) {
+    // no trail entry, so the value survives backtracking; an atomic value has
+    // no cells to be released.
+    size_t n = heap_deref(T, f + 1), c = heap_deref(T, f + 2),
+           v = heap_deref(T, f + 3);
+    tag_t vt = T->heap[v].tag;
+    *ok = T->heap[n].tag == TAG_INT && T->heap[c].tag == TAG_STR &&
+          (vt == TAG_INT || vt == TAG_ATOM || vt == TAG_FLT);
+    if (*ok) {
+      size_t cf = T->heap[c].as.ptr;
+      int64_t i = T->heap[n].as.ival;
+      *ok = i >= 1 && i <= T->heap[cf].as.func.arity;
+      if (*ok)
+        T->heap[cf + (size_t)i] = T->heap[v];
+    }
+    return 1;
+  }
   if (arity == 1 && id == atom_predicates) {
     size_t list = heap_new_atom(T, atom_nil);
     for (int i = 0; i < PRED_HASH_SIZE; i++)

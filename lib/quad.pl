@@ -245,9 +245,23 @@ parse_expected(Alt, Expected, Mode) :-
     exclude(==([]), Trimmed, Answers),
     maplist(chars_atom, Answers, Expected1),
     (   append(Prefix, ['..., ad_infinitum'], Expected1)
-    ->  Mode = ad_infinitum, Expected = Prefix
+    ->  Mode = more(8), Expected = Prefix
+    ;   append(Prefix, ['...'], Expected1)
+    ->  Mode = more(1), Expected = Prefix
     ;   Mode = exact, Expected = Expected1
     ).
+
+% A test written only as answers marked ", unexpected." passes unless it gives one.
+unexpected_answers(Raw, Us) :-
+    phrase(lines(Ls), Raw),
+    include(unexpected_line, Ls, ULs),
+    ULs \== [],
+    maplist(drop_unexpected, ULs, Us).
+
+drop_unexpected(L, U) :-
+    trim(L, T),
+    ( append(U0, ", unexpected.", T) -> true ; append(U0, ", unexpected", T) ),
+    trim(U0, U).
 
 answer_groups([], []).
 answer_groups([L|Ls], Gs) :- answer_groups(Ls, [L], Gs).
@@ -336,7 +350,10 @@ quad_now(T) :-
 
 run_one_test(QueryRaw, AnswerRaw, Pass) :-
     query_text(QueryRaw, Query),
-    ( quad_alternatives(AnswerRaw, Alts) -> true ; Alts = ["no answer to test"] ),
+    (   quad_alternatives(AnswerRaw, Alts) -> Expect = Alts
+    ;   unexpected_answers(AnswerRaw, Us) -> Expect = not(Us)
+    ;   Expect = ["no answer to test"]
+    ),
     quad_display(Query, Display),
     quad_ckpt_before(Display),
     quad_now(T0),
@@ -353,7 +370,7 @@ run_one_test(QueryRaw, AnswerRaw, Pass) :-
     ),
     quad_now(T1),
     ElapsedMs is T1 - T0,
-    quad_judge_alts(Alts, Got, Snaps, Error, Pass, Reason),
+    quad_judge_expect(Expect, Got, Snaps, Error, Pass, Reason),
     retract(quad_stat(TN0, P0, F0, TMs0)),
     TestNum is TN0 + 1,
     ( Pass == true -> P1 is P0 + 1, F1 = F0 ; P1 = P0, F1 is F0 + 1 ),
@@ -394,18 +411,25 @@ quad_judge_alts([Alt|Alts], Got, Snaps, Error, Pass, Reason) :-
     ).
 
 quad_judge(Expected, Got, Snaps, Error, Mode, Pass, Reason) :-
-    ( Mode == ad_infinitum
-    -> quad_judge_ad_infinitum(Expected, Got, Snaps, Error, Pass, Reason)
+    ( Mode = more(Witness)
+    -> quad_judge_more(Expected, Witness, Got, Snaps, Error, Pass, Reason)
     ;  quad_judge_exact(Expected, Got, Snaps, Error, Pass, Reason)
     ).
 
-quad_ad_infinitum_witness(8).
+quad_judge_expect(not(Us), Got, Snaps, Error, Pass, Reason) :- !,
+    (   quad_judge_alts(Us, Got, Snaps, Error, true, _)
+    ->  Pass = false,
+        format_atom('gave an answer marked unexpected: ~w', [quad_got(Got, Error)], Reason)
+    ;   Pass = true, Reason = ''
+    ).
+quad_judge_expect(Alts, Got, Snaps, Error, Pass, Reason) :-
+    quad_judge_alts(Alts, Got, Snaps, Error, Pass, Reason).
 
-quad_judge_ad_infinitum(Expected, Got, Snaps, Error, Pass, Reason) :-
+% Expected answers, then at least Witness more.
+quad_judge_more(Expected, Witness, Got, Snaps, Error, Pass, Reason) :-
     ( Error \== none
     -> Pass = false, format_atom('error: ~w', [Error], Reason)
     ;  length(Expected, PrefixLen),
-       quad_ad_infinitum_witness(Witness),
        MinLen is PrefixLen + Witness,
        length(GotPrefix, PrefixLen),
        append(GotPrefix, _, Got),
@@ -415,9 +439,8 @@ quad_judge_ad_infinitum(Expected, Got, Snaps, Error, Pass, Reason) :-
        length(Got, GotLen),
        GotLen >= MinLen
     -> Pass = true, Reason = ''
-    ;  quad_ad_infinitum_witness(Witness2),
-       format_atom('expected: ~w, then ..., ad_infinitum (at least ~w more)~ngot: ~w',
-                   [Expected, Witness2, quad_got(Got, Error)], Reason),
+    ;  format_atom('expected: ~w, then at least ~w more~ngot: ~w',
+                   [Expected, Witness, quad_got(Got, Error)], Reason),
        Pass = false
     ).
 
@@ -507,9 +530,18 @@ qa_number_vars_list([A|As], N0, N) :- qa_number_vars(A, N0, N1), qa_number_vars_
 is_error_expectation(Atom, Type) :-
     atom_chars(Atom, Cs),
     append("error(", Rest, Cs),
-    append(TypeCs, [')'], Rest),
+    append(TypeCs0, [')'], Rest),
     !,
+    ( without_context(TypeCs0, TypeCs) -> true ; TypeCs = TypeCs0 ),
     atom_chars(Type, TypeCs).
+
+% "error(F, _)" expects the formal F with any context.
+without_context(Cs0, Cs) :-
+    trim_trailing(Cs0, Cs1),
+    append(Cs2, ['_'], Cs1),
+    trim_trailing(Cs2, Cs3),
+    append(Cs4, [','], Cs3),
+    trim_trailing(Cs4, Cs).
 is_error_expectation(Atom, Atom) :-
     catch(atom_to_term(Atom, T, _), _, fail),
     callable(T),

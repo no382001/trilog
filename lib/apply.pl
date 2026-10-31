@@ -14,6 +14,16 @@ maplist(G, [X|Xs], [Y|Ys], [Z|Zs]) :- call(G, X, Y, Z), maplist(G, Xs, Ys, Zs).
 foldl(_, [], Acc, Acc).
 foldl(G, [X|Xs], Acc0, Acc) :- call(G, X, Acc0, Acc1), foldl(G, Xs, Acc1, Acc).
 
+%!  foldl(:Goal, ?List1, ?List2, +V0, -V) is nondet.
+foldl(_, [], [], Acc, Acc).
+foldl(G, [X|Xs], [Y|Ys], Acc0, Acc) :- call(G, X, Y, Acc0, Acc1), foldl(G, Xs, Ys, Acc1, Acc).
+
+%!  foldl(:Goal, ?List1, ?List2, ?List3, +V0, -V) is nondet.
+foldl(_, [], [], [], Acc, Acc).
+foldl(G, [X|Xs], [Y|Ys], [Z|Zs], Acc0, Acc) :-
+    call(G, X, Y, Z, Acc0, Acc1),
+    foldl(G, Xs, Ys, Zs, Acc1, Acc).
+
 %!  include(:Goal, +List, -Included) is det.
 include(_, [], []).
 include(P, [X|Xs], Result) :-

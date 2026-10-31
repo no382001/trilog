@@ -44,16 +44,35 @@ last([X], X) :- !.
 last([_|T], X) :- last(T, X).
 
 %!  nth0(?Index, ?List, ?Elem) is nondet.
-nth0(I, L, E) :- integer(I), !, I >= 0, '$nth0_det'(I, L, E).
-nth0(I, L, E) :- var(I), '$nth0_gen'(L, E, 0, I).
+nth0(I, L, E) :- integer(I), !, '$must_be_index'(I), '$nth0_det'(I, L, E).
+nth0(I, L, E) :- '$must_be_index'(I), '$nth0_gen'(L, E, 0, I).
 '$nth0_det'(0, [X|_], X) :- !.
 '$nth0_det'(N, [_|T], X) :- N > 0, N1 is N - 1, '$nth0_det'(N1, T, X).
 '$nth0_gen'([X|_], X, I, I).
 '$nth0_gen'([_|T], X, I0, I) :- I1 is I0 + 1, '$nth0_gen'(T, X, I1, I).
 
 %!  nth1(?Index, ?List, ?Elem) is nondet.
-nth1(I, L, E) :- integer(I), !, I >= 1, I0 is I - 1, '$nth0_det'(I0, L, E).
-nth1(I, L, E) :- var(I), '$nth0_gen'(L, E, 1, I).
+nth1(I, L, E) :- integer(I), !, '$must_be_index'(I), I >= 1, I0 is I - 1, '$nth0_det'(I0, L, E).
+nth1(I, L, E) :- '$must_be_index'(I), '$nth0_gen'(L, E, 1, I).
+
+%!  nth0(?Index, ?List, ?Elem, ?Rest) is nondet.
+%   Rest is List without its Index-th element.
+nth0(I, L, E, R) :- integer(I), !, '$must_be_index'(I), '$nth_del'(I, L, E, R).
+nth0(I, L, E, R) :- '$must_be_index'(I), '$nth_gen_del'(L, E, R, 0, I).
+
+%!  nth1(?Index, ?List, ?Elem, ?Rest) is nondet.
+nth1(I, L, E, R) :- integer(I), !, '$must_be_index'(I), I >= 1, I0 is I - 1, '$nth_del'(I0, L, E, R).
+nth1(I, L, E, R) :- '$must_be_index'(I), '$nth_gen_del'(L, E, R, 1, I).
+
+'$must_be_index'(I) :- var(I), !.
+'$must_be_index'(I) :- integer(I), !, ( I >= 0 -> true ; throw(error(domain_error(not_less_than_zero, I), _)) ).
+'$must_be_index'(I) :- throw(error(type_error(integer, I), _)).
+
+'$nth_del'(0, [E|R], E, R) :- !.
+'$nth_del'(N, [X|T], E, [X|R]) :- N > 0, N1 is N - 1, '$nth_del'(N1, T, E, R).
+
+'$nth_gen_del'([E|R], E, R, I, I).
+'$nth_gen_del'([X|T], E, [X|R], I0, I) :- I1 is I0 + 1, '$nth_gen_del'(T, E, R, I1, I).
 
 %!  sum_list(+List, -Sum) is det.
 sum_list(L, S) :- '$sum_list'(L, 0, S).
