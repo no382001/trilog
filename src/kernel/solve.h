@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+void bags_drop(trilog_t *T, int32_t from);
+
 typedef enum { IDX_ANY, IDX_ATOM, IDX_INT, IDX_STRUCT } idx_kind_t;
 typedef struct {
   int32_t pred_id;

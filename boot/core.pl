@@ -300,23 +300,11 @@ retract(Clause) :- '$with_context'(('$check_head'(Clause), '$check_static'(Claus
 '$clause_head'(Head, Head).
 
 %!  findall(+Template, :Goal, -List) is det.
-%   FIXME: Goal throwing leaks this call's mark/items as orphaned facts.
 findall(Template, Goal, List) :-
-    '$next_id'(Id),
-    '$$assertz'('$findall_mark'(Id)),
-    (call(Goal), '$$assertz'('$findall_item'(Id, Template)), fail ; true),
-    '$findall_collect'(Id, List).
-
-'$id_counter'(-1).
-
-'$next_id'(Id) :- '$$retract'('$id_counter'(N0)), Id is N0 + 1, '$$assertz'('$id_counter'(Id)).
-
-'$findall_collect'(Id, List) :-
-    '$$retract'('$findall_item'(Id, X)), !,
-    List = [X|Rest],
-    '$findall_collect'(Id, Rest).
-'$findall_collect'(Id, []) :-
-    '$$retract'('$findall_mark'(Id)).
+    '$$bag_open'(Bag),
+    catch(( call(Goal), '$$bag_add'(Bag, Template), fail ; true ), Error,
+          ( '$$bag_drop'(Bag), throw(Error) )),
+    '$$bag_collect'(Bag, List).
 
 %!  clause(?Head, ?Body) is nondet.
 clause(Head, Body) :-

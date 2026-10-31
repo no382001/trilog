@@ -21,6 +21,17 @@ typedef struct {
   int fresh;
 } answer_var_t;
 
+typedef struct {
+  struct tterm *t;
+  int32_t nvars;
+} bag_item_t;
+
+typedef struct {
+  struct chunk *chunks;
+  bag_item_t *items;
+  size_t len, cap;
+} bag_t;
+
 struct trilog {
   void *(*alloc_realloc)(void *ud, void *p, size_t n);
   void (*alloc_free)(void *ud, void *p);
@@ -36,6 +47,9 @@ struct trilog {
   struct chunk *arena_current;
   struct chunk *arena_temp;
   bool arena_use_temp;
+  struct chunk **arena_into; // when set, arena_alloc allocates there
+  bag_t *bags;               // a stack: findalls nest
+  int32_t bag_count, bag_cap;
 
   cell_t *heap;
   size_t heap_cap, heap_top, heap_peak;

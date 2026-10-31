@@ -518,6 +518,14 @@ static size_t body_as_term(trilog_t *T, size_t *goals, int32_t n) {
 
 static void rename_init(size_t *rename, int32_t n);
 
+void bags_drop(trilog_t *T, int32_t from) {
+  while (T->bag_count > from) {
+    bag_t *b = &T->bags[--T->bag_count];
+    arena_free_chunks(T, b->chunks);
+    mem_free(T, b->items);
+  }
+}
+
 static size_t *tmp_rename(trilog_t *T, int32_t n) {
   mem_reserve(T, (void **)&T->rename_tmp, &T->rename_tmp_cap,
               (size_t)(n > 0 ? n : 1) * sizeof(size_t));
@@ -1781,6 +1789,59 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       T->capture_buf[start] = '\0';
     T->capture_pos = start;
     *ok = unify(T, f + 1, result);
+    return 1;
+  }
+  if (arity == 1 && id == atom_bag_open) {
+    if (T->bag_count == T->bag_cap) {
+      int32_t cap = T->bag_cap ? T->bag_cap * 2 : 4;
+      T->bags = mem_grow_n(T, T->bags, (size_t)cap, sizeof(bag_t));
+      T->bag_cap = cap;
+    }
+    T->bags[T->bag_count] = (bag_t){0};
+    *ok = unify(T, f + 1, heap_new_int(T, T->bag_count++));
+    return 1;
+  }
+  if ((arity == 2 && (id == atom_bag_add || id == atom_bag_collect)) ||
+      (arity == 1 && id == atom_bag_drop)) {
+    size_t a = heap_deref(T, f + 1);
+    int64_t n = T->heap[a].tag == TAG_INT ? T->heap[a].as.ival : -1;
+    if (n < 0 || n >= T->bag_count) {
+      *ok = 0;
+      return 1;
+    }
+    bag_t *b = &T->bags[n];
+    *ok = 1;
+    if (id == atom_bag_add) {
+      if (b->len == b->cap) {
+        size_t cap = b->cap ? b->cap * 2 : 16;
+        b->items = mem_grow_n(T, b->items, cap, sizeof(bag_item_t));
+        b->cap = cap;
+      }
+      int32_t nvars;
+      T->arena_into = &b->chunks;
+      tterm_t *t = heap_to_template(T, f + 2, &nvars);
+      T->arena_into = NULL;
+      if (!t) {
+        T->pending_error_ball = make_cyclic_term_error(T);
+        *ok = 0;
+        return 1;
+      }
+      b->items[b->len++] = (bag_item_t){t, nvars};
+      return 1;
+    }
+    if (id == atom_bag_collect) {
+      size_t list = heap_new_atom(T, atom_nil);
+      for (size_t i = b->len; i-- > 0;) {
+        size_t args[2] = {
+            heap_copy(T, b->items[i].t, tmp_rename(T, b->items[i].nvars), 0),
+            list};
+        list = heap_new_struct(T, atom_dot, 2, args);
+      }
+      bags_drop(T, (int32_t)n);
+      *ok = unify(T, f + 2, list);
+      return 1;
+    }
+    bags_drop(T, (int32_t)n);
     return 1;
   }
   if (arity == 2 && id == atom_copy_term) {

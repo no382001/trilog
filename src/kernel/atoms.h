@@ -125,6 +125,10 @@
   X(atom_atom_to_term, "atom_to_term")                                         \
   X(atom_dollar_var, "$VAR")                                                   \
   X(atom_clause_candidates, "$$clause_candidates")                             \
+  X(atom_bag_open, "$$bag_open")                                               \
+  X(atom_bag_add, "$$bag_add")                                                 \
+  X(atom_bag_collect, "$$bag_collect")                                         \
+  X(atom_bag_drop, "$$bag_drop")                                               \
   X(atom_choice_mark, "$$choice_mark")                                         \
   X(atom_cut_to, "$$cut_to")                                                   \
   X(atom_arith_le, "=<")                                                       \

@@ -25,6 +25,8 @@ _Static_assert(sizeof(double) == 8 && DBL_MANT_DIG == 53 && FLT_RADIX == 2,
 static const trilog_term_t invalid_term = {(size_t)-1};
 
 static trilog_status_t unwound(trilog_t *t) {
+  t->arena_into = NULL;
+  bags_drop(t, 0);
   t->heap_top = 0;
   t->trail_top = 0;
   t->occurs_len = 0;
@@ -124,6 +126,8 @@ void trilog_free(trilog_t *t) {
     return;
   for (int i = 0; i < MAX_OPEN_STREAMS; i++)
     stream_close(t, i);
+  bags_drop(t, 0);
+  mem_free(t, t->bags);
   for (int i = 0; i < PRED_HASH_SIZE; i++)
     while (t->pred_hash[i]) {
       pred_bucket_t *next = t->pred_hash[i]->next;

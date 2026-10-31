@@ -609,6 +609,96 @@ load common
   [[ "$output" == *"r(representation_error(character_code),representation_error(character_code))"* ]]
 }
 
+@test "findall/3 whose goal throws leaves no solutions behind, also when nested (regression)" {
+  # regression: solutions were stored as facts, and a throwing goal left them in the database.
+  run "$TRILOG" -e "
+    catch(findall(X, (member(X, [1,2]), throw(t)), _), _, true),
+    catch(findall(X, findall(Y, (Y = 1, throw(u)), _), _), _, true),
+    '\$\$bag_open'(B),
+    write(next_bag(B)), nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"next_bag(0)"* ]]
+}
+
+@test "findall/3 nests, copies fresh variables per solution and rejects cyclic solutions" {
+  run "$TRILOG" -e "
+    findall(X-Ys, (member(X, [1,2]), findall(Y, between(1, X, Y), Ys)), L1),
+    findall(X, fail, L2),
+    findall(f(A, B, A), member(B, [x,y]), [f(P, x, Q), f(R, y, S)]),
+    ( P == Q, R == S, P \\== R -> Fresh = yes ; Fresh = no ),
+    C = [1|C], catch(findall(C, true, _), error(E, _), true),
+    write(r(L1, L2, Fresh, E)), nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"r([1-[1],2-[1,2]],[],yes,representation_error(term))"* ]]
+}
+
+@test "findall/3 collects 400000 solutions in linear time (regression)" {
+  # regression: collecting retracted one fact at a time and shifted the predicate's index each time, quadratic in the number of solutions.
+  run timeout 10 "$TRILOG" -e "findall(X, between(1, 400000, X), L), length(L, N)."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"N = 400000"* ]]
+}
+
+@test "first-argument indexing tells apart integers that share a 32-bit half, and atoms, ints and compounds" {
+  run "$TRILOG" -e "
+    assertz(p(-1, neg)), assertz(p(4294967295, low)), assertz(p(-4294967296, high)),
+    assertz(p(9223372036854775807, max)), assertz(p(-9223372036854775808, min)),
+    assertz(p(a, atom)), assertz(p(a(1), compound)), assertz(p(1, one)),
+    findall(K-Vs, (member(K, [-1, 4294967295, -4294967296, 9223372036854775807,
+                              -9223372036854775808, a, a(1), 1, 0]),
+                   findall(V, p(K, V), Vs)), L),
+    write(L), nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[-1-[neg],4294967295-[low],-4294967296-[high],9223372036854775807-[max],-9223372036854775808-[min],a-[atom],a(1)-[compound],1-[one],0-[]]"* ]]
+}
+
+@test "clause heads with repeated variables bind like unifying a copy of the head" {
+  echo 'p(X, X).
+r(X, X, b).
+s(f(X), X).' >"$BATS_TEST_TMPDIR/heads.pl"
+  run "$TRILOG" "$BATS_TEST_TMPDIR/heads.pl" -e "p(A, B)."
+  [[ "$output" == *"A = B."* ]]
+  run "$TRILOG" "$BATS_TEST_TMPDIR/heads.pl" -e "p(A, B), p(f(C), A)."
+  [[ "$output" == *"A = f(C), B = f(C)."* ]]
+  run "$TRILOG" "$BATS_TEST_TMPDIR/heads.pl" -e "p(g(A), g(1)), p(h(A, B), h(B, B))."
+  [[ "$output" == *"A = 1, B = 1."* ]]
+  run "$TRILOG" "$BATS_TEST_TMPDIR/heads.pl" -e "
+    ( r(A, B, c) -> R = matched ; R = failed ),
+    ( var(A), var(B), A \\== B -> U = unbound ; U = bound )."
+  [[ "$output" == *"R = failed, U = unbound."* ]]
+  run "$TRILOG" "$BATS_TEST_TMPDIR/heads.pl" -e "C = f(C), s(C, Y), ( Y == C -> W = same ; W = different )."
+  [[ "$output" == *"W = same."* ]]
+}
+
+@test "backtracking resumes at the next clause whose first argument matches" {
+  echo 'q(a, 1).
+q(b, 2).
+q(a, 3).
+q(X, 4) :- X == a.' >"$BATS_TEST_TMPDIR/q.pl"
+  run "$TRILOG" "$BATS_TEST_TMPDIR/q.pl" -e "findall(N, q(a, N), Ns)."
+  [[ "$output" == *"Ns = [1,3,4]."* ]]
+  run "$TRILOG" "$BATS_TEST_TMPDIR/q.pl" -e "findall(K-N, q(K, N), L)."
+  [[ "$output" == *"L = [a-1,b-2,a-3]."* ]]
+  run "$TRILOG" "$BATS_TEST_TMPDIR/q.pl" -e "q(c, N)."
+  [[ "$output" == *"false."* ]]
+}
+
+@test "up to 16 streams open at once; a closed one frees its slot and a missing file takes none" {
+  run "$TRILOG" -e "
+    findall(x, catch(open('no/such/file', read, _), _, fail), _),
+    length(Ss, 16), maplist(open('README.md', read), Ss), Ss = [S1|_],
+    ( open('README.md', read, _) -> R1 = opened ; R1 = full ),
+    close(S1),
+    ( open('README.md', read, _) -> R2 = reused ; R2 = full ),
+    write(r(R1, R2)), nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"r(full,reused)"* ]]
+}
+
 @test "text builtins and arg/3 raise ISO argument errors" {
   run "$TRILOG" -f -e "
     catch(atom_chars(f(a), _), error(E1, C1), true),
