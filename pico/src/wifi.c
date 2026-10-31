@@ -20,6 +20,7 @@ static_assert(sizeof(creds_t) <= FLASH_PAGE_SIZE, "creds fit one page");
 
 static bool ready;
 static char ip[16];
+static const char *failure;
 
 static const creds_t *saved_creds(void) {
   const creds_t *c = (const creds_t *)(XIP_BASE + CREDS_OFFSET);
@@ -35,8 +36,13 @@ static void flash_write_page(void *page) {
 static bool connect(const char *ssid, const char *password) {
   printf("wifi: connecting to %s\n", ssid);
   uint32_t auth = password[0] ? CYW43_AUTH_WPA2_AES_PSK : CYW43_AUTH_OPEN;
-  if (cyw43_arch_wifi_connect_timeout_ms(ssid, password, auth, 30000)) {
-    printf("wifi: connect failed\n");
+  int err = cyw43_arch_wifi_connect_timeout_ms(ssid, password, auth, 30000);
+  failure = err == PICO_OK              ? NULL
+            : err == PICO_ERROR_BADAUTH ? "bad_auth"
+            : err == PICO_ERROR_TIMEOUT ? "timeout"
+                                        : "failed";
+  if (failure) {
+    printf("wifi: connect failed: %s\n", failure);
     return false;
   }
   snprintf(ip, sizeof ip, "%s", ip4addr_ntoa(netif_ip4_addr(netif_list)));
@@ -117,19 +123,57 @@ static bool wifi_status(trilog_t *t, void *ud, const trilog_value_t *in,
   (void)t, (void)ud, (void)in;
   int s = ready ? cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA)
                 : CYW43_LINK_FAIL;
-  out[0].a = s == CYW43_LINK_UP     ? "up"
-             : s == CYW43_LINK_NOIP ? "no_ip"
-             : s == CYW43_LINK_JOIN ? "joined"
-             : s < 0                ? "failed"
-                                    : "down";
+  out[0].a = s == CYW43_LINK_UP        ? "up"
+             : s == CYW43_LINK_NOIP    ? "no_ip"
+             : s == CYW43_LINK_JOIN    ? "joined"
+             : s == CYW43_LINK_BADAUTH ? "bad_auth"
+             : s == CYW43_LINK_NONET   ? "no_network"
+             : s < 0                   ? "failed"
+             : failure                 ? failure
+                                       : "down";
   return true;
 }
 
 static bool wifi_ip(trilog_t *t, void *ud, const trilog_value_t *in,
                     trilog_value_t *out) {
   (void)t, (void)ud, (void)in;
-  out[0].a = ip[0] ? ip : NULL;
-  return ip[0] != 0;
+  if (!ready ||
+      cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA) != CYW43_LINK_UP)
+    return false;
+  snprintf(ip, sizeof ip, "%s", ip4addr_ntoa(netif_ip4_addr(netif_list)));
+  out[0].a = ip;
+  return true;
+}
+
+static int print_scan_result(void *env, const cyw43_ev_scan_result_t *r) {
+  (void)env;
+  printf("%02x:%02x:%02x:%02x:%02x:%02x  ch %2u  %4d dBm  auth 0x%02x  %.*s\n",
+         r->bssid[0], r->bssid[1], r->bssid[2], r->bssid[3], r->bssid[4],
+         r->bssid[5], r->channel, r->rssi, r->auth_mode, r->ssid_len, r->ssid);
+  return 0;
+}
+
+static bool wifi_scan(trilog_t *t, void *ud, const trilog_value_t *in,
+                      trilog_value_t *out) {
+  (void)ud, (void)in, (void)out;
+  if (!ready)
+    return trilog_error(t, "system_error(wifi_init_failed)");
+  cyw43_wifi_scan_options_t opts = {0};
+  if (cyw43_wifi_scan(&cyw43_state, &opts, NULL, print_scan_result))
+    return trilog_error(t, "system_error(wifi_scan_failed)");
+  while (cyw43_wifi_scan_active(&cyw43_state))
+    sleep_ms(50);
+  return true;
+}
+
+static bool wifi_trace(trilog_t *t, void *ud, const trilog_value_t *in,
+                       trilog_value_t *out) {
+  (void)t, (void)ud, (void)out;
+  if (in[0].i)
+    cyw43_state.trace_flags |= CYW43_TRACE_ASYNC_EV;
+  else
+    cyw43_state.trace_flags &= ~CYW43_TRACE_ASYNC_EV;
+  return true;
 }
 
 static bool onboard_led(trilog_t *t, void *ud, const trilog_value_t *in,
@@ -148,5 +192,7 @@ void wifi_register(trilog_t *t) {
   trilog_register(t, "wifi_saved", ">a", wifi_saved, NULL);
   trilog_register(t, "wifi_status", ">a", wifi_status, NULL);
   trilog_register(t, "wifi_ip", ">a", wifi_ip, NULL);
+  trilog_register(t, "wifi_trace", "i", wifi_trace, NULL);
+  trilog_register(t, "wifi_scan", "", wifi_scan, NULL);
   trilog_register(t, "onboard_led", "i", onboard_led, NULL);
 }

@@ -21,9 +21,10 @@ join_wifi :-
             send_mail(wifi, connected,
                       ("Loaded the saved password for ", atom(Ssid), ".\n",
                        "Connected to ", atom(Ssid), ", ip ", atom(Ip), ".\n"))
-        ;   send_mail(wifi, 'not connected',
+        ;   wifi_status(Why),
+            send_mail(wifi, 'not connected',
                       ("Loaded the saved password for ", atom(Ssid), ".\n",
-                       "Could not connect to ", atom(Ssid), ".\n")),
+                       "Could not connect to ", atom(Ssid), ": ", atom(Why), ".\n")),
             fail
         )
     ;   send_mail(wifi, 'not connected', "No network is saved. Use wifi_save/2.\n"),
