@@ -494,6 +494,13 @@ start:
     skip_ws(T);
     if (*T->P == ']') {
       T->P++;
+      if (*T->P == '(') {
+        T->P++;
+        skip_ws(T);
+        frame_push(T, K_ARGS, PTR("[]"), T->psp, 0);
+        prec = 999;
+        goto start;
+      }
       v = tt_atom(T, "[]");
       goto produced;
     }
@@ -505,6 +512,13 @@ start:
     skip_ws(T);
     if (*T->P == '}') {
       T->P++;
+      if (*T->P == '(') {
+        T->P++;
+        skip_ws(T);
+        frame_push(T, K_ARGS, PTR("{}"), T->psp, 0);
+        prec = 999;
+        goto start;
+      }
       v = tt_atom(T, "{}");
       goto produced;
     }
@@ -520,6 +534,13 @@ start:
     goto produced;
   case ';':
     T->P++;
+    if (*T->P == '(') {
+      T->P++;
+      skip_ws(T);
+      frame_push(T, K_ARGS, PTR(";"), T->psp, 0);
+      prec = 999;
+      goto start;
+    }
     v = tt_atom(T, ";");
     goto produced;
   case '\'': {

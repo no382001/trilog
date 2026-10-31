@@ -22,7 +22,6 @@ call_nth_quad	call_nth(true, Nth)
 call_nth_quad	call_nth(true, non_integer)
 conformity	#106 X = '\\' .
 conformity	#148 write_canonical(fy yf).
-conformity	#153 writeq(yfx(fy(1),2)).
 conformity	#161 write_canonical(f f).
 conformity	#162 op(9,fy,p),op(9,yfx,p). ⏎ write_canonical(1 p p p 2).
 conformity	#163 op(9,fy,p),op(9,xfy,p). ⏎ write_canonical(1 p p p 2).
@@ -30,9 +29,7 @@ conformity	#164 op(7,fy,p),op(9,yfx,p). ⏎ write_canonical(1 p p p 2).
 conformity	#170 set_prolog_flag( ⏎  double_quotes,chars).
 conformity	#172 X is 10.0** -323, writeq(X).
 conformity	#181 writeq((a-->b,c|d)).
-conformity	#215 op(100,yfx,~). ⏎ writeq(-(1~2~3)).
 conformity	#235 writeq(1 = f).
-conformity	#248 writeq(- (1~2)).
 conformity	#250 writeq('\0\').
 conformity	#259 X = 0'\ ⏎ +'/*'. %*/1.
 conformity	#271 get_char(C).%a
@@ -41,11 +38,6 @@ conformity	#300 writeq("\0\").
 conformity	#301 writeq('\0\').
 conformity	#322 write_canonical((a|b;c)).
 conformity	#323 write_canonical((a;b|c)).
-conformity	#329 write_canonical(;(a)).
-conformity	#331 write_canonical(;(a,b)).
-conformity	#35 writeq('/*').
-conformity	#355 writeq('$VAR'(-1)).
-conformity	#36 writeq('/**').
 conformity	#364 writeq(-0.0).
 conformity	#4 .
 conformity	#77 - = - .
@@ -58,9 +50,6 @@ conformity	#87 write_canonical((- = - 1)).
 conformity	#88 write_canonical((- = -1)).
 conformity	#89 write_canonical((-;)).
 conformity	#92 [:- -c] = [(:- -c)].
-conformity	#95 {1} = {}(1).
-conformity	#96 write_canonical({1}).
-conformity	#97 '[]'(1) = [ ](X).
 core_quad	X = Y, X == Y
 core_quad	catch(throw(foo), bar, true)
 core_quad	last(X, [a, b, c])

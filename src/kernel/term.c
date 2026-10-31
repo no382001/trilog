@@ -280,6 +280,8 @@ static int atom_needs_quote(const char *s) {
         return 1;
     return 0;
   }
+  if (s[0] == '/' && s[1] == '*')
+    return 1; // it would start a comment
   for (const char *p = s; *p; p++)
     if (!ascii_symbol((unsigned char)*p))
       return 1;
@@ -295,7 +297,7 @@ static void glue(trilog_t *T, emit_fn emit, int first) {
   if ((T->print_prefix && first == '(') ||
       (word_char(last) && word_char(first)) ||
       (ascii_symbol(last) && ascii_symbol(first)) ||
-      ((last == '\'' || ascii_digit(last)) && first == '\''))
+      ((last == '\'' || last == '0') && first == '\''))
     emit(T, " ");
   T->print_prefix = false;
 }
@@ -581,6 +583,21 @@ static bool nonnegative_number(trilog_t *T, size_t r) {
                                      : false;
 }
 
+// Whether r, written with operators, begins with a nonnegative number.
+static bool starts_with_number(trilog_t *T, size_t r, int flags) {
+  int pri, assoc;
+  for (;;) {
+    r = heap_deref(T, r);
+    if ((flags & PRINT_NUMBERVARS) && T->heap[r].tag == TAG_STR &&
+        T->heap[T->heap[r].as.ptr].as.func.atom_id == atom_dollar_var)
+      return false;
+    int kind = op_kind(T, r, flags, &pri, &assoc);
+    if (kind != OP_INFIX && kind != OP_POSTFIX)
+      return nonnegative_number(T, r);
+    r = T->heap[r].as.ptr + 1;
+  }
+}
+
 static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
   size_t wbase = T->wsp, mbase = T->template_marks_len;
   T->print_last = 0;
@@ -672,7 +689,7 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
       }
       if ((flags & PRINT_NUMBERVARS) && print_var_name(T, f, emit))
         break;
-      if (arity == 1 && id == atom_curly) {
+      if (arity == 1 && id == atom_curly && !(flags & PRINT_IGNORE_OPS)) {
         token(T, emit, "{");
         print_enter(T, f);
         print_text(T, "}");
@@ -682,6 +699,12 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
       int kind = op_kind(T, r, flags, &pri, &assoc);
       if (kind == OP_INFIX) {
         bool open = (size_t)pri > max;
+        size_t left = heap_deref(T, f + 1);
+        int lpri, lassoc;
+        // The left operand's own operand would take in this operator, as
+        // fy 1 yfx 2 reads fy(1 yfx 2), so that operand is bracketed.
+        bool bracket = op_kind(T, left, flags, &lpri, &lassoc) == OP_PREFIX &&
+                       pri <= (lassoc == ASSOC_FY ? lpri : lpri - 1);
         print_enter(T, f);
         if (open)
           print_text(T, ")");
@@ -691,8 +714,14 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
           print_text(T, ",");
         else
           print_push(T, P_NAME, (size_t)id, 0);
-        print_push(T, P_TERM, f + 1,
-                   (size_t)(assoc == ASSOC_YFX ? pri : pri - 1) | OPERAND);
+        if (bracket) {
+          print_text(T, ")");
+          print_push(T, P_TERM, f + 1, 1200);
+          print_text(T, "(");
+        } else {
+          print_push(T, P_TERM, f + 1,
+                     (size_t)(assoc == ASSOC_YFX ? pri : pri - 1) | OPERAND);
+        }
         if (open)
           print_text(T, "(");
         break;
@@ -704,7 +733,7 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
         int amax = assoc == ASSOC_FY ? pri : pri - 1;
         bool bracket =
             (id == atom_minus &&
-             (nonnegative_number(T, arg) ||
+             (starts_with_number(T, arg, flags) ||
               ((akind == OP_INFIX || akind == OP_POSTFIX) && apri >= pri))) ||
             akind == OP_ATOM || (akind != OP_NONE && apri > amax);
         bool open = (size_t)pri > max;

@@ -193,7 +193,7 @@ PLEOF
   [[ "$output" == *"r(21,[])"* ]]
 }
 
-@test "curly terms print in curly notation" {
+@test "curly terms print in curly notation, and write_canonical writes them as {}/1" {
   run "$TRILOG" -f -e "
     writeq(f({x}, '{}'(y), {})),
     nl,
@@ -201,7 +201,7 @@ PLEOF
     nl.
   "
   [[ "$output" == *"f({x},{y},{})"* ]]
-  [[ "$output" == *"{','(a,b)}"* ]]
+  [[ "$output" == *"{}(','(a,b))"* ]]
 }
 
 @test "op/3 raises ISO permission errors for ',', '|' and infix/postfix clashes" {
