@@ -1,270 +1,271 @@
 :- '$builtin_file'.
 
-% --- line-buffering utilities ---
-
 :- ensure_loaded(library(apply)).
+:- ensure_loaded(library(dcgs)).
 
-ws_code(32).
-ws_code(0'\t).
-ws_code(0'\n).
-ws_code(0'\r).
+% --- text as chars ---
 
-trim_leading(Atom, Trimmed) :-
-    atom_codes(Atom, Cs),
-    tl_codes(Cs, Cs2),
-    atom_codes(Trimmed, Cs2).
-tl_codes([C|Cs], Out) :-
-    (C =:= 32 ; C =:= 0'\t), !,
-    tl_codes(Cs, Out).
-tl_codes(Cs, Cs).
+blank(' ').
+blank('\t').
+blank('\n').
+blank('\r').
 
-% strip_line_comment(+Line, -Stripped): drop a trailing "% ..." comment
-strip_line_comment(Line, Stripped) :-
-    atom_codes(Line, Cs),
-    slc(Cs, out, Out),
-    atom_codes(Stripped, Out).
+trim_leading([C|Cs0], Cs) :- ( C == ' ' ; C == '\t' ), !, trim_leading(Cs0, Cs).
+trim_leading(Cs, Cs).
 
-slc([], _, []) :- !.
-slc([0'0, 0'\', 0'\', 0'\'|Cs], out, [0'0, 0'\', 0'\', 0'\'|Out]) :- !, slc(Cs, out, Out).
-slc([0'0, 0'\', 0'\\, Esc|Cs], out, [0'0, 0'\', 0'\\, Esc|Out]) :- !, slc(Cs, out, Out).
-slc([0'0, 0'\', Ch|Cs], out, [0'0, 0'\', Ch|Out]) :- !, slc(Cs, out, Out).
-slc([0'\\|Cs0], Q, [0'\\|Out]) :-
-    ( Q == dq ; Q == sq ),
-    numeric_escape(Cs0, Esc, Cs),
+trim_trailing(Cs0, Cs) :- reverse(Cs0, R0), drop_blanks(R0, R), reverse(R, Cs).
+
+drop_blanks([C|Cs0], Cs) :- blank(C), !, drop_blanks(Cs0, Cs).
+drop_blanks(Cs, Cs).
+
+trim(Cs0, Cs) :- trim_leading(Cs0, Cs1), trim_trailing(Cs1, Cs).
+
+lines([L|Ls]) --> line(L), ( "\n" -> lines(Ls) ; { Ls = [] } ).
+
+line([C|Cs]) --> [C], { C \== '\n' }, !, line(Cs).
+line([]) --> [].
+
+join(_, [], []).
+join(_, [L], L) :- !.
+join(Sep, [L|Ls], Cs) :- join(Sep, Ls, Cs1), append(Sep, Cs1, Cs2), append(L, Cs2, Cs).
+
+concat([], []).
+concat([L|Ls], Cs) :- concat(Ls, Cs1), append(L, Cs1, Cs).
+
+symbol_char(C) :- memberchk(C, ['+','-','*','/','\\','^','<','>','=','~',':','.','?','@','#','&','$']).
+
+digit(D) --> [D], { char_code(D, C), C >= 0'0, C =< 0'9 }.
+
+digits([D|Ds]) --> digit(D), digits(Ds).
+digits([D]) --> digit(D).
+
+% marks(Ms): each char as o(C) outside quotes, or q(C) inside a quoted item or
+% a 0'c literal, so '%', '.' and brackets count only where they are syntax.
+% Dispatching on the char, the first argument, lets indexing pick the clause.
+marks([], []).
+marks([C|Cs], Ms) :- mark(C, Cs, Ms).
+
+mark('0', ['''', '''', ''''|Cs], [o('0'), q(''''), q(''''), q('''')|Ms]) :- !, marks(Cs, Ms).
+mark('0', ['''', '\\', E|Cs], [o('0'), q(''''), q('\\'), q(E)|Ms]) :- !, marks(Cs, Ms).
+mark('0', ['''', C|Cs], [o('0'), q(''''), q(C)|Ms]) :- !, marks(Cs, Ms).
+mark('''', Cs, [q('''')|Ms]) :- !, quoted(Cs, '''', Ms).
+mark('"', Cs, [q('"')|Ms]) :- !, quoted(Cs, '"', Ms).
+mark(C, Cs, [o(C)|Ms]) :- marks(Cs, Ms).
+
+quoted([], _, []).
+quoted([C|Cs], Q, Ms) :- quoted_char(C, Q, Cs, Ms).
+
+quoted_char('\\', Q, Cs0, [q('\\')|Ms]) :-
+    phrase(numeric_escape(Es), Cs0, Cs),
     !,
-    append(Esc, Out1, Out),
-    slc(Cs, Q, Out1).
-slc([0'\\, E|Cs], dq, [0'\\, E|Out]) :- !, slc(Cs, dq, Out).
-slc([0'\\, E|Cs], sq, [0'\\, E|Out]) :- !, slc(Cs, sq, Out).
-slc([0'\', 0'\'|Cs], sq, [0'\', 0'\'|Out]) :- !, slc(Cs, sq, Out).
-slc([0'"|Cs], dq, [0'"|Out]) :- !, slc(Cs, out, Out).
-slc([0'"|Cs], out, [0'"|Out]) :- !, slc(Cs, dq, Out).
-slc([0'\'|Cs], sq, [0'\'|Out]) :- !, slc(Cs, out, Out).
-slc([0'\'|Cs], out, [0'\'|Out]) :- !, slc(Cs, sq, Out).
-slc([0'%|_], out, []) :- !.
-slc([C|Cs], State, [C|Out]) :- slc(Cs, State, Out).
+    q_marks(Es, Ms, Ms1),
+    quoted(Cs, Q, Ms1).
+quoted_char('\\', Q, [E|Cs], [q('\\'), q(E)|Ms]) :- !, quoted(Cs, Q, Ms).
+quoted_char(Q, Q, [Q|Cs], [q(Q), q(Q)|Ms]) :- !, quoted(Cs, Q, Ms).
+quoted_char(Q, Q, Cs, [q(Q)|Ms]) :- !, marks(Cs, Ms).
+quoted_char(C, Q, Cs, [q(C)|Ms]) :- quoted(Cs, Q, Ms).
 
-% numeric_escape(+Codes, -Escape, -Rest): Codes, just after a backslash, start
-% an octal \141\ or hex \x61\ escape, which runs to the next backslash.
-numeric_escape([C|Cs], [C|Esc], Rest) :-
-    ( C == 0'x ; C >= 0'0, C =< 0'7 ),
-    numeric_escape_rest(Cs, Esc, Rest).
+q_marks([], Ms, Ms).
+q_marks([C|Cs], [q(C)|Ms0], Ms) :- q_marks(Cs, Ms0, Ms).
 
-numeric_escape_rest([0'\\|Rest], [0'\\], Rest) :- !.
-numeric_escape_rest([C|Cs], [C|Esc], Rest) :-
-    ( C >= 0'0, C =< 0'9 ; C >= 0'a, C =< 0'f ; C >= 0'A, C =< 0'F ),
-    numeric_escape_rest(Cs, Esc, Rest).
+% An octal \141\ or hex \x61\ escape runs to the next backslash.
+numeric_escape([C|Cs]) --> [C], { C == x ; memberchk(C, ['0','1','2','3','4','5','6','7']) }, escape_digits(Cs).
 
-% has_complete_clause(+Buf): true if Buf contains a terminating '.' at
-% bracket depth 0, outside any quoted region, not part of "=..".
-has_complete_clause(Buf) :- atom_codes(Buf, Cs), hcc(Cs, out, 0, 32).
+escape_digits(['\\']) --> "\\", !.
+escape_digits([C|Cs]) --> [C], { hex_digit(C) }, escape_digits(Cs).
 
-hcc([], _, _, _) :- fail.
-hcc([0'0, 0'\', 0'\', 0'\'|Cs], out, D, _) :- !, hcc(Cs, out, D, 0'0).
-hcc([0'0, 0'\', 0'\\, _Esc|Cs], out, D, _) :- !, hcc(Cs, out, D, 0'0).
-hcc([0'0, 0'\', _Ch|Cs], out, D, _) :- !, hcc(Cs, out, D, 0'0).
-hcc([0'\\|Cs0], Q, D, _) :-
-    ( Q == dq ; Q == sq ),
-    numeric_escape(Cs0, _, Cs),
-    !,
-    hcc(Cs, Q, D, 0'\\).
-hcc([0'\\, _|Cs], dq, D, _) :- !, hcc(Cs, dq, D, 0'\\).
-hcc([0'\\, _|Cs], sq, D, _) :- !, hcc(Cs, sq, D, 0'\\).
-hcc([0'\', 0'\'|Cs], sq, D, _) :- !, hcc(Cs, sq, D, 0'\').
-hcc([0'"|Cs], dq, D, _) :- !, hcc(Cs, out, D, 0'").
-hcc([0'"|Cs], out, D, _) :- !, hcc(Cs, dq, D, 0'").
-hcc([0'\'|Cs], sq, D, _) :- !, hcc(Cs, out, D, 0'\').
-hcc([0'\'|Cs], out, D, _) :- !, hcc(Cs, sq, D, 0'\').
-hcc([C|Cs], out, D, _) :- ( C =:= 0'( ; C =:= 0'[ ), !, D1 is D + 1, hcc(Cs, out, D1, C).
-hcc([C|Cs], out, D, _) :- ( C =:= 0') ; C =:= 0'] ), !, D1 is D - 1, hcc(Cs, out, D1, C).
-hcc([0'.|Cs], out, 0, Prev) :-
-    !,
-    ( Prev =:= 0'.
-    -> hcc(Cs, out, 0, 0'.)
-    ;  ( Cs == []
-       -> true
-       ;  Cs = [N|_], ws_code(N)
-       -> true
-       ;  hcc(Cs, out, 0, 0'.)
-       )
-    ).
-hcc([C|Cs], State, D, _) :- hcc(Cs, State, D, C).
+hex_digit(C) :- char_code(C, X), ( X >= 0'0, X =< 0'9 ; X >= 0'a, X =< 0'f ; X >= 0'A, X =< 0'F ), !.
 
-% dcg_accumulate/3: plain multi-line buffer join
-dcg_accumulate(Buf0, Line, Buf) :-
-    trim_leading(Line, Trimmed),
-    ( Buf0 == '', Trimmed == '' -> Buf = Buf0
-    ; Buf0 == '' -> Buf = Trimmed
-    ; atom_concat(Buf0, ' ', Buf1), atom_concat(Buf1, Trimmed, Buf)
+mark_char(M, C) :- arg(1, M, C).
+
+uncommented(Cs0, Cs) :-
+    (   memberchk('%', Cs0)
+    ->  marks(Cs0, Ms),
+        before_comment(Ms, Cs)
+    ;   Cs = Cs0
     ).
 
-% --- line splitting ---
+before_comment([], []).
+before_comment([o('%')|_], []) :- !.
+before_comment([M|Ms], [C|Cs]) :- mark_char(M, C), before_comment(Ms, Cs).
 
-split_nl(Atom, Lines) :-
-    atom_codes(Atom, Cs),
-    split_nl_codes(Cs, LinesCodes),
-    codes_lists_to_atoms(LinesCodes, Lines).
+% clause_body(Ms, Body): Body is the text before the clause's end, a '.' at
+% bracket depth 0 that is not part of "=.." and is followed by layout or EOF.
+clause_body(Ms, Body) :- cb(Ms, 0, ' ', Body).
 
-codes_lists_to_atoms([], []).
-codes_lists_to_atoms([Cs|Css], [A|As]) :- atom_codes(A, Cs), codes_lists_to_atoms(Css, As).
+cb([o('.')|Ms], 0, Prev, []) :-
+    Prev \== '.',
+    ( Ms == [] ; Ms = [M|_], mark_char(M, N), blank(N) ),
+    !.
+cb([M|Ms], D0, _, [C|Body]) :-
+    mark_char(M, C),
+    (   M = o(B), memberchk(B, ['(', '[']) -> D is D0 + 1
+    ;   M = o(B), memberchk(B, [')', ']']) -> D is D0 - 1
+    ;   D = D0
+    ),
+    ( M = o(P) -> true ; P = none ),
+    cb(Ms, D, P, Body).
 
-split_nl_codes(Cs, [Line|Rest]) :- append(Line, [0'\n|Tail], Cs), !, split_nl_codes(Tail, Rest).
-split_nl_codes(Cs, [Cs]).
+has_complete_clause(Cs) :- marks(Cs, Ms), clause_body(Ms, _).
 
-trim_trailing(Atom, Trimmed) :-
-    atom_codes(Atom, Cs),
-    reverse(Cs, R0),
-    tt_codes(R0, R1),
-    reverse(R1, Cs2),
-    atom_codes(Trimmed, Cs2).
+strip_terminating_dot(Cs, Body) :-
+    marks(Cs, Ms),
+    ( clause_body(Ms, Body) -> true ; Body = Cs ).
 
-tt_codes([C|Cs], Out) :- ws_code(C), !, tt_codes(Cs, Out).
-tt_codes(Cs, Cs).
+% --- a quad file as items: tests, directives and clauses ---
 
-% --- answer parsing: "x = a\n;  x = b" -> ['x = a', 'x = b'] ---
+quad_items([I|Is]) --> quad_item(I), !, quad_items(Is).
+quad_items([]) --> [].
 
-strip_terminating_dot(Buf, Stripped) :-
-    atom_codes(Buf, Cs),
-    std_codes(Cs, out, 0, 32, Cs2),
-    atom_codes(Stripped, Cs2).
+quad_item(I) --> blank_lines, clause_text(Cs), { item_kind(Cs, K) }, item_tail(K, I).
 
-std_codes([], _, _, _, []).
-std_codes([0'0, 0'\', 0'\\, Esc|Cs], out, D, _, [0'0, 0'\', 0'\\, Esc|Out]) :-
-    !, std_codes(Cs, out, D, Esc, Out).
-std_codes([0'0, 0'\', Ch|Cs], out, D, _, [0'0, 0'\', Ch|Out]) :-
-    !, std_codes(Cs, out, D, Ch, Out).
-std_codes([0'\\, E|Cs], dq, D, _, [0'\\, E|Out]) :- !, std_codes(Cs, dq, D, 0'\\, Out).
-std_codes([0'\\, E|Cs], sq, D, _, [0'\\, E|Out]) :- !, std_codes(Cs, sq, D, 0'\\, Out).
-std_codes([0'\', 0'\'|Cs], sq, D, _, [0'\', 0'\'|Out]) :- !, std_codes(Cs, sq, D, 0'\', Out).
-std_codes([0'"|Cs], dq, D, _, [0'"|Out]) :- !, std_codes(Cs, out, D, 0'", Out).
-std_codes([0'"|Cs], out, D, _, [0'"|Out]) :- !, std_codes(Cs, dq, D, 0'", Out).
-std_codes([0'\'|Cs], sq, D, _, [0'\'|Out]) :- !, std_codes(Cs, out, D, 0'\', Out).
-std_codes([0'\'|Cs], out, D, _, [0'\'|Out]) :- !, std_codes(Cs, sq, D, 0'\', Out).
-std_codes([C|Cs], out, D, _, [C|Out]) :-
-    (C =:= 0'( ; C =:= 0'[), !, D1 is D + 1, std_codes(Cs, out, D1, C, Out).
-std_codes([C|Cs], out, D, _, [C|Out]) :-
-    (C =:= 0') ; C =:= 0']), !, D1 is D - 1, std_codes(Cs, out, D1, C, Out).
-std_codes([0'.|Cs], out, 0, Prev, Out) :-
+blank_lines --> [L], { trim_leading(L, []) }, !, blank_lines.
+blank_lines --> [].
+
+clause_text(Cs) --> [L], { trim_leading(L, T0), strip_id(T0, T) }, clause_more(T, Cs).
+
+clause_more(Cs, Cs) --> { memberchk('.', Cs), has_complete_clause(Cs) }, !.
+clause_more(Cs0, Cs) --> [L], { trim_leading(L, T), append(Cs0, [' '|T], Cs1) }, clause_tail(T, Cs1, Cs).
+
+% Only a line with a '.' can end the clause.
+clause_tail(T, Cs0, Cs) --> { \+ memberchk('.', T) }, !, clause_more_lines(Cs0, Cs).
+clause_tail(_, Cs0, Cs) --> clause_more(Cs0, Cs).
+
+clause_more_lines(Cs0, Cs) --> [L], { trim_leading(L, T), append(Cs0, [' '|T], Cs1) }, clause_tail(T, Cs1, Cs).
+
+item_kind(Cs, test(Cs)) :- append("?-", _, Cs), !.
+item_kind(Cs, directive(D)) :- append(":-", D, Cs), !.
+item_kind(Cs, clause(Cs)).
+
+item_tail(test(Q), test(Q, A)) --> !, answer(A).
+item_tail(K, K) --> [].
+
+% An answer runs to its terminating '.'; Ulrich continues one on indented lines.
+answer(A) --> blank_lines, [L], answer_more([L], A).
+
+answer_more([L|Ls], A) -->
+    { memberchk('.', L), reverse([L|Ls], Lines), join("\n", Lines, Cs), has_complete_clause(Cs) },
     !,
-    ( Prev =:= 0'.
-    -> Out = [0'.|Out1], std_codes(Cs, out, 0, 0'., Out1)
-    ;  ( Cs == []
-       -> Out = []
-       ;  Cs = [N|_], ws_code(N)
-       -> Out = []
-       ;  Out = [0'.|Out1], std_codes(Cs, out, 0, 0'., Out1)
-       )
-    ).
-std_codes([C|Cs], State, D, _, [C|Out]) :- std_codes(Cs, State, D, C, Out).
+    answer_done([L|Ls], A).
+answer_more(Rev, A) --> [L], answer_more([L|Rev], A).
 
-parse_expected(AnswerRaw, Expected, Mode) :-
-    strip_terminating_dot(AnswerRaw, Answer),
-    split_nl(Answer, Lines),
-    pe_group(Lines, Groups),
-    maplist(pe_join_trim, Groups, Expected0),
-    exclude(==(''), Expected0, Expected1),
-    ( append(Prefix, ['..., ad_infinitum'], Expected1)
-    -> Mode = ad_infinitum, Expected = Prefix
-    ;  Mode = exact, Expected = Expected1
-    ).
+answer_done(Rev, A) --> [L], { continuation(L) }, !, answer_more([L|Rev], A).
+answer_done(Rev, A) --> { reverse(Rev, Ls), join("\n", Ls, A) }.
+
+continuation(L) :-
+    trim_leading(L, T),
+    T \== [],
+    L \== T,
+    \+ append("?-", _, T),
+    strip_id(T, T),
+    T \= [':'|_].
+
+% Ulrich numbers his quads: "66 ?- number_chars(N,\"010\")."
+strip_id(T0, T) :- phrase((digits(_), " ", spaces), T0, T), T = ['?', '-'|_], !.
+strip_id(T, T).
+
+spaces --> " ", !, spaces.
+spaces --> [].
+
+% --- the expected answer: alternatives, renderings, answer sequences ---
 
 % A line starting with "|" begins another acceptable outcome.
 quad_alternatives(Raw, Alts) :-
-    split_nl(Raw, Lines0),
-    Lines0 \== [],
-    exclude(quad_unexpected, Lines0, Lines1),
-    maplist(quad_strip_sto, Lines1, Lines2),
-    exclude(quad_open_line, Lines2, Lines),
+    phrase(lines(Lines0), Raw),
+    exclude(unexpected_line, Lines0, Lines1),
+    maplist(strip_sto, Lines1, Lines2),
+    exclude(open_line, Lines2, Lines),
     Lines \== [],
-    qalt_group(Lines, [], Alts0),
-    exclude(quad_untestable, Alts0, Alts1),
-    maplist(quad_renderings, Alts1, Altss),
-    flatten(Altss, Alts).
+    alt_groups(Lines, [], Groups),
+    maplist(join("\n"), Groups, Alts0),
+    exclude(untestable, Alts0, Alts1),
+    maplist(renderings, Alts1, Altss),
+    concat(Altss, Alts).
 
-quad_unexpected(L) :-
+unexpected_line(L) :-
     trim_trailing(L, T),
-    ( atom_concat(_, ', unexpected.', T) ; atom_concat(_, ', unexpected', T) ),
+    ( append(_, ", unexpected.", T) ; append(_, ", unexpected", T) ),
     !.
 
-quad_strip_sto(L, Out) :-
+strip_sto(L, Out) :-
     trim_leading(L, T),
-    (   atom_concat('|', R0, T)
+    (   T = ['|'|R0]
     ->  trim_leading(R0, R),
-        ( atom_concat('sto, ', R1, R) -> atom_concat('| ', R1, Out) ; Out = L )
-    ;   atom_concat('sto, ', R1, T)
+        ( append("sto, ", R1, R) -> append("| ", R1, Out) ; Out = L )
+    ;   append("sto, ", R1, T)
     ->  Out = R1
     ;   Out = L
     ).
 
-quad_open_line(L) :- trim_leading(L, T), trim_trailing(T, '... ; ... .').
+open_line(L) :- trim_leading(L, T), trim_trailing(T, "... ; ... .").
 
-quad_untestable(Alt) :-
-    trim_leading(Alt, T0), trim_trailing(T0, T),
-    ( T == loops ; T == 'loops.' ).
+untestable(Alt) :- trim(Alt, T), ( T == "loops" ; T == "loops." ).
 
-quad_renderings(Alt, Rs) :-
-    atom_codes(Alt, Cs),
-    rs(Cs, out, 0' , [], Parts),
-    exclude(==(''), Parts, Rs0),
+alt_groups([], Cur, [G]) :- reverse(Cur, G).
+alt_groups([L|Ls], Cur, Gs) :-
+    trim_leading(L, T),
+    (   Cur \== [], T = ['|'|Rest]
+    ->  reverse(Cur, G),
+        Gs = [G|Gs1],
+        alt_groups(Ls, [Rest], Gs1)
+    ;   alt_groups(Ls, [L|Cur], Gs)
+    ).
+
+% One answer written several ways, as "N = 0'a. N = 97.", is split at each '.'.
+renderings(Alt, Rs) :-
+    \+ ( append(_, ['.', W|_], Alt), blank(W) ),
+    !,
+    Rs = [Alt].
+renderings(Alt, Rs) :-
+    marks(Alt, Ms),
+    split_renderings(Ms, ' ', [], Parts),
+    exclude(==([]), Parts, Rs0),
     ( Rs0 = [_, _|_] -> Rs = Rs0 ; Rs = [Alt] ).
 
-rs([], _, _, Cur, [P]) :- reverse(Cur, Cs), atom_codes(P0, Cs), trim_leading(P0, P).
-rs([0'0, 0'\', C|Cs], out, _, Cur, Ps) :- !,
-    rs(Cs, out, C, [C, 0'\', 0'0|Cur], Ps).
-rs([Q|Cs], out, _, Cur, Ps) :- ( Q =:= 0'\' ; Q =:= 0'" ), !,
-    rs(Cs, Q, Q, [Q|Cur], Ps).
-rs([0'\\, C|Cs], Q, _, Cur, Ps) :- Q \== out, !, rs(Cs, Q, C, [C, 0'\\|Cur], Ps).
-rs([Q|Cs], Q, _, Cur, Ps) :- !, rs(Cs, out, Q, [Q|Cur], Ps).
-rs([0'., W|Cs], out, Prev, Cur, [P|Ps]) :-
-    ws_code(W), \+ quad_symbol_code(Prev), !,
-    reverse(Cur, PCs), atom_codes(P0, PCs), trim_leading(P0, P),
-    rs([W|Cs], out, W, [], Ps).
-rs([C|Cs], St, _, Cur, Ps) :- rs(Cs, St, C, [C|Cur], Ps).
+split_renderings([], _, Cur, [P]) :- reverse(Cur, P0), trim_leading(P0, P).
+split_renderings([o('.'), M|Ms], Prev, Cur, [P|Ps]) :-
+    mark_char(M, W),
+    blank(W),
+    \+ symbol_char(Prev),
+    !,
+    reverse(Cur, P0),
+    trim_leading(P0, P),
+    split_renderings([M|Ms], W, [], Ps).
+split_renderings([M|Ms], _, Cur, Ps) :-
+    mark_char(M, C),
+    split_renderings(Ms, C, [C|Cur], Ps).
 
-quad_symbol_code(C) :- atom_codes('+-*/\\^<>=~:.?@#&$', Cs), memberchk(C, Cs).
-
-qalt_group([], Cur, [Alt]) :- reverse(Cur, Ls), join_nl(Ls, Alt).
-qalt_group([L|Ls], Cur, Alts) :-
-    trim_leading(L, T),
-    ( Cur \== [], sub_atom(T, 0, 1, _, '|')
-    -> reverse(Cur, CurLs),
-       join_nl(CurLs, Alt),
-       Alts = [Alt|Alts1],
-       sub_atom(T, 1, _, 0, Rest),
-       qalt_group(Ls, [Rest], Alts1)
-    ;  qalt_group(Ls, [L|Cur], Alts)
+% "x = a\n;  x = b" -> ['x = a', 'x = b'].
+parse_expected(Alt, Expected, Mode) :-
+    strip_terminating_dot(Alt, Answer),
+    phrase(lines(Lines), Answer),
+    answer_groups(Lines, Groups),
+    maplist(join(" "), Groups, Joined),
+    maplist(trim, Joined, Trimmed),
+    exclude(==([]), Trimmed, Answers),
+    maplist(chars_atom, Answers, Expected1),
+    (   append(Prefix, ['..., ad_infinitum'], Expected1)
+    ->  Mode = ad_infinitum, Expected = Prefix
+    ;   Mode = exact, Expected = Expected1
     ).
 
-join_nl([L], L) :- !.
-join_nl([L|Ls], Joined) :-
-    join_nl(Ls, Rest),
-    atom_concat(L, '\n', L1),
-    atom_concat(L1, Rest, Joined).
+answer_groups([], []).
+answer_groups([L|Ls], Gs) :- answer_groups(Ls, [L], Gs).
 
-pe_group([], []).
-pe_group([L|Ls], Groups) :- pe_group_(Ls, [L], Groups).
-
-pe_group_([], CurRev, [Cur]) :- reverse(CurRev, Cur).
-pe_group_([L|Ls], CurRev, Groups) :-
+answer_groups([], Cur, [G]) :- reverse(Cur, G).
+answer_groups([L|Ls], Cur, Gs) :-
     trim_leading(L, T),
-    ( T == ''
-    -> pe_group_(Ls, CurRev, Groups)
-    ;  sub_atom(T, 0, 1, _, ';')
-    -> reverse(CurRev, Cur),
-       sub_atom(T, 1, _, 0, Rest0),
-       trim_leading(Rest0, Rest),
-       pe_group_(Ls, [Rest], Groups0),
-       Groups = [Cur|Groups0]
-    ;  pe_group_(Ls, [L|CurRev], Groups)
+    (   T == []
+    ->  answer_groups(Ls, Cur, Gs)
+    ;   T = [';'|R0]
+    ->  reverse(Cur, G),
+        trim_leading(R0, R),
+        Gs = [G|Gs1],
+        answer_groups(Ls, [R], Gs1)
+    ;   answer_groups(Ls, [L|Cur], Gs)
     ).
 
-pe_join_trim(Group, Joined) :- pe_join(Group, J0), trim_leading(J0, J1), trim_trailing(J1, Joined).
-
-pe_join([L], L) :- !.
-pe_join([L|Ls], Joined) :-
-    pe_join(Ls, Rest),
-    atom_concat(L, ' ', L1),
-    atom_concat(L1, Rest, Joined).
+chars_atom(Cs, A) :- atom_chars(A, Cs).
 
 % --- solution collection, capped at MAX_QUAD_ANSWERS ---
 
@@ -302,7 +303,7 @@ format_bindings(NameVars, Str) :-
 
 '$format_bindings_pairs'([], []).
 '$format_bindings_pairs'([Name=Val|Rest], Pairs) :-
-    ( sub_atom(Name, 0, 1, _, '_') -> Pairs = Pairs1
+    ( atom_chars(Name, ['_'|_]) -> Pairs = Pairs1
     ; var(Val) -> Pairs = Pairs1
     ; Pairs = [Name=Val|Pairs1]
     ),
@@ -314,26 +315,28 @@ format_bindings(NameVars, Str) :-
 % --- running one test ---
 
 quad_display(Query, Display) :-
-    ( atom_length(Query, Len), Len > 60
-    -> sub_atom(Query, 0, 57, _, Head), atom_concat(Head, '...', Display)
-    ;  Display = Query
+    atom_chars(Query, Cs),
+    (   length(Cs, Len), Len > 60
+    ->  length(Head, 57),
+        append(Head, _, Cs),
+        append(Head, "...", Ds),
+        atom_chars(Display, Ds)
+    ;   Display = Query
     ).
 
-strip_query_prefix(Raw, Query) :-
-    ( sub_atom(Raw, 0, 2, _, '?-')
-    -> sub_atom(Raw, 2, _, 0, Rest)
-    ;  Rest = Raw
-    ),
-    trim_leading(Rest, Query).
+query_text(Raw, Query) :-
+    ( append("?-", Rest, Raw) -> true ; Rest = Raw ),
+    trim_leading(Rest, Q0),
+    strip_terminating_dot(Q0, Q),
+    atom_chars(Query, Q).
 
 % Timings read 0 on a platform without get_time_ms/1.
 quad_now(T) :-
     catch(get_time_ms(T), error(existence_error(procedure, _), _), T = 0).
 
 run_one_test(QueryRaw, AnswerRaw, Pass) :-
-    strip_query_prefix(QueryRaw, Query0),
-    strip_terminating_dot(Query0, Query),
-    ( quad_alternatives(AnswerRaw, Alts) -> true ; Alts = ['no answer to test'] ),
+    query_text(QueryRaw, Query),
+    ( quad_alternatives(AnswerRaw, Alts) -> true ; Alts = ["no answer to test"] ),
     quad_display(Query, Display),
     quad_ckpt_before(Display),
     quad_now(T0),
@@ -483,7 +486,7 @@ qa_link_names([N = V|Ns], Snap) :-
 % Mirrors format_bindings/2.
 qa_got_pairs([], []).
 qa_got_pairs([N = V|Ps], Out) :-
-    ( sub_atom(N, 0, 1, _, '_') -> Out = Out1
+    ( atom_chars(N, ['_'|_]) -> Out = Out1
     ; V == '$qv'(N) -> Out = Out1
     ; Out = [N = V|Out1]
     ),
@@ -501,23 +504,31 @@ qa_number_vars(T, N0, N) :- T =.. [_|Args], qa_number_vars_list(Args, N0, N).
 qa_number_vars_list([], N, N).
 qa_number_vars_list([A|As], N0, N) :- qa_number_vars(A, N0, N1), qa_number_vars_list(As, N1, N).
 
-is_error_expectation(Atom, Type) :- atom_concat('error(', Rest, Atom), atom_concat(Type, ')', Rest), !.
+is_error_expectation(Atom, Type) :-
+    atom_chars(Atom, Cs),
+    append("error(", Rest, Cs),
+    append(TypeCs, [')'], Rest),
+    !,
+    atom_chars(Type, TypeCs).
 is_error_expectation(Atom, Atom) :-
     catch(atom_to_term(Atom, T, _), _, fail),
     callable(T),
     functor(T, N, _),
-    ( N == instantiation_error ; N == system_error ; sub_atom(N, _, _, 0, '_error') ),
+    ( N == instantiation_error ; N == system_error ; atom_chars(N, Cs), append(_, "_error", Cs) ),
     !.
 
 % Falls back to comparing as terms: "foo/0" vs /(foo, 0), "a,b" vs "a, b".
 matches_error(Error, ExpType) :-
     term_to_atom(Error, ErrAtom),
-    ( ErrAtom == ExpType -> true
-    ; atom_concat(ExpType, _, ErrAtom) -> true
-    ; strip_at_marks(ExpType, Clean),
-      catch(atom_to_term(Clean, ExpTerm0, _), _, fail),
-      err_dots(ExpTerm0, ExpTerm),
-      \+ \+ Error = ExpTerm
+    atom_chars(ErrAtom, ErrCs),
+    atom_chars(ExpType, ExpCs),
+    (   append(ExpCs, _, ErrCs)
+    ->  true
+    ;   phrase(without_at_marks(CleanCs), ExpCs),
+        atom_chars(Clean, CleanCs),
+        catch(atom_to_term(Clean, ExpTerm0, _), _, fail),
+        err_dots(ExpTerm0, ExpTerm),
+        \+ \+ Error = ExpTerm
     ).
 
 % "..." in an expected error matches anything.
@@ -525,28 +536,26 @@ err_dots(T, _) :- T == '...', !.
 err_dots(T, T) :- \+ compound(T), !.
 err_dots(T0, T) :- T0 =.. [F|As0], maplist(err_dots, As0, As), T =.. [F|As].
 
-% Some expected errors carry an @ prefix from the
-% suite they were transcribed from, so drop them.
-strip_at_marks(Atom, Clean) :-
-    atom_codes(Atom, Cs),
-    sam(Cs, out, Out),
-    atom_codes(Clean, Out).
+% Some expected errors carry an @ prefix from the suite they were transcribed
+% from; quoted text keeps its @.
+without_at_marks(Cs) --> "@", !, without_at_marks(Cs).
+without_at_marks([''''|Cs]) --> "'", !, at_quoted(Cs).
+without_at_marks([C|Cs]) --> [C], !, without_at_marks(Cs).
+without_at_marks([]) --> [].
 
-sam([], _, []).
-sam([0'@|Cs], out, Out) :- !, sam(Cs, out, Out).
-sam([0'\', 0'\'|Cs], sq, [0'\', 0'\'|Out]) :- !, sam(Cs, sq, Out).
-sam([0'\'|Cs], out, [0'\'|Out]) :- !, sam(Cs, sq, Out).
-sam([0'\'|Cs], sq, [0'\'|Out]) :- !, sam(Cs, out, Out).
-sam([C|Cs], St, [C|Out]) :- sam(Cs, St, Out).
+at_quoted(['''', ''''|Cs]) --> "''", !, at_quoted(Cs).
+at_quoted([''''|Cs]) --> "'", !, without_at_marks(Cs).
+at_quoted([C|Cs]) --> [C], !, at_quoted(Cs).
+at_quoted([]) --> [].
 
 format_atom(Fmt, Args, Atom) :- with_output_to(atom(Atom), format_write(Fmt, Args)).
 
-format_write(Fmt, Args) :- atom_chars(Fmt, Cs), fw_codes(Cs, Args).
+format_write(Fmt, Args) :- atom_chars(Fmt, Cs), format_chars(Cs, Args).
 
-fw_codes([], []).
-fw_codes(['~', w|Cs], [A|As]) :- !, write(A), fw_codes(Cs, As).
-fw_codes(['~', n|Cs], As) :- !, nl, fw_codes(Cs, As).
-fw_codes([C|Cs], As) :- write(C), fw_codes(Cs, As).
+format_chars([], []).
+format_chars(['~', w|Cs], [A|As]) :- !, write(A), format_chars(Cs, As).
+format_chars(['~', n|Cs], As) :- !, nl, format_chars(Cs, As).
+format_chars([C|Cs], As) :- write(C), format_chars(Cs, As).
 
 quad_report(TestNum, Display, true, _, ElapsedMs) :-
     !,
@@ -561,25 +570,27 @@ quad_report(TestNum, Display, false, Reason, ElapsedMs) :-
     flush_output.
 
 write_reason_lines(Reason) :-
-    split_nl(Reason, Lines),
-    forall(member(L, Lines), (write('#   '), write(L), nl)).
+    atom_chars(Reason, Cs),
+    phrase(lines(Lines), Cs),
+    forall(member(L, Lines), (write('#   '), atom_chars(A, L), write(A), nl)).
 
-% --- elapsed-time formatting: "S.mmm" ---
-
-pad3(N, Atom) :-
-    atom_number(NAtom, N),
-    ( N < 10 -> atom_concat('00', NAtom, Atom)
-    ; N < 100 -> atom_concat('0', NAtom, Atom)
-    ; Atom = NAtom
-    ).
+% --- elapsed time as "S.mmm" ---
 
 ms_to_secs_atom(Ms, Atom) :-
     Secs is Ms // 1000,
     Frac is Ms mod 1000,
-    pad3(Frac, FracAtom),
-    atom_number(SecsAtom, Secs),
-    atom_concat(SecsAtom, '.', A1),
-    atom_concat(A1, FracAtom, Atom).
+    number_chars(Secs, SecsCs),
+    number_chars(Frac, FracCs0),
+    length(FracCs0, N),
+    Pad is 3 - N,
+    length(Zeros, Pad),
+    maplist(=('0'), Zeros),
+    append(Zeros, FracCs0, FracCs),
+    append(SecsCs, ['.'|FracCs], Cs),
+    atom_chars(Atom, Cs).
+
+secs_ms(Ms) --> digits(S), ".", digits(F), !, { number_chars(Secs, S), number_chars(FMs, F), Ms is Secs * 1000 + FMs }.
+secs_ms(Ms) --> digits(S), { number_chars(Secs, S), Ms is Secs * 1000 }.
 
 % --- quad file parsing and running ---
 
@@ -588,105 +599,52 @@ ms_to_secs_atom(Ms, Atom) :-
 
 run_quad_file(File) :- run_quad_file(File, 0).
 
-% Skip: how many query/answer blocks to re-parse but not re-execute
-% (directives/facts still run either way).
+% Skip: how many tests to read but not run (directives and clauses still run).
 run_quad_file(File, Skip) :-
     retractall(quad_stat(_, _, _, _)),
     assertz(quad_stat(0, 0, 0, 0)),
     retractall(quad_record(_, _, _, _, _)),
     open(File, read, S),
-    qf_loop(S, '', '', query, Skip, 0),
+    read_lines(S, Lines0),
     close(S),
+    maplist(uncommented, Lines0, Lines),
+    phrase(quad_items(Items), Lines, _),
+    run_items(Items, Skip, 0),
     quad_stat(Total, Passed, Failed, TotalMs),
     ms_to_secs_atom(TotalMs, TotalTimeAtom),
     write('# '), write(File), write(': '), write(Total), write(' tests, '),
     write(Passed), write(' passed, '), write(Failed), write(' failed, '),
     write(TotalTimeAtom), write('s total'), nl.
 
-qf_loop(S, ClauseBuf, AnswerBuf, Mode, Skip, SeenCount) :-
-    read_line_to_atom(S, Line0),
-    ( Line0 \== end_of_file
-    -> strip_line_comment(Line0, Line),
-       trim_leading(Line, Trimmed),
-       ( Mode == answer
-       -> qf_answer_step(S, ClauseBuf, AnswerBuf, Line, Trimmed, Skip, SeenCount)
-       ;  Mode == done
-       -> qf_done_step(S, ClauseBuf, AnswerBuf, Line, Trimmed, Skip, SeenCount)
-       ;  qf_clause_step(S, ClauseBuf, Line, Trimmed, Skip, SeenCount)
-       )
-    ;  Mode == done
-    -> qf_run(ClauseBuf, AnswerBuf, Skip, SeenCount, _)
-    ;  true
+read_lines(S, Lines) :-
+    read_line_to_atom(S, Line),
+    (   Line == end_of_file
+    ->  Lines = []
+    ;   atom_chars(Line, Cs),
+        Lines = [Cs|Lines1],
+        read_lines(S, Lines1)
     ).
 
-qf_answer_step(S, QueryBuf, AnswerBuf0, Line, Trimmed, Skip, SeenCount) :-
-    ( AnswerBuf0 == '', Trimmed == ''
-    -> qf_loop(S, QueryBuf, AnswerBuf0, answer, Skip, SeenCount)
-    ;  ( AnswerBuf0 == '' -> AnswerBuf1 = Line
-       ;  atom_concat(AnswerBuf0, '\n', AB1), atom_concat(AB1, Line, AnswerBuf1)
-       ),
-       ( has_complete_clause(AnswerBuf1)
-       -> qf_loop(S, QueryBuf, AnswerBuf1, done, Skip, SeenCount)
-       ;  qf_loop(S, QueryBuf, AnswerBuf1, answer, Skip, SeenCount)
-       )
+run_items([], _, _).
+run_items([I|Is], Skip, Seen0) :-
+    run_item(I, Skip, Seen0, Seen),
+    run_items(Is, Skip, Seen).
+
+run_item(test(Query, Answer), Skip, Seen0, Seen) :-
+    Seen is Seen0 + 1,
+    ( Seen =< Skip -> true ; once(run_one_test(Query, Answer, _)) ).
+run_item(directive(Cs), _, Seen, Seen) :-
+    strip_terminating_dot(Cs, Text),
+    atom_chars(A, Text),
+    (   catch((atom_to_term(A, Goal, _),
+               with_output_to(atom(_), catch(call(Goal), _, true))), _, fail)
+    ->  true
+    ;   true
     ).
-
-% Ulrich continues an answer on indented lines.
-qf_done_step(S, QueryBuf, AnswerBuf, Line, Trimmed, Skip, SeenCount) :-
-    (   Trimmed \== '', Line \== Trimmed,
-        \+ sub_atom(Trimmed, 0, 2, _, '?-'),
-        quad_strip_id(Trimmed, Trimmed), \+ sub_atom(Trimmed, 0, 1, _, ':')
-    ->  qf_answer_step(S, QueryBuf, AnswerBuf, Line, Trimmed, Skip, SeenCount)
-    ;   qf_run(QueryBuf, AnswerBuf, Skip, SeenCount, SeenCount1),
-        (   Trimmed == ''
-        ->  qf_loop(S, '', '', query, Skip, SeenCount1)
-        ;   qf_clause_step(S, '', Line, Trimmed, Skip, SeenCount1)
-        )
-    ).
-
-qf_run(QueryBuf, AnswerBuf, Skip, SeenCount, SeenCount1) :-
-    SeenCount1 is SeenCount + 1,
-    ( SeenCount1 =< Skip -> true ; once(run_one_test(QueryBuf, AnswerBuf, _)) ).
-
-qf_clause_step(S, ClauseBuf0, Line, Trimmed0, Skip, SeenCount) :-
-    ( ClauseBuf0 == '' -> quad_strip_id(Trimmed0, Trimmed) ; Trimmed = Trimmed0 ),
-    dcg_accumulate(ClauseBuf0, Trimmed, ClauseBuf1),
-    ( has_complete_clause(ClauseBuf1)
-    -> ( sub_atom(ClauseBuf1, 0, 2, _, '?-')
-       -> qf_loop(S, ClauseBuf1, '', answer, Skip, SeenCount)
-       ;  sub_atom(ClauseBuf1, 0, 2, _, ':-')
-       -> sub_atom(ClauseBuf1, 2, _, 0, DirText0),
-          strip_terminating_dot(DirText0, DirText),
-          ( catch((atom_to_term(DirText, Goal, _),
-                   with_output_to(atom(_), catch(call(Goal), _, true))), _, fail)
-          -> true
-          ;  true
-          ),
-          qf_loop(S, '', '', query, Skip, SeenCount)
-       ;  strip_terminating_dot(ClauseBuf1, ClauseText),
-          ( catch((atom_to_term(ClauseText, Term, _), assertz(Term)), _, fail)
-          -> true
-          ;  true
-          ),
-          qf_loop(S, '', '', query, Skip, SeenCount)
-       )
-    ;  qf_loop(S, ClauseBuf1, '', query, Skip, SeenCount)
-    ).
-
-quad_strip_id(T0, T) :-
-    atom_codes(T0, Cs),
-    (   Cs = [D|_], D >= 0'0, D =< 0'9,
-        append(Ds, [0' |Rest0], Cs), quad_all_digits(Ds),
-        quad_skip_spaces(Rest0, Rest), Rest = [0'?, 0'-|_]
-    ->  atom_codes(T, Rest)
-    ;   T = T0
-    ).
-
-quad_all_digits([]).
-quad_all_digits([D|Ds]) :- D >= 0'0, D =< 0'9, quad_all_digits(Ds).
-
-quad_skip_spaces([0' |Cs], Rest) :- !, quad_skip_spaces(Cs, Rest).
-quad_skip_spaces(Cs, Cs).
+run_item(clause(Cs), _, Seen, Seen) :-
+    strip_terminating_dot(Cs, Text),
+    atom_chars(A, Text),
+    ( catch((atom_to_term(A, Term, _), assertz(Term)), _, fail) -> true ; true ).
 
 % --- CLI entry point: exit code 0 if all pass, 1 if any failed ---
 
@@ -697,28 +655,33 @@ quad_cli(File) :-
 
 % --- JUnit XML output, with crash-resume support ---
 
-last_path_segment(Path, Seg) :-
-    atom_codes(Path, Cs),
-    ( append(_, [0'/|SegCs], Cs), \+ member(0'/, SegCs) -> true ; SegCs = Cs ),
-    atom_codes(Seg, SegCs).
+quad_suite_name(File, Suite) :-
+    atom_chars(File, Cs),
+    ( append(_, ['/'|Seg], Cs), \+ memberchk('/', Seg) -> true ; Seg = Cs ),
+    ( append(Base, ['.'|Ext], Seg), \+ memberchk('.', Ext) -> true ; Base = Seg ),
+    atom_chars(Suite, Base).
 
-strip_ext(Atom, Base) :-
-    atom_codes(Atom, Cs),
-    ( append(BaseCs, [0'.|Rest], Cs), \+ member(0'., Rest) -> true ; BaseCs = Cs ),
-    atom_codes(Base, BaseCs).
+suite_path(Dir, Suite, Ext, Path) :-
+    atom_chars(Dir, D),
+    atom_chars(Suite, S),
+    concat([D, "/", S, Ext], Cs),
+    atom_chars(Path, Cs).
 
-quad_suite_name(File, Suite) :- last_path_segment(File, Seg), strip_ext(Seg, Suite).
+xml_escape(Atom, Escaped) :-
+    atom_chars(Atom, Cs),
+    phrase(xml_escaped(Cs), Es),
+    atom_chars(Escaped, Es).
 
-xml_escape(Atom, Escaped) :- atom_codes(Atom, Cs), xesc_codes(Cs, Out), atom_codes(Escaped, Out).
+xml_escaped([]) --> [].
+xml_escaped([C|Cs]) --> xml_char(C), xml_escaped(Cs).
 
-xesc_codes([], []).
-xesc_codes([0'&|Cs], [0'&, 0'a, 0'm, 0'p, 0';|Out]) :- !, xesc_codes(Cs, Out).
-xesc_codes([0'<|Cs], [0'&, 0'l, 0't, 0';|Out]) :- !, xesc_codes(Cs, Out).
-xesc_codes([0'>|Cs], [0'&, 0'g, 0't, 0';|Out]) :- !, xesc_codes(Cs, Out).
-xesc_codes([0'"|Cs], [0'&, 0'q, 0'u, 0'o, 0't, 0';|Out]) :- !, xesc_codes(Cs, Out).
-xesc_codes([0'\n|Cs], [0'&, 0'#, 0'1, 0'0, 0';|Out]) :- !, xesc_codes(Cs, Out).
-xesc_codes([0'\r|Cs], [0'&, 0'#, 0'1, 0'3, 0';|Out]) :- !, xesc_codes(Cs, Out).
-xesc_codes([C|Cs], [C|Out]) :- xesc_codes(Cs, Out).
+xml_char('&') --> !, "&amp;".
+xml_char('<') --> !, "&lt;".
+xml_char('>') --> !, "&gt;".
+xml_char('"') --> !, "&quot;".
+xml_char('\n') --> !, "&#10;".
+xml_char('\r') --> !, "&#13;".
+xml_char(C) --> [C].
 
 write_testcase(Strm, Suite, Name, true, _, ElapsedMs) :-
     !,
@@ -742,10 +705,8 @@ run_quad_file_junit(File, Dir) :- run_quad_file_junit(File, Dir, 0).
 % instead of truncating them.
 run_quad_file_junit(File, Dir, Skip) :-
     quad_suite_name(File, Suite),
-    atom_concat(Dir, '/', D1),
-    atom_concat(D1, Suite, D2),
-    atom_concat(D2, '.progress', ProgressPath),
-    atom_concat(D2, '.xml.partial', PartialPath),
+    suite_path(Dir, Suite, ".progress", ProgressPath),
+    suite_path(Dir, Suite, ".xml.partial", PartialPath),
     ( Skip =:= 0
     -> catch((open(ProgressPath, write, S1), close(S1)), _, true),
        catch((open(PartialPath, write, S2), close(S2)), _, true)
@@ -757,86 +718,58 @@ run_quad_file_junit(File, Dir, Skip) :-
     retractall(quad_ckpt_ctx(_, _, _)),
     quad_finalize_junit(File, Suite, Dir).
 
-read_whole_file(Path, Whole) :- open(Path, read, S), rwf_loop(S, '', Whole), close(S).
-
-rwf_loop(S, Acc, Whole) :-
-    read_line_to_atom(S, Line),
-    ( Line == end_of_file
-    -> Whole = Acc
-    ;  atom_concat(Line, '\n', L1), atom_concat(Acc, L1, Acc1), rwf_loop(S, Acc1, Whole)
-    ).
-
-% one line at a time, no atom_concat accumulation over the whole file.
+% One line at a time, so a long file never becomes one atom.
 count_partial(Path, TestcaseCount, FailureCount, TotalMs) :-
     catch(
         ( open(Path, read, S),
-          cp_loop(S, stat(0, 0, 0), stat(TestcaseCount, FailureCount, TotalMs)),
+          count_lines(S, stat(0, 0, 0), stat(TestcaseCount, FailureCount, TotalMs)),
           close(S)
         ), _, ( TestcaseCount = 0, FailureCount = 0, TotalMs = 0 )).
 
-cp_loop(S, stat(AccT, AccF, AccMs), Stat) :-
+count_lines(S, stat(T0, F0, Ms0), Stat) :-
     read_line_to_atom(S, Line),
-    ( Line == end_of_file
-    -> Stat = stat(AccT, AccF, AccMs)
-    ;  ( line_has_prefix(Line, '  <testcase ')
-       -> AccT1 is AccT + 1,
-          ( line_time_ms(Line, LineMs) -> AccMs1 is AccMs + LineMs ; AccMs1 = AccMs )
-       ;  AccT1 = AccT, AccMs1 = AccMs
-       ),
-       ( line_has_prefix(Line, '    <failure ') -> AccF1 is AccF + 1 ; AccF1 = AccF ),
-       cp_loop(S, stat(AccT1, AccF1, AccMs1), Stat)
+    (   Line == end_of_file
+    ->  Stat = stat(T0, F0, Ms0)
+    ;   atom_chars(Line, Cs),
+        (   append("  <testcase ", _, Cs)
+        ->  T1 is T0 + 1,
+            ( phrase(testcase_ms(LineMs), Cs) -> Ms1 is Ms0 + LineMs ; Ms1 = Ms0 )
+        ;   T1 = T0, Ms1 = Ms0
+        ),
+        ( append("    <failure ", _, Cs) -> F1 is F0 + 1 ; F1 = F0 ),
+        count_lines(S, stat(T1, F1, Ms1), Stat)
     ).
 
-% copies Path's lines verbatim to the already-open OutStrm, one line at a
-% time
+% The time="S.mmm" attribute of a <testcase> line, in milliseconds.
+testcase_ms(Ms) --> skip_to("time=\""), secs_ms(Ms), "\"", !, rest_of_line.
+
+skip_to(Prefix, Cs0, Cs) :- append(Prefix, Cs, Cs0), !.
+skip_to(Prefix, [_|Cs0], Cs) :- skip_to(Prefix, Cs0, Cs).
+
+rest_of_line(_, []).
+
+% Copies Path's lines verbatim to the open OutStrm, one line at a time.
 stream_copy_lines(Path, OutStrm) :-
-    catch((open(Path, read, S), scl_loop(S, OutStrm), close(S)), _, true).
+    catch((open(Path, read, S), copy_lines(S, OutStrm), close(S)), _, true).
 
-scl_loop(S, OutStrm) :-
+copy_lines(S, OutStrm) :-
     read_line_to_atom(S, Line),
-    ( Line == end_of_file
-    -> true
-    ;  write(OutStrm, Line), nl(OutStrm), scl_loop(S, OutStrm)
+    (   Line == end_of_file
+    ->  true
+    ;   write(OutStrm, Line), nl(OutStrm), copy_lines(S, OutStrm)
     ).
 
-line_has_prefix(Line, Prefix) :-
-    atom_length(Prefix, Len),
-    atom_length(Line, LineLen),
-    LineLen >= Len,
-    sub_atom(Line, 0, Len, _, Prefix).
-
-% pulls the time="S.mmm" attribute out of a <testcase> line and converts
-% it back to milliseconds (mirrors ms_to_secs_atom/2's "S.mmm" format).
-line_time_ms(Line, Ms) :-
-    sub_atom(Line, Before, 6, _, 'time="'),
-    !,
-    Start is Before + 6,
-    sub_atom(Line, Start, _, 0, Rest),
-    sub_atom(Rest, EndBefore, _, _, '"'),
-    !,
-    sub_atom(Rest, 0, EndBefore, _, TimeStr),
-    secs_atom_to_ms(TimeStr, Ms).
-
-secs_atom_to_ms(Atom, Ms) :-
-    ( sub_atom(Atom, B, 1, A, '.')
-    -> sub_atom(Atom, 0, B, _, SecsPart),
-       sub_atom(Atom, _, A, 0, FracPart),
-       atom_number(SecsPart, Secs),
-       atom_number(FracPart, FracMs),
-       Ms is Secs * 1000 + FracMs
-    ;  atom_number(Atom, Secs), Ms is Secs * 1000
-    ).
-
-% appends a synthetic "crashed here" <testcase> naming the in-flight
-% query, so the next resume attempt's Skip steps past it too.
+% Appends a synthetic "crashed here" <testcase> naming the in-flight query,
+% so the next resume attempt's Skip steps past it too.
 quad_mark_crash(Suite, Dir) :-
-    atom_concat(Dir, '/', D1),
-    atom_concat(D1, Suite, D2),
-    atom_concat(D2, '.progress', ProgressPath),
-    atom_concat(D2, '.xml.partial', PartialPath),
-    ( catch(read_whole_file(ProgressPath, CrashedRaw), _, fail)
-    -> trim_trailing(CrashedRaw, CrashedDisplay)
-    ;  CrashedDisplay = 'unknown query (no checkpoint recorded)'
+    suite_path(Dir, Suite, ".progress", ProgressPath),
+    suite_path(Dir, Suite, ".xml.partial", PartialPath),
+    (   catch((open(ProgressPath, read, S), read_lines(S, Ls), close(S)), _, fail),
+        join("\n", Ls, Cs0),
+        trim_trailing(Cs0, Cs),
+        Cs \== []
+    ->  atom_chars(CrashedDisplay, Cs)
+    ;   CrashedDisplay = 'unknown query (no checkpoint recorded)'
     ),
     xml_escape(CrashedDisplay, EscCrashed),
     format_atom('  <testcase name="~w (trilog crashed here)" classname="~w" time="0.000">',
@@ -848,19 +781,15 @@ quad_mark_crash(Suite, Dir) :-
     close(Strm).
 
 quad_resolved_count(Suite, Dir, Count) :-
-    atom_concat(Dir, '/', D1),
-    atom_concat(D1, Suite, D2),
-    atom_concat(D2, '.xml.partial', PartialPath),
+    suite_path(Dir, Suite, ".xml.partial", PartialPath),
     count_partial(PartialPath, Count, _Failed, _TotalMs).
 
-% two passes: counts need to be known before the opening tag is written,
+% Two passes: counts need to be known before the opening tag is written,
 % so pass 1 counts and pass 2 streams the body across.
 quad_finalize_junit(File, Suite, Dir) :-
-    atom_concat(Dir, '/', D1),
-    atom_concat(D1, Suite, D2),
-    atom_concat(D2, '.xml', XmlPath),
-    atom_concat(D2, '.progress', ProgressPath),
-    atom_concat(D2, '.xml.partial', PartialPath),
+    suite_path(Dir, Suite, ".xml", XmlPath),
+    suite_path(Dir, Suite, ".progress", ProgressPath),
+    suite_path(Dir, Suite, ".xml.partial", PartialPath),
     count_partial(PartialPath, Total, Failed, TotalMs),
     xml_escape(File, EscFile),
     ms_to_secs_atom(TotalMs, TotalTimeAtom),
@@ -881,3 +810,5 @@ quad_cli_junit(File, Dir, Skip) :-
     once(run_quad_file_junit(File, Dir, Skip)),
     quad_stat(_, _, Failed, _),
     ( Failed > 0 -> halt(1) ; halt(0) ).
+
+:- forall(member(N/A, [lines/1, line/1, digit/1, digits/1, numeric_escape/1, escape_digits/1, quad_items/1, quad_item/1, blank_lines/0, clause_text/1, clause_more/2, clause_tail/3, clause_more_lines/2, item_tail/2, answer/1, answer_more/2, answer_done/2, spaces/0, without_at_marks/1, at_quoted/1, secs_ms/1, xml_escaped/1, xml_char/1, testcase_ms/1]), '$dcg_ensure'(N, A)).

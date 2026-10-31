@@ -1,30 +1,30 @@
 % regression: for 0'c parsing and dcg
 
-?- has_complete_clause('?- number_codes(33.0, [0''3|_L]).').
+?- atom_chars('?- number_codes(33.0, [0''3|_L]).', _Cs), has_complete_clause(_Cs).
    true.
 
-?- has_complete_clause('?- X = 0''\\n.').
+?- atom_chars('?- X = 0''\\n.', _Cs), has_complete_clause(_Cs).
    true.
 
-?- has_complete_clause('?- X is 0''\\\\ + 1.').
+?- atom_chars('?- X is 0''\\\\ + 1.', _Cs), has_complete_clause(_Cs).
    true.
 
-?- has_complete_clause('?- foo([0''a, 0''b], X).').
+?- atom_chars('?- foo([0''a, 0''b], X).', _Cs), has_complete_clause(_Cs).
    true.
 
-?- has_complete_clause('?- X = 0''a, Y = ''real atom''.').
+?- atom_chars('?- X = 0''a, Y = ''real atom''.', _Cs), has_complete_clause(_Cs).
    true.
 
-?- \+ has_complete_clause('?- X = ''unterminated atom.').
+?- atom_chars('?- X = ''unterminated atom.', _Cs), \+ has_complete_clause(_Cs).
    true.
 
-?- strip_terminating_dot('X is 0''a.', Y).
+?- atom_chars('X is 0''a.', _Cs), strip_terminating_dot(_Cs, _Ys), atom_chars(Y, _Ys).
    Y = 'X is 0\'a'.
 
-?- strip_terminating_dot('X is 0''a', Y).
+?- atom_chars('X is 0''a', _Cs), strip_terminating_dot(_Cs, _Ys), atom_chars(Y, _Ys).
    Y = 'X is 0\'a'.
 
-?- strip_line_comment('X is 0''a. % a comment', Y).
+?- atom_chars('X is 0''a. % a comment', _Cs), uncommented(_Cs, _Ys), atom_chars(Y, _Ys).
    Y = 'X is 0\'a. '.
 
 % regression: an assertz'd rule holding an integer literal past the end of
