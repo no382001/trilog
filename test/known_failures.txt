@@ -1,0 +1,84 @@
+between_quad	between(1+1,2,I)
+between_quad	between(1, I, 0)
+between_quad	between(1, c, 0)
+builtins_quad	X is "hello"
+builtins_quad	current_prolog_flag(max_integer, V)
+builtins_quad	current_prolog_flag(min_integer, V)
+conformity	#106 X = '\\' .
+conformity	#148 write_canonical(fy yf).
+conformity	#161 write_canonical(f f).
+conformity	#162 op(9,fy,p),op(9,yfx,p). ⏎ write_canonical(1 p p p 2).
+conformity	#163 op(9,fy,p),op(9,xfy,p). ⏎ write_canonical(1 p p p 2).
+conformity	#164 op(7,fy,p),op(9,yfx,p). ⏎ write_canonical(1 p p p 2).
+conformity	#170 set_prolog_flag( ⏎  double_quotes,chars).
+conformity	#172 X is 10.0** -323, writeq(X).
+conformity	#181 writeq((a-->b,c|d)).
+conformity	#235 writeq(1 = f).
+conformity	#250 writeq('\0\').
+conformity	#259 X = 0'\ ⏎ +'/*'. %*/1.
+conformity	#271 get_char(C).%a
+conformity	#290 writeq([(a|b)]).
+conformity	#300 writeq("\0\").
+conformity	#301 writeq('\0\').
+conformity	#322 write_canonical((a|b;c)).
+conformity	#323 write_canonical((a;b|c)).
+conformity	#364 writeq(-0.0).
+conformity	#4 .
+conformity	#77 - = - .
+conformity	#82 (- -) = -(-).
+conformity	#83 (- - -) = -(-(-)).
+conformity	#84 (- - - -) = -(-(-(-))).
+conformity	#85 {:- :- c} = {:-(:-,c)}.
+conformity	#86 {- = - 1}={(-(=)) - 1}.
+conformity	#87 write_canonical((- = - 1)).
+conformity	#88 write_canonical((- = -1)).
+conformity	#89 write_canonical((-;)).
+conformity	#92 [:- -c] = [(:- -c)].
+core_quad	X = Y, X == Y
+core_quad	catch(throw(foo), bar, true)
+core_quad	last(X, [a, b, c])
+float_quad	atom_number(X, 3.5)
+iso_quad	';'('->'(','(!, fail), true), true)
+iso_quad	'='(X,Y)
+iso_quad	(foo = Foo, nonvar(Foo))
+iso_quad	abolish(bar/1)
+iso_quad	asserta((atom(_) :- true))
+iso_quad	assertz((atom(_) :- true))
+iso_quad	atom_chars('Pécs', L)
+iso_quad	atom_chars(A, ['P','é','c','s'])
+iso_quad	atom_codes('Pécs', C)
+iso_quad	atom_codes(A, [0'P,0'é,0'c,0's])
+iso_quad	atom_concat(T1, T2, 'Pécs')
+iso_quad	atom_length('Bartók Béla', L)
+iso_quad	atom_length(atom, N)
+iso_quad	bagof(X,(X=Y;X=Z),S)
+iso_quad	call((1; true))
+iso_quad	call((fail, 1))
+iso_quad	copy_term(X+X+_Y,A+B+B)
+iso_quad	findall(X,X=1,[A|1])
+iso_quad	retract((atom(X) :- X =='[]'))
+iso_quad	retract((legs(X, Y) :- Z))
+iso_quad	retract((legs(_X, _Y) :- _Z))
+iso_quad	setof(X, X^(true; 4),_L)
+iso_quad	setof(X, my_member(X,[V,U,f(U),f(V)]), [a,b,f(b),f(a)])
+iso_quad	setof(X,X=1,[A|1])
+iso_quad	setof(X,my_member(X,[f(b,U), f(c,V)]), [f(b,a),f(c,a)])
+iso_quad	sub_atom('Bartók Béla', 4, 2, A, S)
+iso_quad	sub_atom('Bartók Béla', 4, L, 5, S)
+iso_quad	sub_atom('Bartók Béla', B, 2, 5, S)
+iso_quad	sub_atom('Pécs',B,2,A,S)
+member_quad	member(X, X)
+nth_quad	nth0(0, [A,B|non_list], E)
+nth_quad	nth0(N, [[]|Es], Es)
+select_quad	select(E, Xs, Xs)
+select_quad	select(X, [Y|nonlist], Xs)
+solver_quad	sub_atom(abcabc, B, _, _, abc)
+strings_quad	last(X, "hello")
+succ_quad	current_prolog_flag(max_integer, MI), succ(MI, 0)
+succ_quad	current_prolog_flag(max_integer, MI), succ(MI, 1)
+succ_quad	current_prolog_flag(max_integer, MI), succ(MI, MI)
+succ_quad	succ(-1, S)
+succ_quad	succ(1, 1+1)
+succ_quad	succ(X, 0)
+succ_quad	succ(X, S)
+succ_quad	succ(X, X)

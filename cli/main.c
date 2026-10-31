@@ -1,0 +1,162 @@
+#include "host.h"
+#include "terminal.h"
+#include "toplevel.h"
+#include "trilog.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static trilog_t *T;
+
+static const char *usage =
+    "Usage: trilog [options] [file...]\n"
+    "  -e GOAL   evaluate GOAL and exit\n"
+    "  -f        fast startup: skip ~/.trilog\n"
+    "  -n        load only the core: no apply, dcgs, between, charsio, make\n"
+    "  -v        verbose: echo startup consults\n"
+    "  -s        print resource-usage stats on exit\n"
+    "  -V        print the version and exit\n"
+    "  -h        show this help\n";
+
+static void print_exit_stats(void) {
+  if (!T)
+    return;
+  trilog_usage_t u;
+  trilog_usage(T, &u);
+  fprintf(stderr, "heap_peak_cells=%zu\nheap_peak_bytes=%zu\nclauses=%zu\n",
+          u.heap_peak_cells, u.heap_peak_bytes, u.clauses);
+}
+
+// TODO: This probably should be NDEBUG or something
+#ifdef TRILOG_EMBEDDED
+// The release build boots from its built-in image.
+static void resolve_core_path(const char *argv0, char *out, size_t out_size) {
+  (void)argv0;
+  if (out_size > 0)
+    out[0] = '\0';
+}
+#else
+// The dev build reads boot/core.pl from next to the binary
+static void resolve_core_path(const char *argv0, char *out, size_t out_size) {
+  char dir[4096 - sizeof "/boot/core.pl"];
+  char exe[4096];
+  const char *self = terminal_executable_path(exe, sizeof exe) ? exe : argv0;
+  size_t n = strlen(self);
+  if (n >= sizeof dir)
+    n = 0;
+  memcpy(dir, self, n);
+  dir[n] = '\0';
+  char *sep = strrchr(dir, '/');
+  char *bsep = strrchr(dir, '\\');
+  if (bsep && (!sep || bsep > sep))
+    sep = bsep;
+  if (sep)
+    *sep = '\0';
+  else
+    snprintf(dir, sizeof dir, ".");
+  snprintf(out, out_size, "%s/boot/core.pl", dir);
+}
+#endif
+
+static bool no_more(trilog_t *t, void *ud, bool has_more) {
+  (void)t, (void)ud, (void)has_more;
+  return false;
+}
+
+static void load_default_libraries(void) {
+  static const char *const libs =
+      "ensure_loaded(library(dcgs)), ensure_loaded(library(between)), "
+      "ensure_loaded(library(charsio)), ensure_loaded(library(make))";
+  if (trilog_query(T, libs, no_more, NULL) != TRILOG_TRUE)
+    toplevel_print_uncaught(T);
+}
+
+static void load_init_file(int verbose) {
+  const char *home = getenv("HOME");
+  if (!home)
+    return;
+  char path[4096];
+  snprintf(path, sizeof path, "%s/.trilog", home);
+  if (verbose)
+    printf("?- consult('%s').\n", path);
+  FILE *f = fopen(path, "r");
+  if (!f) {
+    if (verbose)
+      fputs("false.\n", stdout);
+    return;
+  }
+  fclose(f);
+  if (trilog_load_file(T, path) == TRILOG_HALT)
+    exit(trilog_halt_code(T));
+}
+
+int main(int argc, char **argv) {
+  int fast = 0, verbose = 0, exit_stats = 0, core_only = 0;
+  const char *query = NULL;
+  for (int i = 1; i < argc; i++) {
+    if (!strcmp(argv[i], "-h")) {
+      fputs(usage, stdout);
+      return 0;
+    }
+    if (!strcmp(argv[i], "-V")) {
+      printf("trilog %s\n", trilog_version());
+      return 0;
+    }
+    if (!strcmp(argv[i], "-f")) {
+      fast = 1;
+    } else if (!strcmp(argv[i], "-n")) {
+      core_only = 1;
+    } else if (!strcmp(argv[i], "-v")) {
+      verbose = 1;
+    } else if (!strcmp(argv[i], "-s")) {
+      exit_stats = 1;
+    } else if (!strcmp(argv[i], "-e") && i + 1 < argc) {
+      query = argv[++i];
+    }
+  }
+  if (exit_stats)
+    atexit(print_exit_stats);
+
+  char core_path[4096];
+  resolve_core_path(argv[0], core_path, sizeof core_path);
+  if (verbose && core_path[0])
+    printf("?- consult('%s').\n", core_path);
+  const char *gc_threshold = getenv("TRILOG_GC_THRESHOLD");
+  trilog_config_t config = {
+      .boot_path = core_path[0] ? core_path : NULL,
+      .gc_threshold = gc_threshold ? strtoul(gc_threshold, NULL, 10) : 0,
+      .gc_debug = getenv("TRILOG_GC_DEBUG") != NULL,
+  };
+  host_config(&config);
+  T = trilog_new(&config);
+  if (!T)
+    return 1;
+  if (!core_only)
+    load_default_libraries();
+  if (!fast)
+    load_init_file(verbose);
+
+  for (int i = 1; i < argc; i++) {
+    if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "-v") ||
+        !strcmp(argv[i], "-s") || !strcmp(argv[i], "-n")) {
+      continue;
+    } else if (!strcmp(argv[i], "-e") && i + 1 < argc) {
+      i++;
+    } else {
+      trilog_status_t s = trilog_load_file(T, argv[i]);
+      if (s == TRILOG_HALT)
+        exit(trilog_halt_code(T));
+      if (s != TRILOG_TRUE)
+        return 1;
+    }
+  }
+
+  trilog_status_t s =
+      query ? toplevel_query(T, query, false) : toplevel_repl(T);
+  if (s == TRILOG_HALT)
+    exit(trilog_halt_code(T));
+  if (query && s == TRILOG_ERROR &&
+      trilog_term_type(T, trilog_error_term(T)) == TRILOG_INVALID)
+    return 1;
+  return 0;
+}
