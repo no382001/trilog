@@ -1,3 +1,5 @@
+:- '$builtin_file'.
+
 %!  solve(+Goal) is nondet.
 %   Cut: '$$choice_mark'/'$$cut_to' discard choice points, not the trail.
 solve(Goal) :- '$$choice_mark'(Mark), solve(Goal, Mark).

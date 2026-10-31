@@ -1,3 +1,5 @@
+:- '$builtin_file'.
+
 % --- line-buffering utilities ---
 
 :- ensure_loaded(library(apply)).

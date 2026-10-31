@@ -1,3 +1,5 @@
+:- '$builtin_file'.
+
 % ledit.pl -- Line editor adapted from "Prolog and Its Applications" Ch.3
 %
 % Usage:

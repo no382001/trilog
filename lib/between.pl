@@ -1,3 +1,5 @@
+:- '$builtin_file'.
+
 %!  between(+Low, +High, ?X) is nondet.
 between(L, H, X) :- integer(X), !, X >= L, X =< H.
 between(L, H, L) :- L =< H.

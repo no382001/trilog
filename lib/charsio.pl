@@ -1,3 +1,5 @@
+:- '$builtin_file'.
+
 :- ensure_loaded(library(misc)).
 
 %!  write_term_to_chars(@Term, +Options, -Chars) is det.

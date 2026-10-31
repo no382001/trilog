@@ -1,3 +1,5 @@
+:- '$builtin_file'.
+
 :- op(1200, xfx, '-->').
 :- dynamic('$dcg_compiled'/2).
 

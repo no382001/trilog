@@ -1,3 +1,5 @@
+:- '$builtin_file'.
+
 %!  consulted(-Files) is det.
 consulted(Files) :-
     findall(Path, '$consulted'(Path, _), Files).
