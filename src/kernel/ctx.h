@@ -51,7 +51,7 @@ struct trilog {
   size_t gc_fixed;
   bool gc_debug;
   unsigned heap_grow_percent, gc_grow_percent;
-  io_reader_t streams[MAX_OPEN_STREAMS];
+  io_reader_t *streams[MAX_OPEN_STREAMS];
 
   pair_visits unify_visits, occurs_check_visits;
   size_t *occurs_marks;
