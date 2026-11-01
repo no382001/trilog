@@ -24,6 +24,19 @@ load common
   [[ "$output" != *"b"* ]]
 }
 
+@test "a directive collects garbage (regression)" {
+  # regression: GC ran only in the outermost query, so a program started from a directive never collected and ran out of memory.
+  cat >"$BATS_TEST_TMPDIR/spin.pl" <<'PLEOF'
+spin(0) :- !.
+spin(N) :- numlist(1, 50, L), length(L, _), N1 is N - 1, spin(N1).
+:- catch((spin(200000), throw(inner)), inner, (write(caught_inner), nl)).
+PLEOF
+  run bash -c "ulimit -v 300000; \"$TRILOG\" -f -e \"catch((consult('$BATS_TEST_TMPDIR/spin.pl'), throw(outer)), outer, (write(caught_outer), nl)).\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"caught_inner"* ]]
+  [[ "$output" == *"caught_outer"* ]]
+}
+
 @test "a consult-time directive can call a core.pl-defined predicate (regression)" {
   cat > /tmp/mi_directive_test.pl <<'PLEOF'
 :- ( member(x, [x, y]) -> true ; throw(should_not_happen) ).

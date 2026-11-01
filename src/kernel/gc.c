@@ -146,9 +146,13 @@ static void shrink_scratch_to(trilog_t *T, size_t n) {
   }
 }
 
-static size_t compact_heap(trilog_t *T, size_t old_top) {
-  size_t next_free = 0;
-  for (size_t i = 0; i < old_top; i++) {
+// Cells below base stay put; of them only bound variables can point higher.
+static size_t compact_heap(trilog_t *T, size_t base, size_t old_top,
+                           size_t *trail, size_t trail_top) {
+  for (size_t i = 0; i < base; i++)
+    T->new_index[i] = i;
+  size_t next_free = base;
+  for (size_t i = base; i < old_top; i++) {
     T->new_index[i] = next_free;
     if (T->marked[i])
       next_free++;
@@ -156,7 +160,7 @@ static size_t compact_heap(trilog_t *T, size_t old_top) {
   // One-past-end sentinel: a mark can sit exactly at old_top (a clause
   // that bound no variables).
   T->new_index[old_top] = next_free;
-  for (size_t i = 0; i < old_top; i++) {
+  for (size_t i = base; i < old_top; i++) {
     if (!T->marked[i])
       continue;
     if (T->heap[i].tag == TAG_REF)
@@ -164,8 +168,15 @@ static size_t compact_heap(trilog_t *T, size_t old_top) {
     else if (T->heap[i].tag == TAG_STR)
       T->heap[i].as.ptr = T->new_index[T->heap[i].as.ptr];
   }
-  size_t write_ptr = 0;
-  for (size_t i = 0; i < old_top; i++) {
+  for (size_t i = 0; i < trail_top; i++) {
+    size_t v = trail[i];
+    if (v >= base || T->marked[v] == 2 || T->heap[v].tag != TAG_REF)
+      continue;
+    T->marked[v] = 2; // a variable can be on the trail twice
+    T->heap[v].as.ref = T->new_index[T->heap[v].as.ref];
+  }
+  size_t write_ptr = base;
+  for (size_t i = base; i < old_top; i++) {
     if (!T->marked[i])
       continue;
     if (write_ptr != i)
@@ -294,20 +305,30 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
   }
 
   size_t old_trail_top = trail_size(T);
+  size_t heap_base = T->query_heap_base;
   ensure_marked_cap(T, old_top);
-  memset(T->marked, 0, old_top);
+  memset(T->marked, 1, heap_base);
+  memset(T->marked + heap_base, 0, old_top - heap_base);
   ensure_index_cap(T, old_top + 1); // +1 for the one-past-end sentinel
 
   catch_frame_t *catches = catch_stack_array(T);
   size_t ncatches = catch_stack_size(T);
+  size_t catch_base = T->query_catch_base;
   ensure_catch_live_cap(T, ncatches);
   // catch_live can still be NULL if nothing has ever pushed a catch/3
   // frame yet.
-  if (ncatches)
-    memset(T->catch_live, 0, ncatches);
+  if (ncatches) {
+    memset(T->catch_live, 1, catch_base);
+    memset(T->catch_live + catch_base, 0, ncatches - catch_base);
+  }
   ensure_new_catch_index_cap(T, ncatches);
 
   T->mark_visit_count = 0;
+  // Outer queries' cells stay put; bindings are the only way they point up.
+  size_t *trail = trail_array(T);
+  for (size_t i = 0; i < old_trail_top; i++)
+    if (trail[i] < heap_base && T->heap[trail[i]].tag == TAG_REF)
+      mark_from(T, T->heap[trail[i]].as.ref);
   mark_from(T, *cn);
   for (size_t i = 0; i < nframes; i++)
     mark_from(T, frames[i].goals);
@@ -327,7 +348,6 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
     T->trail_new_index_cap = old_trail_top + 1;
   }
   {
-    size_t *trail = trail_array(T);
     size_t next_free = 0;
     for (size_t i = 0; i < old_trail_top; i++) {
       T->trail_new_index[i] = next_free;
@@ -337,7 +357,7 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
     T->trail_new_index[old_trail_top] = next_free;
   }
 
-  size_t new_top = compact_heap(T, old_top);
+  size_t new_top = compact_heap(T, heap_base, old_top, trail, old_trail_top);
   if (new_top > gc_max_live(T))
     T->heap_exhausted = 1;
   size_t new_trail_top = compact_trail(T, old_trail_top);
@@ -382,8 +402,9 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
 
   // A fixed threshold is a floor. Without GC_SHRINK the trigger stays within
   // 3/4 of the heap, so pushing it out never grows the heap by itself.
-  size_t next = mem_grow_by(T, new_top, T->gc_grow_percent);
-  size_t floor = T->gc_fixed ? T->gc_fixed : GC_MIN_CELLS;
+  size_t next =
+      heap_base + mem_grow_by(T, new_top - heap_base, T->gc_grow_percent);
+  size_t floor = T->gc_fixed ? T->gc_fixed : heap_base + GC_MIN_CELLS;
   size_t room = heap_capacity(T) / 4 * 3;
   if (T->gc_fixed && !GC_SHRINK && next > room)
     next = room;

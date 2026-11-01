@@ -146,6 +146,8 @@ struct trilog {
   size_t uncaught_ball;
   size_t *solution_rename;
   size_t query_sp_base;
+  // GC in a nested query neither moves nor frees what is below these.
+  size_t query_heap_base, query_catch_base;
   int query_depth;
   pair_visits compare_visits;
   void *file_target;

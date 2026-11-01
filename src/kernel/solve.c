@@ -2346,14 +2346,20 @@ static query_result_t run_query_body(trilog_t *T, tterm_t **goals,
 query_result_t run_query(trilog_t *T, tterm_t **goals, int32_t ngoals,
                          int32_t nvars, solution_fn on_solution, void *ud) {
   size_t saved_base = T->query_sp_base;
+  size_t saved_heap_base = T->query_heap_base;
+  size_t saved_catch_base = T->query_catch_base;
   size_t *saved_rename = T->solution_rename;
   T->query_sp_base = T->sp;
   T->query_depth++;
+  T->query_heap_base = T->query_depth == 1 ? 0 : heap_mark(T);
+  T->query_catch_base = T->query_depth == 1 ? 0 : T->catch_sp;
   T->uncaught_ball = (size_t)-1;
   query_result_t r = run_query_body(T, goals, ngoals, nvars, on_solution, ud);
   T->query_depth--;
   T->sp = T->query_sp_base;
   T->query_sp_base = saved_base;
+  T->query_heap_base = saved_heap_base;
+  T->query_catch_base = saved_catch_base;
   T->solution_rename = saved_rename;
   return r;
 }
@@ -2397,17 +2403,11 @@ A:
     if (!T->yield_fn(T, T->sp, T->yield_ud))
       engine_abort(T);
   }
-  // FIXME: GC only knows this query's roots, so collecting inside a nested
-  // query would move or free the outer queries' live terms
-  // Nested queries skip GC instead; the real fix is GC marking
-  // and relocating every running query's roots.
-  if (T->query_depth == 1) {
-    gc_maybe_run(T, &cn, T->stack, T->sp, rename, nvars, &active_catch);
-    if (gc_heap_exhausted(T)) {
-      if (do_throw(T, make_resource_error(T, "memory"), &cn, &active_catch))
-        goto A;
-      return QUERY_ERROR;
-    }
+  gc_maybe_run(T, &cn, T->stack, T->sp, rename, nvars, &active_catch);
+  if (gc_heap_exhausted(T)) {
+    if (do_throw(T, make_resource_error(T, "memory"), &cn, &active_catch))
+      goto A;
+    return QUERY_ERROR;
   }
   {
     // check cn == true before decompose, or a mid-clause true goal
