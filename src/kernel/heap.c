@@ -96,7 +96,11 @@ size_t heap_deref(trilog_t *T, size_t r) {
 }
 
 size_t heap_mark(trilog_t *T) { return T->heap_top; }
-void heap_release(trilog_t *T, size_t mark) { T->heap_top = mark; }
+void heap_release(trilog_t *T, size_t mark) {
+  T->heap_top = mark;
+  if (mark < T->gc_old_top)
+    T->gc_old_top = mark;
+}
 
 void heap_bind(trilog_t *T, size_t var, size_t target) {
   T->heap[var].as.ref = target;

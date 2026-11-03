@@ -86,6 +86,7 @@ struct trilog {
   size_t trail_new_index_cap;
   int heap_exhausted;
   size_t gc_threshold; // 0 = uninitialized
+  size_t gc_old_top, gc_old_at_major;
   size_t gc_max;
   // catch_stack is append-only, so a dead entry can hold a stale heap index -
   // `catch_live` marks which indices mark_catch_chain actually reached.

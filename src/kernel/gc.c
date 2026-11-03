@@ -147,53 +147,98 @@ static void shrink_scratch_to(trilog_t *T, size_t n) {
 }
 
 // Cells below base stay put; of them only bound variables can point higher.
+static size_t moved(trilog_t *T, size_t base, size_t i) {
+  return i < base ? i : T->new_index[i];
+}
+
+static size_t skip_dead(const uint8_t *m, size_t i, size_t end) {
+  for (; i < end && (i & 7); i++)
+    if (m[i])
+      return i;
+  for (uint64_t w; i + 8 <= end; i += 8) {
+    memcpy(&w, m + i, 8);
+    if (w)
+      break;
+  }
+  while (i < end && !m[i])
+    i++;
+  return i;
+}
+
+#define LIVE 1
+#define TRAIL_SEEN 2
+#define WANTS_INDEX 4
+
+static void flag_heap_marks(trilog_t *T, size_t base, size_t top,
+                            frame_t *frames, size_t nframes,
+                            catch_frame_t *catches, size_t ncatches, bool on) {
+  for (size_t i = 0; i < nframes + ncatches; i++) {
+    size_t hm;
+    if (i < nframes)
+      hm = frames[i].heap_mark;
+    else if (T->catch_live[i - nframes])
+      hm = catches[i - nframes].heap_mark;
+    else
+      continue;
+    if (hm < base || hm >= top)
+      continue;
+    if (on)
+      T->marked[hm] |= WANTS_INDEX;
+    else
+      T->marked[hm] &= (uint8_t)~WANTS_INDEX;
+  }
+}
+
+// Live cells only point at live cells, so only they and the heap marks of
+// frames and catches need a new index.
 static size_t compact_heap(trilog_t *T, size_t base, size_t old_top,
-                           size_t *trail, size_t trail_top) {
-  for (size_t i = 0; i < base; i++)
-    T->new_index[i] = i;
+                           size_t *trail, size_t trail_top, frame_t *frames,
+                           size_t nframes, catch_frame_t *catches,
+                           size_t ncatches) {
+  uint8_t *m = T->marked;
+  flag_heap_marks(T, base, old_top, frames, nframes, catches, ncatches, true);
   size_t next_free = base;
   for (size_t i = base; i < old_top; i++) {
+    if (!m[i] && (i = skip_dead(m, i, old_top)) == old_top)
+      break;
     T->new_index[i] = next_free;
-    if (T->marked[i])
-      next_free++;
+    next_free += m[i] & LIVE;
   }
   // One-past-end sentinel: a mark can sit exactly at old_top (a clause
   // that bound no variables).
   T->new_index[old_top] = next_free;
-  for (size_t i = base; i < old_top; i++) {
-    if (!T->marked[i])
-      continue;
-    if (T->heap[i].tag == TAG_REF)
-      T->heap[i].as.ref = T->new_index[T->heap[i].as.ref];
-    else if (T->heap[i].tag == TAG_STR)
-      T->heap[i].as.ptr = T->new_index[T->heap[i].as.ptr];
-  }
+  flag_heap_marks(T, base, old_top, frames, nframes, catches, ncatches, false);
   for (size_t i = 0; i < trail_top; i++) {
     size_t v = trail[i];
-    if (v >= base || T->marked[v] == 2 || T->heap[v].tag != TAG_REF)
+    if (v >= base || m[v] == TRAIL_SEEN || T->heap[v].tag != TAG_REF)
       continue;
-    T->marked[v] = 2; // a variable can be on the trail twice
-    T->heap[v].as.ref = T->new_index[T->heap[v].as.ref];
+    m[v] = TRAIL_SEEN; // a variable can be on the trail twice
+    T->heap[v].as.ref = moved(T, base, T->heap[v].as.ref);
   }
   size_t write_ptr = base;
   for (size_t i = base; i < old_top; i++) {
-    if (!T->marked[i])
-      continue;
+    if (!m[i] && (i = skip_dead(m, i, old_top)) == old_top)
+      break;
+    cell_t *c = &T->heap[i];
+    if (c->tag == TAG_REF)
+      c->as.ref = moved(T, base, c->as.ref);
+    else if (c->tag == TAG_STR)
+      c->as.ptr = moved(T, base, c->as.ptr);
     if (write_ptr != i)
-      T->heap[write_ptr] = T->heap[i];
+      T->heap[write_ptr] = *c;
     write_ptr++;
   }
   return write_ptr;
 }
 
 // trail entries whose target var didn't survive marking are safe to drop
-static size_t compact_trail(trilog_t *T, size_t old_trail_top) {
+static size_t compact_trail(trilog_t *T, size_t base, size_t old_trail_top) {
   size_t *trail = trail_array(T);
   size_t write_ptr = 0;
   for (size_t i = 0; i < old_trail_top; i++) {
     size_t v = trail[i];
     if (v < T->marked_cap && T->marked[v])
-      trail[write_ptr++] = T->new_index[v];
+      trail[write_ptr++] = moved(T, base, v);
   }
   return write_ptr;
 }
@@ -305,7 +350,12 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
   }
 
   size_t old_trail_top = trail_size(T);
-  size_t heap_base = T->query_heap_base;
+  size_t query_base = T->query_heap_base;
+  size_t old_live =
+      T->gc_old_at_major > query_base ? T->gc_old_at_major - query_base : 0;
+  bool minor = old_live >= GC_MIN_CELLS && T->gc_old_top > query_base &&
+               T->gc_old_top - query_base <= 2 * old_live;
+  size_t heap_base = minor ? T->gc_old_top : query_base;
   ensure_marked_cap(T, old_top);
   memset(T->marked, 1, heap_base);
   memset(T->marked + heap_base, 0, old_top - heap_base);
@@ -357,28 +407,29 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
     T->trail_new_index[old_trail_top] = next_free;
   }
 
-  size_t new_top = compact_heap(T, heap_base, old_top, trail, old_trail_top);
+  size_t new_top = compact_heap(T, heap_base, old_top, trail, old_trail_top,
+                                frames, nframes, catches, ncatches);
   if (new_top > gc_max_live(T))
     T->heap_exhausted = 1;
-  size_t new_trail_top = compact_trail(T, old_trail_top);
+  size_t new_trail_top = compact_trail(T, heap_base, old_trail_top);
 
-  *cn = T->new_index[*cn];
+  *cn = moved(T, heap_base, *cn);
   for (size_t i = 0; i < nframes; i++) {
-    frames[i].goals = T->new_index[frames[i].goals];
-    frames[i].heap_mark = T->new_index[frames[i].heap_mark];
+    frames[i].goals = moved(T, heap_base, frames[i].goals);
+    frames[i].heap_mark = moved(T, heap_base, frames[i].heap_mark);
   }
   for (int32_t i = 0; i < nvars; i++)
     if (rename[i] != NIL)
-      rename[i] = T->new_index[rename[i]];
+      rename[i] = moved(T, heap_base, rename[i]);
   // only entries mark_catch_chain reached are safe to touch - a dead
   // entry's fields can hold indices from before an earlier compaction.
   for (size_t i = 0; i < ncatches; i++) {
     if (!T->catch_live[i])
       continue;
-    catches[i].catcher = T->new_index[catches[i].catcher];
-    catches[i].recovery = T->new_index[catches[i].recovery];
-    catches[i].continuation = T->new_index[catches[i].continuation];
-    catches[i].heap_mark = T->new_index[catches[i].heap_mark];
+    catches[i].catcher = moved(T, heap_base, catches[i].catcher);
+    catches[i].recovery = moved(T, heap_base, catches[i].recovery);
+    catches[i].continuation = moved(T, heap_base, catches[i].continuation);
+    catches[i].heap_mark = moved(T, heap_base, catches[i].heap_mark);
   }
 
   for (size_t i = 0; i < nframes; i++)
@@ -402,9 +453,13 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
 
   // A fixed threshold is a floor. Without GC_SHRINK the trigger stays within
   // 3/4 of the heap, so pushing it out never grows the heap by itself.
+  T->gc_old_top = new_top;
+  if (!minor)
+    T->gc_old_at_major = new_top;
+
   size_t next =
-      heap_base + mem_grow_by(T, new_top - heap_base, T->gc_grow_percent);
-  size_t floor = T->gc_fixed ? T->gc_fixed : heap_base + GC_MIN_CELLS;
+      query_base + mem_grow_by(T, new_top - query_base, T->gc_grow_percent);
+  size_t floor = T->gc_fixed ? T->gc_fixed : query_base + GC_MIN_CELLS;
   size_t room = heap_capacity(T) / 4 * 3;
   if (T->gc_fixed && !GC_SHRINK && next > room)
     next = room;
@@ -420,11 +475,11 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
   if (T->gc_debug) {
     char msg[300];
     fmt(msg, sizeof msg,
-        "gc: heap %zu -> %zu, trail %zu -> %zu, nframes=%zu, "
+        "gc%s: heap %zu -> %zu, trail %zu -> %zu, nframes=%zu, "
         "mark_visits=%zu, threshold=%zu, "
         "heap_cap=%zu, new_index_cap=%zu\n",
-        old_top, new_top, old_trail_top, new_trail_top, nframes,
-        T->mark_visit_count, T->gc_threshold, heap_capacity(T),
+        minor ? " minor" : "", old_top, new_top, old_trail_top, new_trail_top,
+        nframes, T->mark_visit_count, T->gc_threshold, heap_capacity(T),
         T->new_index_cap);
     io_write_err(T, msg);
   }
