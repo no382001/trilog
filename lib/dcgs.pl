@@ -118,8 +118,14 @@ phrase(GRBody, S0, S) :-
 
 % A body starting with S0 = T unifies the head's input list first thing
 % anyway, so do it in the head: count([_|S1], ...) instead of S0 = [_|S1].
+'$dcg_fold_head'(G, _, G) :- var(G), !.
 '$dcg_fold_head'((A, B), S0, Body) :- !,
     '$dcg_fold_head'(A, S0, A1),
     ( A1 == true -> Body = B ; Body = (A1, B) ).
 '$dcg_fold_head'(V = T, S0, true) :- V == S0, !, V = T.
 '$dcg_fold_head'(G, _, G).
+
+%!  seq(?List)// is nondet.
+%   Describes the elements of List, in order.
+seq([], S, S).
+seq([E|Es], [E|S0], S) :- seq(Es, S0, S).

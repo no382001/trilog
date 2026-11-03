@@ -16,6 +16,7 @@ must_be(var, Term) :-
     !,
     ( var(Term) -> true ; throw(error(uninstantiation_error(Term), must_be/2)) ).
 must_be(list, Term) :- !, '$must_be_list'(Term).
+must_be(chars, Term) :- !, '$must_be_list'(Term), '$must_be_chars'(Term).
 must_be(not_less_than_zero, Term) :-
     !,
     '$must_be_type'(integer, Term),
@@ -28,6 +29,13 @@ must_be(Type, Term) :- '$must_be_type'(Type, Term).
     throw(error(instantiation_error, must_be/2)).
 '$must_be_type'(Type, Term) :- call(Type, Term), !.
 '$must_be_type'(Type, Term) :- throw(error(type_error(Type, Term), must_be/2)).
+
+'$must_be_chars'([]).
+'$must_be_chars'([C|Cs]) :-
+    (   var(C) -> throw(error(instantiation_error, must_be/2))
+    ;   character(C) -> '$must_be_chars'(Cs)
+    ;   throw(error(type_error(character, C), must_be/2))
+    ).
 
 '$must_be_list'([]) :- !.
 '$must_be_list'([_|T]) :- !, '$must_be_list'(T).
@@ -44,3 +52,11 @@ can_be(Type, _) :-
     throw(error(instantiation_error, can_be/2)).
 can_be(_, Term) :- var(Term), !.
 can_be(Type, Term) :- must_be(Type, Term).
+
+%!  domain_error(+Domain, @Culprit, +Context) is det.
+%!  type_error(+Type, @Culprit, +Context) is det.
+%   Throw error(domain_error(Domain, Culprit), Context), or the type error.
+domain_error(Domain, Culprit, Context) :-
+    throw(error(domain_error(Domain, Culprit), Context)).
+type_error(Type, Culprit, Context) :-
+    throw(error(type_error(Type, Culprit), Context)).
