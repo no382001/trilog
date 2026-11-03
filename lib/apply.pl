@@ -1,5 +1,9 @@
 :- '$builtin_file'.
 
+:- meta_predicate([maplist(1, ?), maplist(2, ?, ?), maplist(3, ?, ?, ?),
+                   foldl(3, ?, ?, ?), foldl(4, ?, ?, ?, ?), foldl(5, ?, ?, ?, ?, ?),
+                   include(1, ?, ?), exclude(1, ?, ?), partition(1, ?, ?, ?)]).
+
 %!  maplist(:Goal, ?List[, ?List2[, ?List3]]) is nondet.
 maplist(_, []).
 maplist(G, [X|Xs]) :- call(G, X), maplist(G, Xs).

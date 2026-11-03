@@ -495,6 +495,17 @@ int db_is_dynamic(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
   return is_dynamic(T, pred_id, pred_arity);
 }
 
+tterm_t *db_meta_specs(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
+  pred_bucket_t *b = pred_bucket_find(T, atom_meta_spec, 3);
+  for (int32_t i = 0; b && i < b->count; i++) {
+    tterm_t **a = T->db[b->indices[i]].head->as.str.args;
+    if (a[0]->tag == T_ATOM && a[0]->as.atom_id == pred_id &&
+        a[1]->tag == T_INT && a[1]->as.ival == pred_arity)
+      return a[2];
+  }
+  return NULL;
+}
+
 int32_t module_qualified(trilog_t *T, int32_t module, int32_t name,
                          bool create) {
   const char *m = atom_name(T, module), *n = atom_name(T, name);
@@ -1694,6 +1705,10 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     int32_t source;
     if (T->heap[path_d].tag != TAG_ATOM ||
         !consult_file(T, atom_name(T, T->heap[path_d].as.atom_id), &source)) {
+      if (T->load_error_ball != (size_t)-1) {
+        T->pending_error_ball = T->load_error_ball;
+        T->load_error_ball = (size_t)-1;
+      }
       *ok = 0;
       return 1;
     }

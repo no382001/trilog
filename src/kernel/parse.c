@@ -730,14 +730,45 @@ static int first_solution(void *ud, int has_more) {
   return 0;
 }
 
+static bool is_load_error(trilog_t *T, size_t ball) {
+  size_t b = heap_deref(T, ball);
+  if (T->heap[b].tag != TAG_STR)
+    return false;
+  size_t f = T->heap[b].as.ptr;
+  if (T->heap[f].as.func.atom_id != atom_error ||
+      T->heap[f].as.func.arity != 2)
+    return false;
+  size_t c = heap_deref(T, f + 2);
+  if (T->heap[c].tag != TAG_STR)
+    return false;
+  size_t cf = T->heap[c].as.ptr;
+  size_t n = heap_deref(T, cf + 1), a = heap_deref(T, cf + 2);
+  return T->heap[cf].as.func.atom_id == atom_slash &&
+         T->heap[cf].as.func.arity == 2 && T->heap[n].tag == TAG_ATOM &&
+         T->heap[n].as.atom_id == atom_load && T->heap[a].tag == TAG_INT &&
+         T->heap[a].as.ival == 1;
+}
+
+// A directive shares no variables with the code that loads it, so what it
+// left on the heap is garbage, except a load error that '$$consult' raises.
 static void run_directive(trilog_t *T, tterm_t *goal, int32_t nvars) {
   int32_t n;
   tterm_t **goals = flatten_conj(T, goal, &n);
+  size_t hmark = heap_mark(T), tmark = trail_mark(T),
+         cmark = catch_stack_size(T);
   if (run_query(T, goals, n, nvars, first_solution, NULL) == QUERY_ERROR) {
+    if (query_error_ball(T) != (size_t)-1 &&
+        is_load_error(T, query_error_ball(T))) {
+      T->load_error_ball = query_error_ball(T);
+      return;
+    }
     io_write_err(T, "uncaught exception: ");
     print_term_via(T, query_error_ball(T), 0, io_write_err);
     io_write_err(T, "\n");
   }
+  catch_stack_set_size(T, cmark);
+  trail_release(T, tmark);
+  heap_release(T, hmark);
 }
 
 static bool decl_has(const pred_decl_t *d, int32_t n, int32_t id,
@@ -797,9 +828,51 @@ static void module_ref(trilog_t *T, tterm_t *t, int32_t extra) {
     rename_callable(t, module_qualified(T, T->module_id, id, true));
 }
 
-static void module_goal(trilog_t *T, tterm_t *t);
+static void module_goal(trilog_t *T, tterm_t **slot);
+static void module_dcg(trilog_t *T, tterm_t **slot);
+static bool caller_goal(trilog_t *T, const tterm_t *t);
 
-static void module_dcg(trilog_t *T, tterm_t *t) {
+// An unbound goal in a module runs as Module:Goal, so it finds the module's
+// private predicates once it is bound.
+static void module_wrap(trilog_t *T, tterm_t **slot) {
+  tterm_t *args[2] = {tt_atom(T, atom_name(T, T->module_id)), *slot};
+  *slot = tt_struct(T, ":", 2, args);
+}
+
+// A closure called with `extra` more arguments.
+static void module_closure(trilog_t *T, tterm_t **slot, int32_t extra) {
+  if ((*slot)->tag == T_VAR) {
+    if (!caller_goal(T, *slot))
+      module_wrap(T, slot);
+  }
+  else if (extra == 0)
+    module_goal(T, slot);
+  else
+    module_ref(T, *slot, extra);
+}
+
+static void module_meta_args(trilog_t *T, tterm_t *t) {
+  tterm_t *specs = db_meta_specs(T, t->as.str.atom_id, t->as.str.arity);
+  tterm_t **a = t->as.str.args;
+  for (int32_t i = 0; specs && specs->tag == T_STR &&
+                      specs->as.str.atom_id == atom_dot && i < t->as.str.arity;
+       i++, specs = specs->as.str.args[1]) {
+    tterm_t *spec = specs->as.str.args[0], **arg = &a[i];
+    if (spec->tag == T_INT && spec->as.ival >= 0 && spec->as.ival <= 9) {
+      module_closure(T, arg, (int32_t)spec->as.ival);
+    } else if (spec->tag == T_ATOM && spec->as.atom_id == atom_caret) {
+      while ((*arg)->tag == T_STR && (*arg)->as.str.atom_id == atom_caret &&
+             (*arg)->as.str.arity == 2)
+        arg = &(*arg)->as.str.args[1];
+      module_closure(T, arg, 0);
+    } else if (spec->tag == T_ATOM && spec->as.atom_id == atom_intdiv) {
+      module_dcg(T, arg);
+    }
+  }
+}
+
+static void module_dcg(trilog_t *T, tterm_t **slot) {
+  tterm_t *t = *slot;
   if (t->tag == T_ATOM) {
     if (t->as.atom_id != atom_nil && t->as.atom_id != atom_bang)
       module_ref(T, t, 2);
@@ -809,37 +882,79 @@ static void module_dcg(trilog_t *T, tterm_t *t) {
     return;
   int32_t id = t->as.str.atom_id, n = t->as.str.arity;
   tterm_t **a = t->as.str.args;
-  if ((id == atom_dot && n == 2) || id == atom_call)
+  if ((id == atom_dot && n == 2) || id == atom_call || id == atom_colon)
     return;
   if (id == atom_curly && n == 1)
-    module_goal(T, a[0]);
+    module_closure(T, &a[0], 0);
   else if (n == 2 && (id == atom_comma || id == atom_semicolon ||
                       id == atom_arrow || id == atom_bar))
-    module_dcg(T, a[0]), module_dcg(T, a[1]);
+    module_dcg(T, &a[0]), module_dcg(T, &a[1]);
   else if (n == 1 && id == atom_naf)
-    module_dcg(T, a[0]);
+    module_dcg(T, &a[0]);
   else
     module_ref(T, t, 2);
 }
 
-static void module_goal(trilog_t *T, tterm_t *t) {
-  if (t->tag != T_STR) {
-    module_ref(T, t, 0);
+static bool caller_goal(trilog_t *T, const tterm_t *t) {
+  for (int32_t i = 0; i < T->module_nmeta_vars; i++)
+    if (T->module_meta_vars[i] == t->as.slot)
+      return true;
+  return false;
+}
+
+static void module_goal(trilog_t *T, tterm_t **slot) {
+  tterm_t *t = *slot;
+  if (t->tag == T_VAR) {
+    if (!caller_goal(T, t))
+      module_wrap(T, slot);
     return;
   }
-  int32_t id = t->as.str.atom_id, n = t->as.str.arity;
-  tterm_t **a = t->as.str.args;
-  if (n == 2 && (id == atom_comma || id == atom_semicolon || id == atom_arrow ||
-                 id == atom_soft_arrow || id == atom_forall))
-    module_goal(T, a[0]), module_goal(T, a[1]);
-  else if (n == 1 && (id == atom_naf || id == atom_call || id == atom_once))
-    module_goal(T, a[0]);
-  else if (n == 3 && id == atom_catch)
-    module_goal(T, a[0]), module_goal(T, a[2]);
-  else if (n == 3 && id == atom_findall)
-    module_goal(T, a[1]);
-  else
-    module_ref(T, t, 0);
+  if (t->tag == T_STR && t->as.str.atom_id == atom_colon &&
+      t->as.str.arity == 2)
+    return;
+  if (t->tag == T_STR)
+    module_meta_args(T, t);
+  module_ref(T, t, 0);
+}
+
+// The specs of the predicate a head defines, also for a renamed private one.
+static tterm_t *head_meta_specs(trilog_t *T, const tterm_t *h) {
+  int32_t id, arity;
+  if (!callable_name(h, &id, &arity) || arity == 0)
+    return NULL;
+  tterm_t *specs = db_meta_specs(T, id, arity);
+  const char *m = atom_name(T, T->module_id), *n = atom_name(T, id);
+  size_t lm = strlen(m);
+  if (!specs && !strncmp(n, m, lm) && n[lm] == ':') {
+    int32_t plain = atom_find(T, n + lm + 1);
+    if (plain >= 0)
+      specs = db_meta_specs(T, plain, arity);
+  }
+  return specs;
+}
+
+// A head variable in a goal position of the clause's own meta_predicate
+// holds the caller's goal, which must not be taken as this module's.
+static void collect_caller_goals(trilog_t *T, const tterm_t *h) {
+  T->module_nmeta_vars = 0;
+  tterm_t *specs = head_meta_specs(T, h);
+  for (int32_t i = 0; specs && specs->tag == T_STR &&
+                      specs->as.str.atom_id == atom_dot && i < h->as.str.arity;
+       i++, specs = specs->as.str.args[1]) {
+    tterm_t *spec = specs->as.str.args[0], *arg = h->as.str.args[i];
+    bool goal = (spec->tag == T_INT) ||
+                (spec->tag == T_ATOM && (spec->as.atom_id == atom_caret ||
+                                         spec->as.atom_id == atom_intdiv));
+    if (!goal || arg->tag != T_VAR)
+      continue;
+    if (T->module_nmeta_vars == T->module_meta_vars_cap) {
+      int32_t cap = T->module_meta_vars_cap ? T->module_meta_vars_cap * 2 : 8;
+      T->module_meta_vars = mem_grow_n(T, T->module_meta_vars, (size_t)cap,
+                                       sizeof(int32_t));
+      T->module_meta_vars_cap = cap;
+    }
+    T->module_meta_vars[T->module_nmeta_vars++] = arg->as.slot;
+  }
 }
 
 // Points the file's calls to its private predicates at their new names.
@@ -848,12 +963,14 @@ static void module_patch(trilog_t *T) {
     clause_t *c = &T->db[i];
     if (!c->head || c->source != T->consulting_atom)
       continue;
+    collect_caller_goals(T, c->head);
     if (c->head->tag == T_STR && c->head->as.str.atom_id == atom_dcg_arrow &&
         c->head->as.str.arity == 2)
-      module_dcg(T, c->head->as.str.args[1]);
+      module_dcg(T, &c->head->as.str.args[1]);
     for (int32_t j = 0; j < c->nbody; j++)
-      module_goal(T, c->body[j]);
+      module_goal(T, &c->body[j]);
   }
+  T->module_nmeta_vars = 0;
 }
 
 // user:H defines H; Module:H defines Module's private H.
@@ -896,7 +1013,7 @@ static void assemble_clause(trilog_t *T, tterm_t *t, int32_t nvars) {
        t->as.str.atom_id == atom_qmark_dash)) {
     if (T->module_id >= 0) {
       module_patch(T);
-      module_goal(T, t->as.str.args[0]);
+      module_goal(T, &t->as.str.args[0]);
     }
     run_directive(T, t->as.str.args[0], nvars);
     return;
@@ -1145,6 +1262,8 @@ static bool consult_source(trilog_t *T, const char *text, const char *path) {
       perr(T, "expected '.' to end clause");
     T->P++;
     assemble_clause(T, t, T->var_count);
+    if (T->load_error_ball != (size_t)-1)
+      return false;
   }
   return true;
 }

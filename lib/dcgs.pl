@@ -1,5 +1,7 @@
 :- '$builtin_file'.
 
+:- meta_predicate([phrase('//', ?), phrase('//', ?, ?)]).
+
 :- op(1200, xfx, '-->').
 :- dynamic('$dcg_compiled'/2).
 

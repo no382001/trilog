@@ -37,13 +37,22 @@
 %   call/1: fresh cut scope (native). call/2-8: extend via univ, then call/1.
 call(G) :- G.
 
+call(M:G, A1) :- !, '$extend'(G, [A1], G2), call(M:G2).
 call(G, A1) :- G =.. L, append(L, [A1], L2), G2 =.. L2, call(G2).
+call(M:G, A1, A2) :- !, '$extend'(G, [A1,A2], G2), call(M:G2).
 call(G, A1, A2) :- G =.. L, append(L, [A1,A2], L2), G2 =.. L2, call(G2).
+call(M:G, A1, A2, A3) :- !, '$extend'(G, [A1,A2,A3], G2), call(M:G2).
 call(G, A1, A2, A3) :- G =.. L, append(L, [A1,A2,A3], L2), G2 =.. L2, call(G2).
+call(M:G, A1, A2, A3, A4) :- !, '$extend'(G, [A1,A2,A3,A4], G2), call(M:G2).
 call(G, A1, A2, A3, A4) :- G =.. L, append(L, [A1,A2,A3,A4], L2), G2 =.. L2, call(G2).
+call(M:G, A1, A2, A3, A4, A5) :- !, '$extend'(G, [A1,A2,A3,A4,A5], G2), call(M:G2).
 call(G, A1, A2, A3, A4, A5) :- G =.. L, append(L, [A1,A2,A3,A4,A5], L2), G2 =.. L2, call(G2).
+call(M:G, A1, A2, A3, A4, A5, A6) :- !, '$extend'(G, [A1,A2,A3,A4,A5,A6], G2), call(M:G2).
 call(G, A1, A2, A3, A4, A5, A6) :- G =.. L, append(L, [A1,A2,A3,A4,A5,A6], L2), G2 =.. L2, call(G2).
+call(M:G, A1, A2, A3, A4, A5, A6, A7) :- !, '$extend'(G, [A1,A2,A3,A4,A5,A6,A7], G2), call(M:G2).
 call(G, A1, A2, A3, A4, A5, A6, A7) :- G =.. L, append(L, [A1,A2,A3,A4,A5,A6,A7], L2), G2 =.. L2, call(G2).
+
+'$extend'(G, As, G2) :- G =.. L, append(L, As, L2), G2 =.. L2.
 
 %!  once(:Goal) is semidet.
 once(G) :- call(G), !.
@@ -64,7 +73,6 @@ consult(File) :-
     ;   atom(File) -> true
     ;   throw(error(type_error(atom, File), consult/1))
     ),
-    ( '$$source_path'(File, Path0) -> '$check_module_decl'(Path0) ; true ),
     '$$consult'(File, Path),
     '$file_time'(Path, Time),
     ( '$$retract'('$consulted'(Path, _)) -> true ; true ),
@@ -109,26 +117,15 @@ module(M, Exports) :-
     \+ '$$loading_file'(_),
     !,
     throw(error(existence_error(procedure, module/2), module/2)).
-'$module'(M, _) :- \+ atom(M), !, throw(error(type_error(atom, M), _)).
+'$module'(M, _) :- \+ atom(M), !, throw(error(type_error(atom, M), load/1)).
 '$module'(M, Exports) :-
-    '$module_pis'(Exports),
+    (   '$is_pi_list'(Exports) -> true
+    ;   throw(error(syntax_error(invalid_module_declaration), load/1))
+    ),
     '$$module'(M, Exports),
     ( '$known_module'(M) -> true ; '$$assertz'('$known_module'(M)) ).
 
 :- dynamic('$known_module'/1).
-
-% A bad module/2 declaration fails the load, not just its directive.
-'$check_module_decl'(Path) :-
-    (   catch(open(Path, read, S), _, fail)
-    ->  catch(read(S, T), _, T = end_of_file),
-        close(S),
-        (   nonvar(T), T = (:- module(M, Exports))
-        ->  ( atom(M) -> true ; throw(error(type_error(atom, M), _)) ),
-            '$module_pis'(Exports)
-        ;   true
-        )
-    ;   true
-    ).
 
 '$module_pis'(L) :-
     (   '$is_pi_list'(L) -> true
@@ -141,6 +138,67 @@ module(M, Exports) :-
 
 '$is_pi'(N/A) :- atom(N), integer(A), A >= 0.
 '$is_pi'(N//A) :- atom(N), integer(A), A >= 0.
+
+%!  meta_predicate(+Heads) is det.
+%   Heads is a head, a list of heads, or a conjunction of them. Each
+%   argument is 0..9 (a goal called with that many more arguments), ^ (a
+%   goal under V^), // (a DCG body), or one of : ? + - * (not a goal).
+%   In a module, such arguments are taken as the module's goals.
+%   Like module/2 it is only a directive, and a bad declaration fails the
+%   load with syntax_error(invalid_meta_predicate_decl).
+meta_predicate(Heads) :-
+    (   \+ '$$loading_file'(_)
+    ->  throw(error(existence_error(procedure, meta_predicate/1),
+                    meta_predicate/1))
+    ;   '$meta_decls'(Heads, Decls)
+    ->  '$meta_assert'(Decls)
+    ;   throw(error(syntax_error(invalid_meta_predicate_decl), load/1))
+    ).
+
+'$meta_decls'(V, _) :- var(V), !, fail.
+'$meta_decls'((A, B), Ds) :- !, '$meta_decls'(A, D1), '$meta_decls'(B, D2), append(D1, D2, Ds).
+'$meta_decls'([], []) :- !.
+'$meta_decls'([H|T], Ds) :- !, '$meta_decls'(H, D1), '$meta_decls'(T, D2), append(D1, D2, Ds).
+'$meta_decls'(_:H, Ds) :- !, '$meta_decls'(H, Ds).
+'$meta_decls'(H, [N/A-Specs]) :-
+    callable(H),
+    H =.. [N|Specs],
+    '$meta_specs'(Specs),
+    length(Specs, A).
+
+'$meta_specs'([]).
+'$meta_specs'([S|Ss]) :-
+    nonvar(S),
+    (   integer(S) -> S >= 0, S =< 9
+    ;   atom(S), memberchk(S, [':', '^', '//', '?', '+', '-', '*'])
+    ),
+    '$meta_specs'(Ss).
+
+'$meta_assert'([]).
+'$meta_assert'([N/A-Specs|Ds]) :-
+    ( '$$retract'('$meta_spec'(N, A, _)) -> true ; true ),
+    '$$assertz'('$meta_spec'(N, A, Specs)),
+    '$meta_assert'(Ds).
+
+:- dynamic('$meta_spec'/3).
+'$meta_spec'(',', 2, [0, 0]).
+'$meta_spec'(';', 2, [0, 0]).
+'$meta_spec'('->', 2, [0, 0]).
+'$meta_spec'('*->', 2, [0, 0]).
+'$meta_spec'('\\+', 1, [0]).
+'$meta_spec'(call, 1, [0]).
+'$meta_spec'(call, 2, [1, ?]).
+'$meta_spec'(call, 3, [2, ?, ?]).
+'$meta_spec'(call, 4, [3, ?, ?, ?]).
+'$meta_spec'(call, 5, [4, ?, ?, ?, ?]).
+'$meta_spec'(call, 6, [5, ?, ?, ?, ?, ?]).
+'$meta_spec'(call, 7, [6, ?, ?, ?, ?, ?, ?]).
+'$meta_spec'(call, 8, [7, ?, ?, ?, ?, ?, ?, ?]).
+'$meta_spec'(once, 1, [0]).
+'$meta_spec'(catch, 3, [0, ?, 0]).
+'$meta_spec'(findall, 3, [?, 0, '-']).
+'$meta_spec'(bagof, 3, [?, '^', '-']).
+'$meta_spec'(setof, 3, [?, '^', '-']).
 
 %!  :(+Module, :Goal) is nondet.
 %   Calls Goal, using Module's private predicate of that name if it has one.

@@ -50,6 +50,7 @@ static trilog_status_t unwound(trilog_t *t) {
   t->consulting = NULL;
   t->consulting_atom = -1;
   t->module_id = -1;
+  t->load_error_ball = (size_t)-1;
   t->foreign_current = NULL;
   t->foreign_error = (size_t)-1;
   t->in_peeked = -2;
@@ -95,6 +96,7 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   t->in_peeked = -2;
   t->consulting_atom = -1;
   t->module_id = -1;
+  t->load_error_ball = (size_t)-1;
   t->error_pi_name = -1;
   if (!io_set(t, c.io)) {
     c.free(c.alloc_ud, t);
@@ -161,6 +163,7 @@ void trilog_free(trilog_t *t) {
   mem_free(t, t->capture_buf);
   mem_free(t, t->consulted_decls);
   mem_free(t, t->dynamic_decls);
+  mem_free(t, t->module_meta_vars);
   mem_free(t, t->foreign);
   mem_free(t, t->stack);
   mem_free(t, t->catch_stack);

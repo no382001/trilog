@@ -149,13 +149,11 @@
   X(atom_colon, ":")                                                           \
   X(atom_user, "user")                                                         \
   X(atom_naf, "\\+")                                                           \
-  X(atom_soft_arrow, "*->")                                                    \
   X(atom_bar, "|")                                                             \
-  X(atom_once, "once")                                                         \
-  X(atom_findall, "findall")                                                   \
-  X(atom_forall, "forall")                                                     \
   X(atom_module_set, "$$module")                                               \
   X(atom_qualify, "$$qualify")                                                 \
+  X(atom_meta_spec, "$meta_spec")                                              \
+  X(atom_load, "load")                                                         \
   X(atom_qmark_dash, "?-")
 
 enum {

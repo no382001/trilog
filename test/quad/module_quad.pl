@@ -83,3 +83,56 @@ helper(user).
 
 ?- module(m4, []).
    error(existence_error(procedure, module/2)).
+
+% meta_predicate/1: a module's private closures keep their module.
+
+?- squares([1, 2], Ys).
+   Ys = [1,4].
+
+?- total([1, 2, 3], T).
+   T = 14.
+
+?- sq_list(L).
+   L = [1,4,9].
+
+?- words(Ws).
+   Ws = [square,circle].
+
+?- smallest(S).
+   S = 1-b.
+
+?- dyn(Y).
+   Y = 9.
+
+?- call(shapes:sq, 4, X).
+   X = 16.
+
+?- maplist(shapes:sq, [2, 3], L).
+   L = [4,9].
+
+?- foldl(shapes:add_sq, [1, 2], 0, T).
+   T = 5.
+
+?- findall(X, shapes:sq(5, X), L).
+   L = [25].
+
+?- run(helper(X)).
+   X = user.
+
+?- run(help).
+   error(existence_error(procedure, help/0)).
+
+?- shapes:run(shapes:help).
+   true.
+
+?- meta_predicate(foo(0, ?)).
+   error(existence_error(procedure, meta_predicate/1)).
+
+?- consult('test/quad/files/bad_meta_spec.pl').
+   error(syntax_error(invalid_meta_predicate_decl)).
+
+?- consult('test/quad/files/bad_meta_var.pl').
+   error(syntax_error(invalid_meta_predicate_decl)).
+
+?- catch(consult('test/quad/files/bad_meta_spec.pl'), _, true), meta_rest.
+   error(existence_error(procedure, meta_rest/0)).

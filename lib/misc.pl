@@ -1,5 +1,8 @@
 :- '$builtin_file'.
 
+:- meta_predicate([forall(0, 0), with_output_to(?, 0), countall(0, ?),
+                   call_nth(0, ?)]).
+
 %!  forall(:Cond, :Action) is semidet.
 forall(Cond, Action) :- \+ (Cond, \+ Action).
 

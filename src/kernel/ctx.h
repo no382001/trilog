@@ -128,6 +128,12 @@ struct trilog {
   int32_t module_id;
   pred_decl_t *module_exports, *module_private;
   int32_t module_nexports, module_nprivate, module_private_cap;
+  // An error(_, load/1) a directive raised: the consult stops and
+  // '$$consult' raises it. (size_t)-1 when there is none.
+  size_t load_error_ball;
+  // Variables of the clause being patched that hold a caller's goal.
+  int32_t *module_meta_vars;
+  int32_t module_nmeta_vars, module_meta_vars_cap;
 
   clause_t *db;
   int32_t db_count, db_cap, db_dead;
