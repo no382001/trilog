@@ -14,7 +14,7 @@ bool io_set(trilog_t *T, const trilog_io_t *io);
 
 void io_write_str(trilog_t *T, const char *str);
 void io_write_err(trilog_t *T, const char *str);
-void io_flush(trilog_t *T);
+void io_flush_target(trilog_t *T, void *handle);
 int io_read_char(trilog_t *T);
 int io_peek_char(trilog_t *T);
 char *io_read_line(trilog_t *T, char *buf, int size);

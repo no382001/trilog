@@ -1498,14 +1498,6 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     engine_halt(T, (int)T->heap[d].as.ival);
   }
 
-  // flush_output/0 always flushes stdout specifically (not whichever stream
-  // write/2 last targeted) - ISO's default.
-  if (arity == 0 && id == atom_flush_output) {
-    io_flush(T);
-    *ok = 1;
-    return 1;
-  }
-
   if (arity == 2 && id == atom_is) {
     int aok = 1;
     size_t v = eval_arith(T, f + 2, &aok);
@@ -1571,11 +1563,14 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       *ok = c >= 0;
     return 1;
   }
-  if (arity == 1 && id == atom_put_code) {
-    size_t a = heap_deref(T, f + 1);
-    char c[2] = {(char)T->heap[a].as.ival, '\0'};
-    io_write_str(T, c);
-    *ok = 1;
+  if (arity == 1 && id == atom_flush) {
+    int kind;
+    void *h = NULL;
+    *ok = resolve_write_target(T, heap_deref(T, f + 1), &kind, &h);
+    if (*ok)
+      io_flush_target(T, kind == OUT_STDOUT   ? T->hooks.out
+                         : kind == OUT_STDERR ? T->hooks.err
+                                              : h);
     return 1;
   }
   if (arity == 3 && id == atom_write_raw) {

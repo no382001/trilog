@@ -384,13 +384,61 @@ setof(Template, Goal, Set) :-
     sort(Bag, Set).
 
 % --- I/O ---
-% put_code/1 is native.
 
 '$stream_alias'(user_output, 0).
 '$stream_alias'(user_error, 1).
+'$resolve_stream'(S, _) :- var(S), !, throw(error(instantiation_error, _)).
 '$resolve_stream'(S, N) :- '$stream_alias'(S, N), !.
 '$resolve_stream'('$stream'(Id), '$stream'(Id)) :- !.
+'$resolve_stream'(user_input, _) :- !,
+    throw(error(permission_error(output, stream, user_input), _)).
 '$resolve_stream'(S, _) :- throw(error(domain_error(stream_or_alias, S), _)).
+
+%!  current_output(?Stream) is det.
+%   The current output is always user_output.
+current_output(S) :-
+    (   ( var(S) ; S = '$stream'(_) ; atom(S), '$stream_alias'(S, _) )
+    ->  S = user_output
+    ;   throw(error(domain_error(stream, S), current_output/1))
+    ).
+
+%!  put_char(+Char), put_char(+Stream, +Char) is det.
+%!  put_code(+Code), put_code(+Stream, +Code) is det.
+put_char(C) :- '$with_context'('$check_char'(C), put_char/1), '$$write_raw'(0, C, 2).
+put_char(S, C) :-
+    '$with_context'(('$resolve_stream'(S, N), '$check_char'(C)), put_char/2),
+    '$put'(N, C, S, put_char/2).
+put_code(C) :- '$with_context'('$code_char'(C, Ch), put_code/1), '$$write_raw'(0, Ch, 2).
+put_code(S, C) :-
+    '$with_context'(('$resolve_stream'(S, N), '$code_char'(C, Ch)), put_code/2),
+    '$put'(N, Ch, S, put_code/2).
+
+'$put'(N, C, S, PI) :-
+    ( '$$write_raw'(N, C, 2) -> true ; throw(error(existence_error(stream, S), PI)) ).
+
+'$code_char'(C, _) :- var(C), !, throw(error(instantiation_error, _)).
+'$code_char'(C, _) :- \+ integer(C), !, throw(error(type_error(integer, C), _)).
+'$code_char'(C, Ch) :- '$char_code'(Ch, C).
+
+%!  flush_output, flush_output(+Stream) is det.
+flush_output :- '$$flush'(0).
+flush_output(S) :-
+    '$with_context'('$resolve_stream'(S, N), flush_output/1),
+    ( '$$flush'(N) -> true ; throw(error(existence_error(stream, S), flush_output/1)) ).
+
+%!  close(+Stream, +Options) is det.
+%   Options: force(Bool), which changes nothing; close/1 never raises.
+close(S, Opts) :-
+    '$with_context'(('$options_list'(Opts), '$close_options'(Opts)), close/2),
+    close(S).
+
+'$close_options'([]).
+'$close_options'([O|Os]) :-
+    (   var(O) -> throw(error(instantiation_error, _))
+    ;   O = force(_) -> '$option_bool'(O, close_option, _)
+    ;   throw(error(domain_error(close_option, O), _))
+    ),
+    '$close_options'(Os).
 
 %!  write(@Term), write(+Stream, @Term) is det.
 %   TODO: no operator-aware output.

@@ -56,10 +56,10 @@ void io_write_str(trilog_t *T, const char *str) {
 void io_write_err(trilog_t *T, const char *str) {
   io_write(T, T->hooks.err, str);
 }
-void io_flush(trilog_t *T) {
-  if (T->capture_sp > 0 || !T->hooks.flush)
+void io_flush_target(trilog_t *T, void *handle) {
+  if ((T->capture_sp > 0 && handle == T->hooks.out) || !T->hooks.flush)
     return;
-  T->hooks.flush(T->hooks.userdata, T->hooks.out);
+  T->hooks.flush(T->hooks.userdata, handle);
 }
 
 // One byte at a time, so input meant for the host is never read ahead.

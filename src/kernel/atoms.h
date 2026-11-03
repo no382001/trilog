@@ -68,7 +68,6 @@
   X(atom_unify_oc, "unify_with_occurs_check")                                  \
   X(atom_lt, "<")                                                              \
   X(atom_gt, ">")                                                              \
-  X(atom_put_code, "put_code")                                                 \
   X(atom_get_code, "get_code")                                                 \
   X(atom_write_raw, "$$write_raw")                                             \
   X(atom_open, "open")                                                         \
@@ -80,7 +79,7 @@
   X(atom_fail, "fail")                                                         \
   X(atom_false, "false")                                                       \
   X(atom_halt, "halt")                                                         \
-  X(atom_flush_output, "flush_output")                                         \
+  X(atom_flush, "$$flush")                                                     \
   X(atom_read_line_to_atom, "read_line_to_atom")                               \
   X(atom_get_byte, "$$get_byte")                                               \
   X(atom_read_term, "$$read_term")                                             \
