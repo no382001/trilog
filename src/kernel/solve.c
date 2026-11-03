@@ -1454,7 +1454,10 @@ static int dispatch_builtin(trilog_t *T, size_t goal, int *ok) {
     name = T->heap[T->heap[g].as.ptr].as.func.atom_id;
     arity = T->heap[T->heap[g].as.ptr].as.func.arity;
   }
-  if (name >= 0 && atom_name(T, name)[0] == '$')
+  // fast(er) path for builtins
+  if (name < 0 || name >= WELL_KNOWN_ATOM_COUNT)
+    return 0;
+  if (atom_name(T, name)[0] == '$')
     name = -1;
   T->error_pi_name = name;
   T->error_pi_arity = arity;
