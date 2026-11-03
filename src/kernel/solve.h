@@ -71,6 +71,10 @@ typedef struct {
 size_t foreign_error_ball(trilog_t *T, const char *formal);
 
 void db_unload(trilog_t *T, int32_t source);
+int db_is_dynamic(trilog_t *T, int32_t pred_id, int32_t pred_arity);
+// The atom 'Module:Name'; with create false, -1 when it does not exist.
+int32_t module_qualified(trilog_t *T, int32_t module, int32_t name,
+                         bool create);
 
 bool foreign_register(trilog_t *T, const char *name, const char *types,
                       int32_t nin, int32_t nout, trilog_fn fn, void *ud);

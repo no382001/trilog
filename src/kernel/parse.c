@@ -36,7 +36,7 @@ static const op_t OPS[] = {
     {"**", 200, XFX},  {"-", 200, FY},     {"+", 200, FY},
     {"\\/", 500, YFX}, {"xor", 400, YFX},  {"<<", 400, YFX},
     {">>", 400, YFX},  {"/\\", 400, YFX},  {"\\", 200, FY},
-    {"^", 200, XFY},
+    {"^", 200, XFY},   {":", 600, XFY},
 };
 #define NOPS (int)(sizeof(OPS) / sizeof(OPS[0]))
 
@@ -740,21 +740,168 @@ static void run_directive(trilog_t *T, tterm_t *goal, int32_t nvars) {
   }
 }
 
+static bool decl_has(const pred_decl_t *d, int32_t n, int32_t id,
+                     int32_t arity) {
+  for (int32_t i = 0; i < n; i++)
+    if (d[i].pred_id == id && d[i].pred_arity == arity)
+      return true;
+  return false;
+}
+
+static bool callable_name(const tterm_t *t, int32_t *id, int32_t *arity) {
+  if (t->tag == T_ATOM) {
+    *id = t->as.atom_id;
+    *arity = 0;
+    return true;
+  }
+  if (t->tag == T_STR) {
+    *id = t->as.str.atom_id;
+    *arity = t->as.str.arity;
+    return true;
+  }
+  return false;
+}
+
+static void rename_callable(tterm_t *t, int32_t id) {
+  if (t->tag == T_ATOM)
+    t->as.atom_id = id;
+  else
+    t->as.str.atom_id = id;
+}
+
+// A head the module does not export, and that is not dynamic, is private.
+static void module_define(trilog_t *T, tterm_t *t, int32_t extra) {
+  int32_t id, arity;
+  if (!callable_name(t, &id, &arity))
+    return;
+  arity += extra;
+  if (decl_has(T->module_exports, T->module_nexports, id, arity) ||
+      db_is_dynamic(T, id, arity))
+    return;
+  if (!decl_has(T->module_private, T->module_nprivate, id, arity)) {
+    if (T->module_nprivate == T->module_private_cap) {
+      int32_t cap = T->module_private_cap ? T->module_private_cap * 2 : 16;
+      T->module_private =
+          mem_grow_n(T, T->module_private, (size_t)cap, sizeof(pred_decl_t));
+      T->module_private_cap = cap;
+    }
+    T->module_private[T->module_nprivate++] = (pred_decl_t){id, arity};
+  }
+  rename_callable(t, module_qualified(T, T->module_id, id, true));
+}
+
+static void module_ref(trilog_t *T, tterm_t *t, int32_t extra) {
+  int32_t id, arity;
+  if (callable_name(t, &id, &arity) &&
+      decl_has(T->module_private, T->module_nprivate, id, arity + extra))
+    rename_callable(t, module_qualified(T, T->module_id, id, true));
+}
+
+static void module_goal(trilog_t *T, tterm_t *t);
+
+static void module_dcg(trilog_t *T, tterm_t *t) {
+  if (t->tag == T_ATOM) {
+    if (t->as.atom_id != atom_nil && t->as.atom_id != atom_bang)
+      module_ref(T, t, 2);
+    return;
+  }
+  if (t->tag != T_STR)
+    return;
+  int32_t id = t->as.str.atom_id, n = t->as.str.arity;
+  tterm_t **a = t->as.str.args;
+  if ((id == atom_dot && n == 2) || id == atom_call)
+    return;
+  if (id == atom_curly && n == 1)
+    module_goal(T, a[0]);
+  else if (n == 2 && (id == atom_comma || id == atom_semicolon ||
+                      id == atom_arrow || id == atom_bar))
+    module_dcg(T, a[0]), module_dcg(T, a[1]);
+  else if (n == 1 && id == atom_naf)
+    module_dcg(T, a[0]);
+  else
+    module_ref(T, t, 2);
+}
+
+static void module_goal(trilog_t *T, tterm_t *t) {
+  if (t->tag != T_STR) {
+    module_ref(T, t, 0);
+    return;
+  }
+  int32_t id = t->as.str.atom_id, n = t->as.str.arity;
+  tterm_t **a = t->as.str.args;
+  if (n == 2 && (id == atom_comma || id == atom_semicolon || id == atom_arrow ||
+                 id == atom_soft_arrow || id == atom_forall))
+    module_goal(T, a[0]), module_goal(T, a[1]);
+  else if (n == 1 && (id == atom_naf || id == atom_call || id == atom_once))
+    module_goal(T, a[0]);
+  else if (n == 3 && id == atom_catch)
+    module_goal(T, a[0]), module_goal(T, a[2]);
+  else if (n == 3 && id == atom_findall)
+    module_goal(T, a[1]);
+  else
+    module_ref(T, t, 0);
+}
+
+// Points the file's calls to its private predicates at their new names.
+static void module_patch(trilog_t *T) {
+  for (int32_t i = 0; i < T->db_count; i++) {
+    clause_t *c = &T->db[i];
+    if (!c->head || c->source != T->consulting_atom)
+      continue;
+    if (c->head->tag == T_STR && c->head->as.str.atom_id == atom_dcg_arrow &&
+        c->head->as.str.arity == 2)
+      module_dcg(T, c->head->as.str.args[1]);
+    for (int32_t j = 0; j < c->nbody; j++)
+      module_goal(T, c->body[j]);
+  }
+}
+
+// user:H defines H; Module:H defines Module's private H.
+static tterm_t *module_head(trilog_t *T, tterm_t *h) {
+  int32_t id, arity;
+  if (h->tag == T_STR && h->as.str.atom_id == atom_colon &&
+      h->as.str.arity == 2 && h->as.str.args[0]->tag == T_ATOM &&
+      callable_name(h->as.str.args[1], &id, &arity)) {
+    int32_t m = h->as.str.args[0]->as.atom_id;
+    tterm_t *g = h->as.str.args[1];
+    if (m != atom_user)
+      rename_callable(g, module_qualified(T, m, id, true));
+    return g;
+  }
+  if (T->module_id < 0)
+    return h;
+  if (h->tag == T_STR && h->as.str.atom_id == atom_dcg_arrow &&
+      h->as.str.arity == 2) {
+    tterm_t *nt = h->as.str.args[0];
+    if (nt->tag == T_STR && nt->as.str.atom_id == atom_comma &&
+        nt->as.str.arity == 2)
+      nt = nt->as.str.args[0];
+    module_define(T, nt, 2);
+    return h;
+  }
+  module_define(T, h, 0);
+  return h;
+}
+
 static void assemble_clause(trilog_t *T, tterm_t *t, int32_t nvars) {
   if (t->tag == T_STR && t->as.str.arity == 2 &&
       t->as.str.atom_id == atom_ruleop) {
     int32_t nbody;
     tterm_t **body = flatten_conj(T, t->as.str.args[1], &nbody);
-    db_add(T, t->as.str.args[0], body, nbody, nvars, 1);
+    db_add(T, module_head(T, t->as.str.args[0]), body, nbody, nvars, 1);
     return;
   }
   if (t->tag == T_STR && t->as.str.arity == 1 &&
       (t->as.str.atom_id == atom_ruleop ||
        t->as.str.atom_id == atom_qmark_dash)) {
+    if (T->module_id >= 0) {
+      module_patch(T);
+      module_goal(T, t->as.str.args[0]);
+    }
     run_directive(T, t->as.str.args[0], nvars);
     return;
   }
-  db_add(T, t, NULL, 0, nvars, 1); // a fact - neither a rule nor a directive
+  db_add(T, module_head(T, t), NULL, 0, nvars, 1); // a fact
 }
 
 // library files baked into a release build are consulted as "embedded:PATH".
@@ -926,9 +1073,27 @@ static bool consult_nested(trilog_t *T, const char *text, const char *file,
   size_t saved_psp = T->psp;
   jmp_buf saved_jmp;
   memcpy(saved_jmp, T->err_jmp, sizeof(jmp_buf));
+  int32_t saved_module = T->module_id, saved_nexports = T->module_nexports,
+          saved_nprivate = T->module_nprivate,
+          saved_private_cap = T->module_private_cap;
+  pred_decl_t *saved_exports = T->module_exports,
+              *saved_private = T->module_private;
+  T->module_id = -1;
+  T->module_exports = T->module_private = NULL;
+  T->module_nexports = T->module_nprivate = T->module_private_cap = 0;
   T->consulting = file;
   T->consulting_atom = file ? atom_intern(T, file) : -1;
   bool ok = consult_source(T, text, name);
+  if (T->module_id >= 0)
+    module_patch(T);
+  mem_free(T, T->module_exports);
+  mem_free(T, T->module_private);
+  T->module_id = saved_module;
+  T->module_exports = saved_exports;
+  T->module_private = saved_private;
+  T->module_nexports = saved_nexports;
+  T->module_nprivate = saved_nprivate;
+  T->module_private_cap = saved_private_cap;
   T->consulting = saved_consulting;
   T->consulting_atom = saved_atom;
   T->P = saved_P;

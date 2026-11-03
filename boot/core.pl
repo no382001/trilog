@@ -64,6 +64,7 @@ consult(File) :-
     ;   atom(File) -> true
     ;   throw(error(type_error(atom, File), consult/1))
     ),
+    ( '$$source_path'(File, Path0) -> '$check_module_decl'(Path0) ; true ),
     '$$consult'(File, Path),
     '$file_time'(Path, Time),
     ( '$$retract'('$consulted'(Path, _)) -> true ; true ),
@@ -89,9 +90,70 @@ ensure_loaded(Spec) :-
     '$with_context'('$ensure_loaded'(Spec), ensure_loaded/1).
 
 %!  use_module(+File) is det.
-%   There are no modules, so this is ensure_loaded/1.
+%!  use_module(+File, +Imports) is det.
+%   Loads File like ensure_loaded/1. A module's exports are visible
+%   everywhere, so Imports, a list of Name/Arity and Name//Arity, is only
+%   checked for its form.
 use_module(Spec) :-
     '$with_context'('$ensure_loaded'(Spec), use_module/1).
+use_module(Spec, Imports) :-
+    '$with_context'(('$module_pis'(Imports), '$ensure_loaded'(Spec)), use_module/2).
+
+%!  module(+Module, +Exports) is det.
+%   As a directive, makes the file being loaded Module. Its predicates not in
+%   Exports, a list of Name/Arity and Name//Arity, are private to it.
+module(M, Exports) :-
+    '$with_context'('$module'(M, Exports), module/2).
+
+'$module'(_, _) :-
+    \+ '$$loading_file'(_),
+    !,
+    throw(error(existence_error(procedure, module/2), module/2)).
+'$module'(M, _) :- \+ atom(M), !, throw(error(type_error(atom, M), _)).
+'$module'(M, Exports) :-
+    '$module_pis'(Exports),
+    '$$module'(M, Exports),
+    ( '$known_module'(M) -> true ; '$$assertz'('$known_module'(M)) ).
+
+:- dynamic('$known_module'/1).
+
+% A bad module/2 declaration fails the load, not just its directive.
+'$check_module_decl'(Path) :-
+    (   catch(open(Path, read, S), _, fail)
+    ->  catch(read(S, T), _, T = end_of_file),
+        close(S),
+        (   nonvar(T), T = (:- module(M, Exports))
+        ->  ( atom(M) -> true ; throw(error(type_error(atom, M), _)) ),
+            '$module_pis'(Exports)
+        ;   true
+        )
+    ;   true
+    ).
+
+'$module_pis'(L) :-
+    (   '$is_pi_list'(L) -> true
+    ;   throw(error(syntax_error(invalid_module_declaration), _))
+    ).
+
+'$is_pi_list'(L) :- var(L), !, fail.
+'$is_pi_list'([]).
+'$is_pi_list'([PI|PIs]) :- nonvar(PI), '$is_pi'(PI), '$is_pi_list'(PIs).
+
+'$is_pi'(N/A) :- atom(N), integer(A), A >= 0.
+'$is_pi'(N//A) :- atom(N), integer(A), A >= 0.
+
+%!  :(+Module, :Goal) is nondet.
+%   Calls Goal, using Module's private predicate of that name if it has one.
+M:G :-
+    (   var(M) -> throw(error(instantiation_error, (:)/2))
+    ;   \+ atom(M) -> throw(error(type_error(atom, M), (:)/2))
+    ;   M == user -> call(G)
+    ;   '$known_module'(M) -> '$$qualify'(M, G, G1), call(G1)
+    ;   callable(G) ->
+        functor(G, N, A),
+        throw(error(existence_error(procedure, M:N/A), (:)/2))
+    ;   call(G)
+    ).
 
 '$ensure_loaded'(Spec) :-
     '$source_file'(Spec, File),

@@ -51,6 +51,8 @@ void heap_bind(trilog_t *T, size_t var, size_t target);
 size_t trail_mark(trilog_t *T);
 void trail_release(trilog_t *T, size_t mark);
 
+// -1 when no such atom exists; never creates one.
+int32_t atom_find(trilog_t *T, const char *name);
 int32_t atom_intern(trilog_t *T, const char *name);
 // name must outlive the interpreter; it is not copied.
 int32_t atom_intern_static(trilog_t *T, const char *name);

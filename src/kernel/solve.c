@@ -491,6 +491,23 @@ static int is_dynamic(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
   return 0;
 }
 
+int db_is_dynamic(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
+  return is_dynamic(T, pred_id, pred_arity);
+}
+
+int32_t module_qualified(trilog_t *T, int32_t module, int32_t name,
+                         bool create) {
+  const char *m = atom_name(T, module), *n = atom_name(T, name);
+  size_t lm = strlen(m), ln = strlen(n);
+  char *buf = mem_grow_n(T, NULL, lm + ln + 2, 1);
+  memcpy(buf, m, lm);
+  buf[lm] = ':';
+  memcpy(buf + lm + 1, n, ln + 1);
+  int32_t id = create ? atom_intern(T, buf) : atom_find(T, buf);
+  mem_free(T, buf);
+  return id;
+}
+
 static void stack_push(trilog_t *T, frame_t f) {
   if (T->sp >= T->stack_cap) {
     size_t cap = T->stack_cap ? T->stack_cap * 2 : 64;
@@ -1701,6 +1718,69 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     *ok = T->heap[d].tag == TAG_ATOM;
     if (*ok)
       db_unload(T, T->heap[d].as.atom_id);
+    return 1;
+  }
+  // '$$module'(+Module, +Exports): the file being consulted is Module.
+  if (arity == 2 && id == atom_module_set) {
+    size_t m = heap_deref(T, f + 1);
+    *ok = 1;
+    if (!T->consulting || T->heap[m].tag != TAG_ATOM)
+      return 1;
+    int32_t n = 0;
+    for (size_t l = heap_deref(T, f + 2); T->heap[l].tag == TAG_STR;
+         l = heap_deref(T, T->heap[l].as.ptr + 2))
+      n++;
+    pred_decl_t *ex = mem_grow_n(T, NULL, (size_t)(n ? n : 1), sizeof *ex);
+    int32_t k = 0;
+    for (size_t l = heap_deref(T, f + 2); T->heap[l].tag == TAG_STR;
+         l = heap_deref(T, T->heap[l].as.ptr + 2)) {
+      size_t pi = heap_deref(T, T->heap[l].as.ptr + 1);
+      if (T->heap[pi].tag != TAG_STR)
+        continue;
+      size_t pf = T->heap[pi].as.ptr;
+      size_t nm = heap_deref(T, pf + 1), ar = heap_deref(T, pf + 2);
+      if (T->heap[nm].tag != TAG_ATOM || T->heap[ar].tag != TAG_INT)
+        continue;
+      int32_t a = (int32_t)T->heap[ar].as.ival;
+      if (T->heap[pf].as.func.atom_id == atom_intdiv)
+        a += 2;
+      ex[k++] = (pred_decl_t){T->heap[nm].as.atom_id, a};
+    }
+    mem_free(T, T->module_exports);
+    T->module_exports = ex;
+    T->module_nexports = k;
+    T->module_id = T->heap[m].as.atom_id;
+    return 1;
+  }
+  // '$$qualify'(+Module, +Goal, -Goal1): Goal1 names Module's private
+  // predicate when Module has one by that name, else Goal1 = Goal.
+  if (arity == 3 && id == atom_qualify) {
+    size_t m = heap_deref(T, f + 1), g = heap_deref(T, f + 2), out = g;
+    int32_t gname = -1, gar = 0;
+    size_t gf = 0;
+    if (T->heap[g].tag == TAG_ATOM) {
+      gname = T->heap[g].as.atom_id;
+    } else if (T->heap[g].tag == TAG_STR) {
+      gf = T->heap[g].as.ptr;
+      gname = T->heap[gf].as.func.atom_id;
+      gar = T->heap[gf].as.func.arity;
+    }
+    if (gname >= 0 && T->heap[m].tag == TAG_ATOM &&
+        T->heap[m].as.atom_id != atom_user) {
+      int32_t q = module_qualified(T, T->heap[m].as.atom_id, gname, false);
+      pred_bucket_t *b = q >= 0 ? pred_bucket_find(T, q, gar) : NULL;
+      if (b && (b->count > 0 || b->dynamic)) {
+        if (gar == 0) {
+          out = heap_new_atom(T, q);
+        } else {
+          out = heap_new_struct(T, q, gar, NULL);
+          size_t base = T->heap[out].as.ptr;
+          for (int32_t i = 0; i < gar; i++)
+            T->heap[base + 1 + (size_t)i].as.ref = gf + 1 + (size_t)i;
+        }
+      }
+    }
+    *ok = unify(T, f + 3, out);
     return 1;
   }
   if (arity == 1 && id == atom_dynamic) {

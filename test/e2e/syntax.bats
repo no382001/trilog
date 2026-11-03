@@ -218,14 +218,14 @@ PLEOF
   [[ "$output" == *"r(permission_error(modify,operator,','),permission_error(modify,operator,','),permission_error(create,operator,'|'),permission_error(create,operator,>),instantiation_error)"* ]]
 }
 
-@test "current_op/3 lists the standard operator table" {
+@test "current_op/3 lists the standard operator table, plus : for modules" {
   run "$TRILOG" -f -e "
     findall(op(P, T, N), current_op(P, T, N), L),
     msort(L, S),
     writeq(S),
     nl.
   "
-  [[ "$output" == *"[op(200,fy,+),op(200,fy,-),op(200,fy,\\),op(200,xfx,**),op(200,xfy,^),op(400,yfx,*),op(400,yfx,/),op(400,yfx,//),op(400,yfx,/\\),op(400,yfx,<<),op(400,yfx,>>),op(400,yfx,mod),op(400,yfx,rem),op(400,yfx,xor),op(500,yfx,+),op(500,yfx,-),op(500,yfx,\\/),op(700,xfx,<),op(700,xfx,=),op(700,xfx,=..),op(700,xfx,=:=),op(700,xfx,=<),op(700,xfx,==),op(700,xfx,=\\=),op(700,xfx,>),op(700,xfx,>=),op(700,xfx,@<),op(700,xfx,@=<),op(700,xfx,@>),op(700,xfx,@>=),op(700,xfx,\\=),op(700,xfx,\\==),op(700,xfx,is),op(900,fy,\\+),op(1000,xfy,','),op(1050,xfy,->),op(1100,xfy,;),op(1200,fx,:-),op(1200,fx,?-),op(1200,xfx,-->),op(1200,xfx,:-)]"* ]]
+  [[ "$output" == *"[op(200,fy,+),op(200,fy,-),op(200,fy,\\),op(200,xfx,**),op(200,xfy,^),op(400,yfx,*),op(400,yfx,/),op(400,yfx,//),op(400,yfx,/\\),op(400,yfx,<<),op(400,yfx,>>),op(400,yfx,mod),op(400,yfx,rem),op(400,yfx,xor),op(500,yfx,+),op(500,yfx,-),op(500,yfx,\\/),op(600,xfy,:),op(700,xfx,<),op(700,xfx,=),op(700,xfx,=..),op(700,xfx,=:=),op(700,xfx,=<),op(700,xfx,==),op(700,xfx,=\\=),op(700,xfx,>),op(700,xfx,>=),op(700,xfx,@<),op(700,xfx,@=<),op(700,xfx,@>),op(700,xfx,@>=),op(700,xfx,\\=),op(700,xfx,\\==),op(700,xfx,is),op(900,fy,\\+),op(1000,xfy,','),op(1050,xfy,->),op(1100,xfy,;),op(1200,fx,:-),op(1200,fx,?-),op(1200,xfx,-->),op(1200,xfx,:-)]"* ]]
 }
 
 @test "standard operators parse with their priority and associativity" {

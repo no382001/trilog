@@ -123,6 +123,11 @@ struct trilog {
   size_t rename_tmp_cap, goals_tmp_cap;
   const char *consulting; // path of the file being consulted
   int32_t consulting_atom;
+  // The module the file being consulted declared, -1 for none, with the
+  // predicates it exports and the private ones defined so far.
+  int32_t module_id;
+  pred_decl_t *module_exports, *module_private;
+  int32_t module_nexports, module_nprivate, module_private_cap;
 
   clause_t *db;
   int32_t db_count, db_cap, db_dead;

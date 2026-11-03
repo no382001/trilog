@@ -162,6 +162,10 @@ static int32_t atom_add(trilog_t *T, const char *name, bool copy) {
   return T->atom_count++;
 }
 
+int32_t atom_find(trilog_t *T, const char *name) {
+  return T->atom_slots_cap ? T->atom_slots[atom_slot(T, name)] : -1;
+}
+
 int32_t atom_intern(trilog_t *T, const char *name) {
   return atom_add(T, name, true);
 }
