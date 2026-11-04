@@ -13,6 +13,7 @@ dcg_constr((_ -> _)).
 dcg_constr({_}).
 dcg_constr(!).
 dcg_constr(\+ _).
+dcg_constr(_:_).
 dcg_constr(G) :- compound(G), functor(G, call, N), N >= 1.
 
 dcg_body(Var, S0, S, phrase(Var, S0, S)) :- var(Var), !.
@@ -51,7 +52,33 @@ dcg_cbody((A -> B), S0, S, (AT -> BT)) :-
 dcg_cbody({G}, S0, S, (G, S0 = S)) :- !.
 dcg_cbody(!, S0, S, (!, S0 = S)) :- !.
 dcg_cbody(\+ G, S0, S, (\+ GT, S0 = S)) :- !, dcg_body(G, S0, _, GT).
+dcg_cbody(M:B, S0, S, '$dcg_module'(M, B, S0, S)) :- !.
 dcg_cbody(Call, S0, S, '$dcg_call'(G, Extra, S0, S)) :- Call =.. [call, G|Extra].
+
+% Module:Body uses Module's private nonterminal of that name if it has one.
+'$dcg_module'(M, B, S0, S) :-
+    atom(M),
+    callable(B),
+    \+ dcg_constr(B),
+    functor(B, N, A),
+    atom_concat(M, ':', P),
+    atom_concat(P, N, Q),
+    functor(Skel, Q, A),
+    '$dcg_rules'(Skel, [_|_]),
+    !,
+    B =.. [_|Args],
+    B1 =.. [Q|Args],
+    phrase(B1, S0, S).
+'$dcg_module'(_, B, S0, S) :- phrase(B, S0, S).
+
+% Compiles every nonterminal loaded so far, so a boot image holds them.
+'$dcg_compile_all' :-
+    '$$clause_candidates'('-->'(_, _), Cands),
+    forall(( member('-->'(H, _) - true, Cands),
+             ( nonvar(H), H = (NT, _) -> true ; NT = H ),
+             callable(NT),
+             functor(NT, N, A) ),
+           '$dcg_ensure'(N, A)).
 
 % call//N compiles the nonterminal it builds, as a direct call would.
 '$dcg_call'(G, Extra, S0, S) :-

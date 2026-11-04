@@ -73,7 +73,8 @@ consult(File) :-
     ;   atom(File) -> true
     ;   throw(error(type_error(atom, File), consult/1))
     ),
-    '$$consult'(File, Path),
+    '$with_extension'(File, File1),
+    '$$consult'(File1, Path),
     '$file_time'(Path, Time),
     ( '$$retract'('$consulted'(Path, _)) -> true ; true ),
     '$$assertz'('$consulted'(Path, Time)).
@@ -214,7 +215,8 @@ M:G :-
     ).
 
 '$ensure_loaded'(Spec) :-
-    '$source_file'(Spec, File),
+    '$source_file'(Spec, File0),
+    '$with_extension'(File0, File),
     (   '$$source_path'(File, Path) -> true
     ;   throw(error(existence_error(source_sink, Spec), _))
     ),
@@ -231,6 +233,14 @@ M:G :-
     atom_concat(D2, '.pl', File).
 '$source_file'(File, File) :- atom(File), !.
 '$source_file'(Spec, _) :- throw(error(domain_error(source_sink, Spec), _)).
+
+% A file name that does not exist as given is tried with .pl added.
+'$with_extension'(File, File) :- '$$source_path'(File, _), !.
+'$with_extension'(File, File1) :-
+    atom_concat(File, '.pl', File1),
+    '$$source_path'(File1, _),
+    !.
+'$with_extension'(File, File).
 
 '$directory'(Path, Dir) :-
     '$$atom_codes'(Path, Cs),

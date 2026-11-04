@@ -871,6 +871,11 @@ static void module_meta_args(trilog_t *T, tterm_t *t) {
 
 static void module_dcg(trilog_t *T, tterm_t **slot) {
   tterm_t *t = *slot;
+  if (t->tag == T_VAR) {
+    if (!caller_goal(T, t))
+      module_wrap(T, slot);
+    return;
+  }
   if (t->tag == T_ATOM) {
     if (t->as.atom_id != atom_nil && t->as.atom_id != atom_bang)
       module_ref(T, t, 2);
@@ -908,8 +913,11 @@ static void module_goal(trilog_t *T, tterm_t **slot) {
     return;
   }
   if (t->tag == T_STR && t->as.str.atom_id == atom_colon &&
-      t->as.str.arity == 2)
+      t->as.str.arity == 2) {
+    if (t->as.str.args[1]->tag == T_STR)
+      module_meta_args(T, t->as.str.args[1]);
     return;
+  }
   if (t->tag == T_STR)
     module_meta_args(T, t);
   module_ref(T, t, 0);

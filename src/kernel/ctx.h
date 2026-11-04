@@ -134,7 +134,7 @@ struct trilog {
   // ops[atom] holds the atom's prefix, infix and postfix operator; rebuilt
   // when op_gen, bumped by every '$$op' clause added or removed, has moved.
   struct atom_ops {
-    int16_t pri[3];   // by OP_CLASS_*, 0 when there is none
+    int16_t pri[3]; // by OP_CLASS_*, 0 when there is none
     int8_t assoc[3];
   } *ops;
   int32_t ops_len;

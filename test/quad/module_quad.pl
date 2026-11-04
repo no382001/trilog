@@ -136,3 +136,12 @@ helper(user).
 
 ?- catch(consult('test/quad/files/bad_meta_spec.pl'), _, true), meta_rest.
    error(existence_error(procedure, meta_rest/0)).
+
+% A file name without .pl is tried with .pl added, as in Scryer.
+
+?- use_module('test/quad/files/shapes').
+   true.
+
+?- consult('test/quad/files/colors'), color(C).
+   C = red
+;  C = green.
