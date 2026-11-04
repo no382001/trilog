@@ -2,8 +2,11 @@
 
 :- module(toplevel, [toplevel/0]).
 
+:- use_module(library(editline)).
+
 :- dynamic(answered/0).
 :- dynamic(show_all/0).
+:- dynamic(pending/1).
 
 %!  toplevel is det.
 %   Reads and runs queries until end of input or halt/0,1.
@@ -16,30 +19,42 @@ toplevel :-
     ).
 
 % A query is the lines up to one that ends in a full stop; at end of input,
-% whatever was read. Fails at end of input with nothing read.
+% whatever was read. Fails at end of input with nothing read. A query typed
+% in the editor goes into its history whole.
 read_query(Q) :-
-    prompt,
-    read_text('', Text),
+    read_text('?- ', '', Text, Edited),
+    (   Edited == true -> add_history(Text) ; true ),
     catch(( atom_to_term(Text, Goal, VNs), Q = query(Goal, VNs) ),
           error(syntax_error(M), _),
           ( parse_error(M), Q = skip )).
 
-prompt :-
-    (   '$tl_tty' -> write('?- '), flush_output ; true ).
-
-read_text(Text0, Text) :-
-    (   '$tl_read_line'(Line)
+read_text(Prompt, Text0, Text, Edited) :-
+    (   read_line(Prompt, Line, Edited)
     ->  atom_concat(Text0, Line, Text1),
         (   blank(Text1)
-        ->  prompt,
-            read_text('', Text)
+        ->  read_text('?- ', '', Text, Edited)
         ;   ends_query(Line)
         ->  Text = Text1
         ;   atom_concat(Text1, '\n', Text2),
-            read_text(Text2, Text)
+            read_text('', Text2, Text, Edited)
         )
     ;   \+ blank(Text0),
         Text = Text0
+    ).
+
+% With the terminal in raw mode, the line is edited and Edited is true;
+% otherwise it is read as the host gives it. A key typed after an answer
+% starts it.
+read_line(Prompt, Line, Edited) :-
+    (   retract(pending(K)) -> Initial = [K] ; Initial = [] ),
+    (   '$tl_raw'(1)
+    ->  Edited = true,
+        edit_line(Prompt, Initial, Line)
+    ;   (   '$tl_tty' -> write(Prompt), flush_output ; true ),
+        atom_codes(Typed, Initial),
+        write(Typed),
+        '$tl_read_line'(Line0),
+        atom_concat(Typed, Line0, Line)
     ).
 
 blank(A) :- atom_chars(A, Cs), skip_layout(Cs, []).
@@ -195,7 +210,8 @@ stop :-
         fail
     ;   ( K =:= 0'; ; K =:= 0'  )
     ->  fail
-    ;   nl, write(';  ... .'), nl
+    ;   (   K > 0'  , K < 127, K =\= 0'. -> assertz(pending(K)) ; true ),
+        nl, write(';  ... .'), nl
     ).
 
 uncaught(E) :-

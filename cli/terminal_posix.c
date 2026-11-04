@@ -7,7 +7,30 @@
 
 bool terminal_stdin_is_tty(void) { return isatty(fileno(stdin)); }
 
+static struct termios cooked;
+static bool raw_on;
+
+bool terminal_raw(bool on) {
+  if (on == raw_on)
+    return true;
+  if (on) {
+    if (!isatty(STDIN_FILENO) || tcgetattr(STDIN_FILENO, &cooked) != 0)
+      return false;
+    struct termios raw = cooked;
+    raw.c_lflag &= ~(ICANON | ECHO);
+    raw.c_cc[VMIN] = 1;
+    raw.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &raw);
+  } else {
+    tcsetattr(STDIN_FILENO, TCSANOW, &cooked);
+  }
+  raw_on = on;
+  return true;
+}
+
 int terminal_read_key(void) {
+  if (raw_on)
+    return getchar();
   struct termios old, raw;
   if (tcgetattr(STDIN_FILENO, &old) != 0)
     return getchar();

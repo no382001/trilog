@@ -5,6 +5,8 @@ bool terminal_stdin_is_tty(void) { return true; }
 
 int terminal_read_key(void) { return getchar(); }
 
+bool terminal_raw(bool on) { return !on; }
+
 // USB serial does not echo, so this echoes and handles backspace itself.
 bool terminal_read_line(char *buf, size_t cap) {
   size_t i = 0;

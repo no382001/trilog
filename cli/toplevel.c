@@ -103,24 +103,22 @@ static bool tl_tty(trilog_t *t, void *ud, const trilog_value_t *in,
 static bool tl_key(trilog_t *t, void *ud, const trilog_value_t *in,
                    trilog_value_t *out) {
   (void)t, (void)ud, (void)in;
+  fflush(stdout);
   out[0].i = terminal_read_key();
-  if (out[0].i > ' ' && out[0].i != ';' && out[0].i != 'a' && out[0].i != '.' &&
-      out[0].i < 127)
-    typed_ahead = (int)out[0].i;
   return true;
+}
+
+static bool tl_raw(trilog_t *t, void *ud, const trilog_value_t *in,
+                   trilog_value_t *out) {
+  (void)t, (void)ud, (void)out;
+  return terminal_raw(in[0].i != 0);
 }
 
 static bool tl_read_line(trilog_t *t, void *ud, const trilog_value_t *in,
                          trilog_value_t *out) {
   (void)t, (void)ud, (void)in;
   static char line[TOPLEVEL_LINE_MAX];
-  size_t n = 0;
-  if (typed_ahead != EOF) {
-    line[n++] = (char)typed_ahead;
-    putchar(typed_ahead);
-    typed_ahead = EOF;
-  }
-  if (!terminal_read_line(line + n, sizeof line - n))
+  if (!terminal_read_line(line, sizeof line))
     return false;
   out[0].a = line;
   return true;
@@ -137,6 +135,7 @@ trilog_status_t toplevel_repl(trilog_t *t) {
   trilog_register(t, "$tl_tty", "", tl_tty, NULL);
   trilog_register(t, "$tl_key", ">i", tl_key, NULL);
   trilog_register(t, "$tl_read_line", ">a", tl_read_line, NULL);
+  trilog_register(t, "$tl_raw", "i", tl_raw, NULL);
   trilog_status_t s = trilog_query(t, "use_module(library(toplevel)), toplevel",
                                    stop_after_first, NULL);
   if (s == TRILOG_ERROR &&

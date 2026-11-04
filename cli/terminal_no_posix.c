@@ -6,6 +6,8 @@ bool terminal_stdin_is_tty(void) { return true; }
 
 int terminal_read_key(void) { return getchar(); }
 
+bool terminal_raw(bool on) { return !on; }
+
 bool terminal_read_line(char *buf, size_t cap) {
   if (!fgets(buf, (int)cap, stdin))
     return false;
