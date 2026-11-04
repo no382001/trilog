@@ -1,6 +1,7 @@
 #include "fmt.h"
 #include "chars.h"
 #include "platform.h"
+#include "term.h"
 #include <string.h>
 
 typedef struct {
@@ -98,6 +99,12 @@ size_t fmt_v(char *buf, size_t cap, const char *f, va_list ap) {
       else
         put_uint(&o, va_arg(ap, unsigned), false);
       break;
+    case 'g': {
+      char tmp[64];
+      float_text(tmp, sizeof tmp, va_arg(ap, double));
+      put_str(&o, tmp, strlen(tmp));
+      break;
+    }
     default:
       put_str(&o, spec, (size_t)(f - spec) + (*f != '\0'));
       if (!*f)
