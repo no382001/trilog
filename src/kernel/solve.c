@@ -1632,6 +1632,31 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
                                               : h);
     return 1;
   }
+  // '$$write_vars'(+Target, @Term, +Flags, +VNs): '$$write_raw' with VNs's
+  // names for its unbound variables; the first name for a variable wins.
+  if (arity == 4 && id == atom_write_vars) {
+    answer_names_reset(T);
+    for (size_t l = heap_deref(T, f + 4); T->heap[l].tag == TAG_STR;) {
+      size_t lf = T->heap[l].as.ptr;
+      size_t e = heap_deref(T, lf + 1);
+      l = heap_deref(T, lf + 2);
+      if (T->heap[e].tag != TAG_STR)
+        continue;
+      size_t ef = T->heap[e].as.ptr;
+      size_t n = heap_deref(T, ef + 1), v = heap_deref(T, ef + 2);
+      if (T->heap[n].tag == TAG_ATOM && T->heap[v].tag == TAG_REF &&
+          !answer_name(T, v))
+        answer_name_claim(T, v, atom_name(T, T->heap[n].as.atom_id));
+    }
+    T->answer_naming = true;
+    T->answer_plain = true;
+    size_t args[3] = {f + 1, f + 2, f + 3};
+    size_t raw = heap_new_struct(T, atom_write_raw, 3, args);
+    int r = dispatch_builtin_(T, raw, ok);
+    T->answer_naming = false;
+    T->answer_plain = false;
+    return r;
+  }
   if (arity == 3 && id == atom_write_raw) {
     size_t target = heap_deref(T, f + 1);
     int flags = (int)T->heap[heap_deref(T, f + 3)].as.ival;

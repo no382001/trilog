@@ -622,6 +622,11 @@ static void print_answer_var(trilog_t *T, size_t r, emit_fn emit) {
     token(T, emit, a->name);
     return;
   }
+  if (T->answer_plain) {
+    fmt(buf, sizeof buf, "_G%zu", r);
+    token(T, emit, buf);
+    return;
+  }
   if (!a) {
     for (;; T->answer_fresh++) {
       fresh_name(T->answer_fresh, buf, sizeof buf);
@@ -774,7 +779,8 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
         break;
       }
       if (is_cons(T, r) && !(flags & PRINT_IGNORE_OPS)) {
-        if ((flags & PRINT_ANSWER) && try_print_char_string(T, r, emit))
+        if ((flags & (PRINT_ANSWER | PRINT_DOUBLE_QUOTES)) &&
+            try_print_char_string(T, r, emit))
           break;
         token(T, emit, "[");
         print_enter(T, f);

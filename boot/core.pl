@@ -212,6 +212,12 @@ meta_predicate(Heads) :-
 '$meta_spec'(findall, 3, [?, 0, '-']).
 '$meta_spec'(bagof, 3, [?, '^', '-']).
 '$meta_spec'(setof, 3, [?, '^', '-']).
+'$meta_spec'(assert, 1, [:]).
+'$meta_spec'(asserta, 1, [:]).
+'$meta_spec'(assertz, 1, [:]).
+'$meta_spec'(retract, 1, [:]).
+'$meta_spec'(retractall, 1, [:]).
+'$meta_spec'(clause, 2, [:, ?]).
 
 %!  :(+Module, :Goal) is nondet.
 %   Calls Goal, using Module's private predicate of that name if it has one.
@@ -389,10 +395,26 @@ keysort(Pairs, Sorted) :-
 %   Refuses static (consulted) predicates with permission_error unless declared dynamic/1;
 %   asserting makes the predicate dynamic, so it still exists (and fails) once
 %   its last clause is retracted.
+assertz(MC) :- nonvar(MC), MC = M:C, !, '$module_clause'(M, C, C1), assertz(C1).
 assertz(Clause) :- '$with_context'(('$check_clause'(Clause), '$check_static'(Clause)), assertz/1), '$make_dynamic'(Clause), '$$assertz'(Clause).
+assert(MC) :- nonvar(MC), MC = M:C, !, '$module_clause'(M, C, C1), assert(C1).
 assert(Clause) :- '$with_context'(('$check_clause'(Clause), '$check_static'(Clause)), assert/1), '$make_dynamic'(Clause), '$$assert'(Clause).
+asserta(MC) :- nonvar(MC), MC = M:C, !, '$module_clause'(M, C, C1), asserta(C1).
 asserta(Clause) :- '$with_context'(('$check_clause'(Clause), '$check_static'(Clause)), asserta/1), '$make_dynamic'(Clause), '$$asserta'(Clause).
+retract(MC) :- nonvar(MC), MC = M:C, !, '$module_clause'(M, C, C1), retract(C1).
 retract(Clause) :- '$with_context'(('$check_head'(Clause), '$check_static'(Clause)), retract/1), '$$retract'(Clause).
+
+% Module:Clause is Clause with its head renamed to Module's private
+% predicate, if Module has one of that name.
+'$module_clause'(M, _, _) :- var(M), !, throw(error(instantiation_error, _)).
+'$module_clause'(M, C, C1) :-
+    (   nonvar(C), C = (H :- B)
+    ->  '$module_head'(M, H, H1), C1 = (H1 :- B)
+    ;   '$module_head'(M, C, C1)
+    ).
+
+'$module_head'(M, H, H1) :-
+    (   callable(H), M \== user -> '$$qualify'(M, H, H1) ; H1 = H ).
 
 '$check_static'(Clause) :-
     '$clause_head'(Clause, Head),
@@ -458,6 +480,7 @@ current_predicate(PI) :-
     PI = N/A.
 
 %!  clause(?Head, ?Body) is nondet.
+clause(MH, Body) :- nonvar(MH), MH = M:H, !, '$module_head'(M, H, H1), clause(H1, Body).
 clause(Head, Body) :-
     '$$clause_candidates'(Head, Candidates),
     member(Head - Body, Candidates).
@@ -587,25 +610,43 @@ writeq(S, T) :-
 %   Options: quoted(Bool), ignore_ops(Bool), numbervars(Bool).
 %   TODO: ignore_ops(false) is accepted but not honored.
 write_term(T, Opts) :-
-    '$with_context'('$write_options'(Opts, Q), write_term/2),
-    '$$write_raw'(0, T, Q).
+    '$with_context'('$write_options'(Opts, Q, VNs), write_term/2),
+    '$write_term'(0, T, Q, VNs).
 write_term(S, T, Opts) :-
-    '$with_context'(('$resolve_stream'(S, N), '$write_options'(Opts, Q)), write_term/3),
-    ( '$$write_raw'(N, T, Q) -> true ; throw(error(existence_error(stream, S), write_term/3)) ).
+    '$with_context'(('$resolve_stream'(S, N), '$write_options'(Opts, Q, VNs)), write_term/3),
+    ( '$write_term'(N, T, Q, VNs) -> true ; throw(error(existence_error(stream, S), write_term/3)) ).
 
-'$write_options'(Opts, Q) :-
+'$write_term'(N, T, Q, []) :- !, '$$write_raw'(N, T, Q).
+'$write_term'(N, T, Q, VNs) :- '$$write_vars'(N, T, Q, VNs).
+
+'$write_options'(Opts, Q, VNs) :-
     '$options_list'(Opts),
-    '$write_options'(Opts, 0, Q).
-'$write_options'([], Q, Q).
-'$write_options'([O|Os], Q0, Q) :-
-    '$write_option'(O, Q0, Q1),
-    '$write_options'(Os, Q1, Q).
+    '$write_options'(Opts, 0, Q, [], VNs).
+'$write_options'([], Q, Q, VNs, VNs).
+'$write_options'([O|Os], Q0, Q, VNs0, VNs) :-
+    '$write_option'(O, Q0, Q1, VNs0, VNs1),
+    '$write_options'(Os, Q1, Q, VNs1, VNs).
 
-'$write_option'(O, _, _) :- var(O), !, throw(error(instantiation_error, _)).
-'$write_option'(quoted(B), F0, F) :- '$option_bool'(quoted(B), write_option, V), !, F is F0 \/ V.
-'$write_option'(ignore_ops(B), F0, F) :- '$option_bool'(ignore_ops(B), write_option, V), !, F is F0 \/ V << 2.
-'$write_option'(numbervars(B), F0, F) :- '$option_bool'(numbervars(B), write_option, V), !, F is F0 \/ V << 1.
-'$write_option'(O, _, _) :- throw(error(domain_error(write_option, O), _)).
+'$write_option'(O, _, _, _, _) :- var(O), !, throw(error(instantiation_error, _)).
+'$write_option'(quoted(B), F0, F, VNs, VNs) :- '$option_bool'(quoted(B), write_option, V), !, F is F0 \/ V.
+'$write_option'(ignore_ops(B), F0, F, VNs, VNs) :- '$option_bool'(ignore_ops(B), write_option, V), !, F is F0 \/ V << 2.
+'$write_option'(numbervars(B), F0, F, VNs, VNs) :- '$option_bool'(numbervars(B), write_option, V), !, F is F0 \/ V << 1.
+'$write_option'(double_quotes(B), F0, F, VNs, VNs) :- '$option_bool'(double_quotes(B), write_option, V), !, F is F0 \/ V << 4.
+'$write_option'(variable_names(L), F, F, _, L) :- !, '$variable_names'(L, L).
+'$write_option'(O, _, _, _, _) :- throw(error(domain_error(write_option, O), _)).
+
+'$variable_names'(L, _) :- var(L), !, throw(error(instantiation_error, _)).
+'$variable_names'([], _) :- !.
+'$variable_names'([P|Ps], L) :-
+    nonvar(P),
+    P = (N = _),
+    !,
+    (   var(N) -> throw(error(instantiation_error, _))
+    ;   atom(N) -> '$variable_names'(Ps, L)
+    ;   throw(error(domain_error(write_option, variable_names(L)), _))
+    ).
+'$variable_names'([P|_], _) :- var(P), !, throw(error(instantiation_error, _)).
+'$variable_names'(_, L) :- throw(error(domain_error(write_option, variable_names(L)), _)).
 
 '$option_bool'(O, _, _) :- arg(1, O, B), var(B), !, throw(error(instantiation_error, _)).
 '$option_bool'(O, _, 1) :- arg(1, O, true), !.
@@ -974,6 +1015,7 @@ number_chars(N, Chars) :-
 
 %!  retractall(+Head) is det.
 %   an unknown predicate is created as dynamic.
+retractall(MH) :- nonvar(MH), MH = M:H, !, '$module_clause'(M, H, H1), retractall(H1).
 retractall(Head) :-
     '$with_context'('$check_static'(Head), retractall/1),
     '$make_dynamic'(Head),

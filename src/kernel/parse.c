@@ -811,14 +811,8 @@ static void rename_callable(tterm_t *t, int32_t id) {
     t->as.str.atom_id = id;
 }
 
-static void module_define(trilog_t *T, tterm_t *t, int32_t extra) {
-  int32_t id, arity;
-  if (!callable_name(t, &id, &arity))
-    return;
-  arity += extra;
-  if (decl_has(T->module_exports, T->module_nexports, id, arity) ||
-      db_is_dynamic(T, id, arity))
-    return;
+// Makes Name/Arity private to the module being loaded; returns its new name.
+static int32_t module_private_add(trilog_t *T, int32_t id, int32_t arity) {
   if (!decl_has(T->module_private, T->module_nprivate, id, arity)) {
     if (T->module_nprivate == T->module_private_cap) {
       int32_t cap = T->module_private_cap ? T->module_private_cap * 2 : 16;
@@ -828,7 +822,38 @@ static void module_define(trilog_t *T, tterm_t *t, int32_t extra) {
     }
     T->module_private[T->module_nprivate++] = (pred_decl_t){id, arity};
   }
-  rename_callable(t, module_qualified(T, T->module_id, id, true));
+  return module_qualified(T, T->module_id, id, true);
+}
+
+static void module_define(trilog_t *T, tterm_t *t, int32_t extra) {
+  int32_t id, arity;
+  if (!callable_name(t, &id, &arity))
+    return;
+  arity += extra;
+  if (decl_has(T->module_exports, T->module_nexports, id, arity) ||
+      db_is_dynamic(T, id, arity))
+    return;
+  rename_callable(t, module_private_add(T, id, arity));
+}
+
+// In a module, dynamic(Name/Arity, ...) declares the module's own predicate,
+// unless it is exported.
+static void module_dynamic(trilog_t *T, tterm_t *spec) {
+  if (spec->tag != T_STR || spec->as.str.arity != 2)
+    return;
+  int32_t f = spec->as.str.atom_id;
+  if (f == atom_comma || f == atom_dot) {
+    module_dynamic(T, spec->as.str.args[0]);
+    module_dynamic(T, spec->as.str.args[1]);
+    return;
+  }
+  tterm_t *name = spec->as.str.args[0], *arity = spec->as.str.args[1];
+  if (f != atom_slash || name->tag != T_ATOM || arity->tag != T_INT ||
+      decl_has(T->module_exports, T->module_nexports, name->as.atom_id,
+               (int32_t)arity->as.ival))
+    return;
+  name->as.atom_id =
+      module_private_add(T, name->as.atom_id, (int32_t)arity->as.ival);
 }
 
 static void module_ref(trilog_t *T, tterm_t *t, int32_t extra) {
@@ -839,6 +864,19 @@ static void module_ref(trilog_t *T, tterm_t *t, int32_t extra) {
 }
 
 static void module_goal(trilog_t *T, tterm_t **slot);
+static void module_closure(trilog_t *T, tterm_t **slot, int32_t extra);
+
+// A clause or a head, as assertz/1 and retract/1 take: a private head is
+// renamed, and a body is goals.
+static void module_clause(trilog_t *T, tterm_t *t) {
+  if (t->tag == T_STR && t->as.str.atom_id == atom_ruleop &&
+      t->as.str.arity == 2) {
+    module_ref(T, t->as.str.args[0], 0);
+    module_closure(T, &t->as.str.args[1], 0);
+    return;
+  }
+  module_ref(T, t, 0);
+}
 static void module_dcg(trilog_t *T, tterm_t **slot);
 static bool caller_goal(trilog_t *T, const tterm_t *t);
 
@@ -898,6 +936,11 @@ static void module_meta_args(trilog_t *T, tterm_t *t) {
       module_closure(T, arg, 0);
     } else if (spec->tag == T_ATOM && spec->as.atom_id == atom_intdiv) {
       module_dcg(T, arg);
+    } else if (spec->tag == T_ATOM && spec->as.atom_id == atom_colon) {
+      if ((*arg)->tag != T_VAR)
+        module_clause(T, *arg);
+      else if (!caller_goal(T, *arg))
+        module_wrap(T, arg);
     }
   }
 }
@@ -1053,6 +1096,10 @@ static void assemble_clause(trilog_t *T, tterm_t *t, int32_t nvars) {
       (t->as.str.atom_id == atom_ruleop ||
        t->as.str.atom_id == atom_qmark_dash)) {
     if (T->module_id >= 0) {
+      tterm_t *d = t->as.str.args[0];
+      if (d->tag == T_STR && d->as.str.atom_id == atom_dynamic &&
+          d->as.str.arity == 1)
+        module_dynamic(T, d->as.str.args[0]);
       module_patch(T);
       module_goal(T, &t->as.str.args[0]);
     }

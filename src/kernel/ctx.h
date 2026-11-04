@@ -200,6 +200,7 @@ struct trilog {
   size_t answer_index_cap, answer_slots;
   int answer_fresh;
   bool answer_naming;
+  bool answer_plain; // an unnamed variable prints as _G<n>, not a fresh _A
   int print_last;    // the last char the printer wrote, 0 at the start
   bool print_prefix; // a prefix operator was just written
 };

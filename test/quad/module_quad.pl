@@ -165,3 +165,35 @@ helper(user).
 
 ?- later(X).
    error(existence_error(procedure, later/1)).
+
+% A dynamic predicate declared in a module is private to it; assertz/1 and
+% retract/1 in the module change that one.
+
+?- use_module('test/quad/files/flags').
+   true.
+
+?- toggle(A), toggle(B), toggle(C).
+   A = on, B = off, C = on.
+
+?- flag.
+   error(existence_error(procedure, flag/0)).
+
+?- flags:flag.
+   true.
+
+% A clause built at run time goes to the module's own predicate too.
+
+?- save(1), save(2), saved(Xs).
+   Xs = [1,2].
+
+?- fact(_).
+   error(existence_error(procedure, fact/1)).
+
+?- assertz(flags:fact(3)), saved(Xs).
+   Xs = [1,2,3].
+
+?- retract(flags:fact(1)), saved(Xs).
+   Xs = [2,3].
+
+?- retractall(flags:fact(_)), saved(Xs).
+   Xs = [].

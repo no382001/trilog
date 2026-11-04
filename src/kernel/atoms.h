@@ -127,6 +127,7 @@
   X(atom_mode_append, "append")                                                \
   X(atom_copy_term, "copy_term")                                               \
   X(atom_term_to_atom, "term_to_atom")                                         \
+  X(atom_write_vars, "$$write_vars")                                           \
   X(atom_atom_to_term, "atom_to_term")                                         \
   X(atom_dollar_var, "$VAR")                                                   \
   X(atom_clause_candidates, "$$clause_candidates")                             \

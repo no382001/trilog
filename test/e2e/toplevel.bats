@@ -221,3 +221,35 @@ load common
   [[ "$result" == *"X = cc"* ]]
   [[ "$result" == *";"* ]]
 }
+
+@test "the REPL prints answers exactly as -e does" {
+  # The REPL's printer is lib/toplevel.pl; -e uses trilog_format_answer in C.
+  queries=(
+    "X = f(Y, Z, _W), Y = Z, A = 1.5e100, B = (-), C = _."
+    "X = Y."
+    "X = Y, Y = Z."
+    "X = f(_, _)."
+    "X = \"abc\", Y = [], Z = [a,bc]."
+    "X = (a :- b), Y = (a, b), Z = - 1, W = -(-), V = (\\+ a)."
+    "length(L, 3)."
+    "X = f(_A), Y = _."
+    "X = [1,2|T]."
+    "X = 'hello world', Y = '[]'."
+    "member(X, [aa,bb])."
+    "X = f(Y), Y = g(Z)."
+    "_A = 1, X = _B."
+    "X = 0.1, Y = -0.0, Z = 1.0e10."
+    "X = f(X)."
+    "X = [a|X]."
+    "X = f(A, B, A)."
+    "X = [-]."
+    "X = (a:-b,c)."
+    "true."
+    "fail."
+  )
+  for q in "${queries[@]}"; do
+    expected=$("$TRILOG" -f -e "$q" 2>&1)
+    got=$(printf '%s\n' "$q" | "$TRILOG" -f 2>&1)
+    [ "$got" = "$expected" ] || { echo "query: $q"; echo "-e:   $expected"; echo "REPL: $got"; false; }
+  done
+}
