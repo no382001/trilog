@@ -43,6 +43,10 @@ typedef struct {
   size_t active_catch;
 } frame_t;
 
+// A frame's clause_idx when backtracking runs its goals instead of retrying a
+// clause.
+#define FRAME_GOALS (-1)
+
 typedef struct {
   size_t heap_mark, trail_mark;
   size_t sp_at_entry;

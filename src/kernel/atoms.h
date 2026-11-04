@@ -3,6 +3,8 @@
 #define WELL_KNOWN_ATOMS(X)                                                    \
   X(atom_true, "true")                                                         \
   X(atom_comma, ",")                                                           \
+  X(atom_semicolon, ";")                                                       \
+  X(atom_arrow, "->")                                                          \
   X(atom_dot, ".")                                                             \
   X(atom_nil, "[]")                                                            \
   X(atom_curly, "{}")                                                          \
@@ -147,8 +149,6 @@
   X(atom_term_gt, "@>")                                                        \
   X(atom_term_le, "@=<")                                                       \
   X(atom_term_ge, "@>=")                                                       \
-  X(atom_semicolon, ";")                                                       \
-  X(atom_arrow, "->")                                                          \
   X(atom_dcg_arrow, "-->")                                                     \
   X(atom_colon, ":")                                                           \
   X(atom_user, "user")                                                         \

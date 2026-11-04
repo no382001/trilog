@@ -26,6 +26,8 @@
 
 %!  ;/2, ->/2 is nondet.
 %   Disjunction and if-then, including if-then-else.
+%   The solver runs both natively. These clauses only run for an unbound left
+%   side of ;/2, and keep both predicates defined and static.
 ';'('->'(If, Then), _) :- If, !, Then.
 ';'('->'(_, _), Else) :- !, Else.
 ';'(A, _) :- A.

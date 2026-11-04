@@ -401,7 +401,8 @@ static void db_compact(trilog_t *T) {
       for (int32_t j = 0; j < b->count; j++)
         b->indices[j] = newpos[b->indices[j]];
   for (size_t i = 0; i < T->sp; i++)
-    T->stack[i].clause_idx = newpos[T->stack[i].clause_idx];
+    if (T->stack[i].clause_idx != FRAME_GOALS)
+      T->stack[i].clause_idx = newpos[T->stack[i].clause_idx];
   T->db_count = live;
   T->db_dead = 0;
   mem_free(T, newpos);
@@ -2505,6 +2506,14 @@ query_result_t run_query(trilog_t *T, tterm_t **goals, int32_t ngoals,
   return r;
 }
 
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(atom_comma < atom_call && atom_semicolon < atom_call &&
+                   atom_arrow < atom_call && atom_cut < atom_call &&
+                   atom_catch < atom_call && atom_throw < atom_call &&
+                   atom_uncatch < atom_call,
+               "run_query_body skips control constructs above atom_call");
+#endif
+
 static query_result_t run_query_body(trilog_t *T, tterm_t **goals,
                                      int32_t ngoals, int32_t nvars,
                                      solution_fn on_solution, void *ud) {
@@ -2573,53 +2582,94 @@ A:
       size_t cf = T->heap[fd].as.ptr;
       int32_t fd_arity = T->heap[cf].as.func.arity;
       int32_t fd_id = T->heap[cf].as.func.atom_id;
-      if (fd_arity == 2 && fd_id == atom_comma) {
-        size_t inner_first = heap_deref(T, cf + 1);
-        size_t inner_rest = heap_deref(T, cf + 2);
-        size_t new_rest = build_conj_tail(T, &inner_rest, 1, rest);
-        cn = build_conj_tail(T, &inner_first, 1, new_rest);
-        goto A;
-      }
-      if (fd_arity == 1 && fd_id == atom_call) {
-        size_t goal = heap_rebake_cuts(T, heap_deref(T, cf + 1), T->sp);
-        cn = build_conj_tail(T, &goal, 1, rest);
-        goto A;
-      }
-      if (fd_arity == 1 && fd_id == atom_cut) {
-        T->sp = (size_t)T->heap[heap_deref(T, cf + 1)].as.ival;
-        cn = rest;
-        goto A;
-      }
-      if (fd_arity == 3 && fd_id == atom_catch) {
-        size_t goal = heap_rebake_cuts(T, heap_deref(T, cf + 1), T->sp);
-        size_t catcher = heap_deref(T, cf + 2);
-        size_t recovery = heap_deref(T, cf + 3);
-        size_t idx = catch_stack_push(
-            T, (catch_frame_t){.heap_mark = heap_mark(T),
-                               .trail_mark = trail_mark(T),
-                               .sp_at_entry = T->sp,
-                               .catcher = catcher,
-                               .recovery = recovery,
-                               .continuation = rest,
-                               .outer_active_catch = active_catch});
-        active_catch = idx;
-        size_t uncatch_arg[1] = {heap_new_int(T, (int64_t)idx)};
-        size_t uncatch_term = heap_new_struct(T, atom_uncatch, 1, uncatch_arg);
-        size_t after_goal = build_conj_tail(T, &uncatch_term, 1, rest);
-        cn = build_conj_tail(T, &goal, 1, after_goal);
-        goto A;
-      }
-      if (fd_arity == 1 && fd_id == atom_uncatch) {
-        size_t idx = (size_t)T->heap[heap_deref(T, cf + 1)].as.ival;
-        active_catch = T->catch_stack[idx].outer_active_catch;
-        cn = rest;
-        goto A;
-      }
-      if (fd_arity == 1 && fd_id == atom_throw) {
-        size_t ball = heap_deref(T, cf + 1);
-        if (do_throw(T, ball, &cn, &active_catch))
+      // Control constructs have the lowest atom ids, so other goals skip them.
+      if (fd_id <= atom_call) {
+        if (fd_arity == 2 && fd_id == atom_comma) {
+          size_t inner_first = heap_deref(T, cf + 1);
+          size_t inner_rest = heap_deref(T, cf + 2);
+          size_t new_rest = build_conj_tail(T, &inner_rest, 1, rest);
+          cn = build_conj_tail(T, &inner_first, 1, new_rest);
           goto A;
-        return QUERY_ERROR;
+        }
+        // ;/2 and ->/2 run natively; the frame keeps the other branch's goals,
+        // so backtracking into it copies no clause. An unbound left side falls
+        // through to boot/core.pl's clauses.
+        if (fd_arity == 2 && fd_id == atom_semicolon &&
+            T->heap[heap_deref(T, cf + 1)].tag != TAG_REF) {
+          size_t lhs = heap_deref(T, cf + 1);
+          size_t rhs = heap_deref(T, cf + 2);
+          size_t sp0 = T->sp;
+          size_t lf = T->heap[lhs].tag == TAG_STR ? T->heap[lhs].as.ptr : 0;
+          int ite = lf && T->heap[lf].as.func.arity == 2 &&
+                    T->heap[lf].as.func.atom_id == atom_arrow;
+          size_t other = build_conj_tail(T, &rhs, 1, rest);
+          stack_push(T, (frame_t){.goals = other,
+                                  .clause_idx = FRAME_GOALS,
+                                  .heap_mark = heap_mark(T),
+                                  .trail_mark = trail_mark(T),
+                                  .cut_barrier = sp0,
+                                  .active_catch = active_catch});
+          if (ite) {
+            size_t barrier_arg[1] = {heap_new_int(T, (int64_t)sp0)};
+            size_t goals[3] = {heap_deref(T, lf + 1),
+                               heap_new_struct(T, atom_cut, 1, barrier_arg),
+                               heap_deref(T, lf + 2)};
+            cn = build_conj_tail(T, goals, 3, rest);
+          } else {
+            cn = build_conj_tail(T, &lhs, 1, rest);
+          }
+          goto A;
+        }
+        if (fd_arity == 2 && fd_id == atom_arrow) {
+          size_t barrier_arg[1] = {heap_new_int(T, (int64_t)T->sp)};
+          size_t goals[3] = {heap_deref(T, cf + 1),
+                             heap_new_struct(T, atom_cut, 1, barrier_arg),
+                             heap_deref(T, cf + 2)};
+          cn = build_conj_tail(T, goals, 3, rest);
+          goto A;
+        }
+        if (fd_arity == 1 && fd_id == atom_call) {
+          size_t goal = heap_rebake_cuts(T, heap_deref(T, cf + 1), T->sp);
+          cn = build_conj_tail(T, &goal, 1, rest);
+          goto A;
+        }
+        if (fd_arity == 1 && fd_id == atom_cut) {
+          T->sp = (size_t)T->heap[heap_deref(T, cf + 1)].as.ival;
+          cn = rest;
+          goto A;
+        }
+        if (fd_arity == 3 && fd_id == atom_catch) {
+          size_t goal = heap_rebake_cuts(T, heap_deref(T, cf + 1), T->sp);
+          size_t catcher = heap_deref(T, cf + 2);
+          size_t recovery = heap_deref(T, cf + 3);
+          size_t idx = catch_stack_push(
+              T, (catch_frame_t){.heap_mark = heap_mark(T),
+                                 .trail_mark = trail_mark(T),
+                                 .sp_at_entry = T->sp,
+                                 .catcher = catcher,
+                                 .recovery = recovery,
+                                 .continuation = rest,
+                                 .outer_active_catch = active_catch});
+          active_catch = idx;
+          size_t uncatch_arg[1] = {heap_new_int(T, (int64_t)idx)};
+          size_t uncatch_term =
+              heap_new_struct(T, atom_uncatch, 1, uncatch_arg);
+          size_t after_goal = build_conj_tail(T, &uncatch_term, 1, rest);
+          cn = build_conj_tail(T, &goal, 1, after_goal);
+          goto A;
+        }
+        if (fd_arity == 1 && fd_id == atom_uncatch) {
+          size_t idx = (size_t)T->heap[heap_deref(T, cf + 1)].as.ival;
+          active_catch = T->catch_stack[idx].outer_active_catch;
+          cn = rest;
+          goto A;
+        }
+        if (fd_arity == 1 && fd_id == atom_throw) {
+          size_t ball = heap_deref(T, cf + 1);
+          if (do_throw(T, ball, &cn, &active_catch))
+            goto A;
+          return QUERY_ERROR;
+        }
       }
       // $$-prefixed: raw, unprotected primitives; boot/core.pl's public
       // assertz/asserta/retract check staticity first, then delegate here.
@@ -2824,6 +2874,11 @@ C:
     tmark = f.trail_mark;
     cut_barrier = f.cut_barrier;
     active_catch = f.active_catch;
+    if (clause_idx == FRAME_GOALS) {
+      trail_release(T, tmark);
+      heap_release(T, hmark);
+      goto A;
+    }
     decompose(T, cn, &first, &rest);
     // release before keying, or a stale binding from the last clause
     // tried wrongly indexes out every other clause.
