@@ -71,7 +71,7 @@ void host_config(trilog_config_t *c) {
 }
 
 size_t trilog_format_float(char *buf, size_t cap, double v) {
-  int n = snprintf(buf, cap, "%#g", v);
+  int n = snprintf(buf, cap, TRILOG_FLOAT_FORMAT, v);
   return n < 0 ? 0 : (size_t)n;
 }
 

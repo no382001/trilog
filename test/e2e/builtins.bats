@@ -581,7 +581,7 @@ load common
     ( Y =:= X -> write(same) ; write(differs) ), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"r('1.0e-08',1.0e+100,-2.5e-300)"* ]]
+  [[ "$output" == *"r('1.0e-8',1.0e100,-2.5e-300)"* ]]
   [[ "$output" == *"same"* ]]
 }
 

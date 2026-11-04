@@ -36,24 +36,6 @@ static void put_int(out_t *o, int64_t v) {
   put_uint(o, v < 0 ? (uint64_t)0 - (uint64_t)v : (uint64_t)v, v < 0);
 }
 
-static size_t trim_zeros(char *s, size_t n) {
-  size_t exp = 0;
-  while (exp < n && s[exp] != 'e' && s[exp] != 'E')
-    exp++;
-  size_t dot = 0;
-  while (dot < exp && s[dot] != '.')
-    dot++;
-  if (dot == exp)
-    return n;
-  size_t end = exp;
-  while (end > dot + 1 && s[end - 1] == '0')
-    end--;
-  if (end == dot + 1)
-    end = dot;
-  memmove(s + end, s + exp, n - exp);
-  return end + (n - exp);
-}
-
 size_t fmt_v(char *buf, size_t cap, const char *f, va_list ap) {
   out_t o = {buf, cap, 0};
   while (*f) {
@@ -116,12 +98,6 @@ size_t fmt_v(char *buf, size_t cap, const char *f, va_list ap) {
       else
         put_uint(&o, va_arg(ap, unsigned), false);
       break;
-    case 'g': {
-      char tmp[32];
-      size_t n = trilog_format_float(tmp, sizeof tmp, va_arg(ap, double));
-      put_str(&o, tmp, trim_zeros(tmp, n < sizeof tmp ? n : sizeof tmp - 1));
-      break;
-    }
     default:
       put_str(&o, spec, (size_t)(f - spec) + (*f != '\0'));
       if (!*f)

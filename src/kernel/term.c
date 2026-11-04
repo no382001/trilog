@@ -7,6 +7,7 @@
 #include "heap.h"
 #include "io.h"
 #include "mem.h"
+#include "platform.h"
 #include "solve.h"
 #include <math.h>
 #include <stdlib.h>
@@ -310,16 +311,110 @@ static void token(trilog_t *T, emit_fn emit, const char *s) {
   T->print_last = (unsigned char)s[strlen(s) - 1];
 }
 
-// A float needs a fraction to read back: 2.0 and 1.0e-8, not 2 and 1e-8.
+// The fewest digits that read back as v like Scryer: plain
+// for 1.0e-5 =< |v| < 1.0e16, else d.ddde<exp>; always with a fraction.
 void float_text(char *buf, size_t cap, double v) {
-  size_t n = fmt(buf, cap, "%g", v);
-  if (n + 2 >= cap || strpbrk(buf, ".nN"))
+  char raw[48];
+  size_t n = trilog_format_float(raw, sizeof raw, v);
+  raw[n < sizeof raw ? n : sizeof raw - 1] = '\0';
+  const char *p = raw;
+  bool neg = *p == '-';
+  if (neg || *p == '+')
+    p++;
+  if (!ascii_digit(*p) && *p != '.') {
+    fmt(buf, cap, "%s", raw);
     return;
-  char *e = strpbrk(buf, "eE");
-  size_t at = e ? (size_t)(e - buf) : n;
-  memmove(buf + at + 2, buf + at, n - at + 1);
-  buf[at] = '.';
-  buf[at + 1] = '0';
+  }
+  char d[40]; // v is 0.d * 10^x
+  int nd = 0, x = 0;
+  bool point = false;
+  for (; ascii_digit(*p) || *p == '.'; p++) {
+    if (*p == '.') {
+      point = true;
+    } else if (nd == 0 && *p == '0') {
+      x -= point;
+    } else {
+      if (nd < (int)sizeof d)
+        d[nd++] = *p;
+      x += !point;
+    }
+  }
+  if (*p == 'e' || *p == 'E') {
+    int64_t e;
+    parse_int(p + 1, NULL, &e);
+    x += (int)e;
+  }
+  while (nd > 0 && d[nd - 1] == '0')
+    nd--;
+  if (nd == 0) {
+    fmt(buf, cap, neg ? "-0.0" : "0.0");
+    return;
+  }
+  char r[41];
+  int rn = nd, rx = x;
+  memcpy(r, d, (size_t)nd);
+  for (int k = 1; k < nd; k++) {
+    char t[48];
+    int kx = x;
+    memcpy(t + 2, d, (size_t)k);
+    if (d[k] >= '5') {
+      int i = k - 1;
+      while (i >= 0 && t[2 + i] == '9')
+        t[2 + i--] = '0';
+      if (i < 0) {
+        t[2] = '1';
+        kx++;
+      } else {
+        t[2 + i]++;
+      }
+    }
+    t[0] = '0';
+    t[1] = '.';
+    fmt(t + 2 + k, sizeof t - 2 - (size_t)k, "e%d", kx);
+    double back = trilog_parse_float(t, NULL);
+    if (back == (neg ? -v : v)) {
+      memcpy(r, t + 2, (size_t)k);
+      rn = k;
+      rx = kx;
+      break;
+    }
+  }
+  while (rn > 1 && r[rn - 1] == '0')
+    rn--;
+  char o[64];
+  size_t on = 0;
+  if (neg)
+    o[on++] = '-';
+  int e = rx - 1;
+  if (e >= -5 && e < 16) {
+    if (e < 0) {
+      o[on++] = '0';
+      o[on++] = '.';
+      for (int i = 0; i < -e - 1; i++)
+        o[on++] = '0';
+      for (int i = 0; i < rn; i++)
+        o[on++] = r[i];
+    } else {
+      for (int i = 0; i <= e; i++)
+        o[on++] = i < rn ? r[i] : '0';
+      o[on++] = '.';
+      if (rn > e + 1)
+        for (int i = e + 1; i < rn; i++)
+          o[on++] = r[i];
+      else
+        o[on++] = '0';
+    }
+    o[on] = '\0';
+  } else {
+    o[on++] = r[0];
+    o[on++] = '.';
+    for (int i = 1; i < rn; i++)
+      o[on++] = r[i];
+    if (rn == 1)
+      o[on++] = '0';
+    fmt(o + on, sizeof o - on, "e%d", e);
+  }
+  fmt(buf, cap, "%s", o);
 }
 
 static void print_quoted_char(trilog_t *T, emit_fn emit, int c, int quote) {

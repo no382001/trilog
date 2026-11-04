@@ -11,7 +11,6 @@ conformity	#162 op(9,fy,p),op(9,yfx,p). ⏎ write_canonical(1 p p p 2).
 conformity	#163 op(9,fy,p),op(9,xfy,p). ⏎ write_canonical(1 p p p 2).
 conformity	#164 op(7,fy,p),op(9,yfx,p). ⏎ write_canonical(1 p p p 2).
 conformity	#170 set_prolog_flag( ⏎  double_quotes,chars).
-conformity	#172 X is 10.0** -323, writeq(X).
 conformity	#181 writeq((a-->b,c|d)).
 conformity	#235 writeq(1 = f).
 conformity	#250 writeq('\0\').
@@ -22,7 +21,6 @@ conformity	#300 writeq("\0\").
 conformity	#301 writeq('\0\').
 conformity	#322 write_canonical((a|b;c)).
 conformity	#323 write_canonical((a;b|c)).
-conformity	#364 writeq(-0.0).
 conformity	#4 .
 conformity	#77 - = - .
 conformity	#82 (- -) = -(-).

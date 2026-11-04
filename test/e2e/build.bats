@@ -73,7 +73,7 @@ freestanding_symbols() {
     "$root/_build/release-no_posix-nolibc/libtrilog.a" -lm -o "$BATS_TEST_TMPDIR/api_freestanding_test"
   [ "$status" -eq 0 ]
   run "$BATS_TEST_TMPDIR/api_freestanding_test"
-  [[ "$output" == *$'\nok - strcmp(answer, "[0.25,5.0,1.5e+10,0.333333,-0.5,100.0]") == 0'* ]]
+  [[ "$output" == *$'\nok - strcmp(answer, "[0.25,5.0,15000000000.0,0.3333333333333333,-0.5,100.0]") == 0'* ]]
   [[ "$output" == *$'\nok - strcmp(answer, "1500.0") == 0'* ]]
 }
 
