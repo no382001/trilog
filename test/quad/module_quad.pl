@@ -197,3 +197,9 @@ helper(user).
 
 ?- retractall(flags:fact(_)), saved(Xs).
    Xs = [].
+
+?- save_rule(1), ruled(X).
+   X = 1.
+
+?- positive(1).
+   error(existence_error(procedure, positive/1)).

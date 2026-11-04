@@ -404,14 +404,21 @@ asserta(Clause) :- '$with_context'(('$check_clause'(Clause), '$check_static'(Cla
 retract(MC) :- nonvar(MC), MC = M:C, !, '$module_clause'(M, C, C1), retract(C1).
 retract(Clause) :- '$with_context'(('$check_head'(Clause), '$check_static'(Clause)), retract/1), '$$retract'(Clause).
 
-% Module:Clause is Clause with its head renamed to Module's private
-% predicate, if Module has one of that name.
+% Module:Clause is Clause with its head and the goals of its body renamed to
+% Module's private predicates, where Module has one of that name.
 '$module_clause'(M, _, _) :- var(M), !, throw(error(instantiation_error, _)).
 '$module_clause'(M, C, C1) :-
     (   nonvar(C), C = (H :- B)
-    ->  '$module_head'(M, H, H1), C1 = (H1 :- B)
+    ->  '$module_head'(M, H, H1), '$module_body'(M, B, B1), C1 = (H1 :- B1)
     ;   '$module_head'(M, C, C1)
     ).
+
+'$module_body'(M, G, M:G) :- var(G), !.
+'$module_body'(M, (A, B), (A1, B1)) :- !, '$module_body'(M, A, A1), '$module_body'(M, B, B1).
+'$module_body'(M, (A ; B), (A1 ; B1)) :- !, '$module_body'(M, A, A1), '$module_body'(M, B, B1).
+'$module_body'(M, (A -> B), (A1 -> B1)) :- !, '$module_body'(M, A, A1), '$module_body'(M, B, B1).
+'$module_body'(M, \+ A, \+ A1) :- !, '$module_body'(M, A, A1).
+'$module_body'(M, G, G1) :- '$module_head'(M, G, G1).
 
 '$module_head'(M, H, H1) :-
     (   callable(H), M \== user -> '$$qualify'(M, H, H1) ; H1 = H ).
