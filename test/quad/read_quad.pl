@@ -85,7 +85,7 @@ read_or_error(S, T) :- catch(read(S, T), error(E, _), T = error(E)).
    error(instantiation_error).
 
 ?- read(foo, T).
-   error(domain_error(stream_or_alias, foo)).
+   error(existence_error(stream, foo)).
 
 ?- read(user_output, T).
    error(permission_error(input, stream, user_output)).
@@ -109,7 +109,7 @@ read_or_error(S, T) :- catch(read(S, T), error(E, _), T = error(E)).
    error(instantiation_error).
 
 ?- set_input(foo).
-   error(domain_error(stream_or_alias, foo)).
+   error(existence_error(stream, foo)).
 
 ?- set_input(user_output).
    error(permission_error(input, stream, user_output)).

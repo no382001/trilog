@@ -586,8 +586,10 @@ setof(Template, Goal, Set) :-
 '$resolve_stream'(S, _) :- var(S), !, throw(error(instantiation_error, _)).
 '$resolve_stream'(S, N) :- '$stream_alias'(S, N), !.
 '$resolve_stream'('$stream'(Id), '$stream'(Id)) :- !.
+'$resolve_stream'(A, S) :- atom(A), '$user_alias'(A, S), !.
 '$resolve_stream'(user_input, _) :- !,
     throw(error(permission_error(output, stream, user_input), _)).
+'$resolve_stream'(S, _) :- atom(S), !, throw(error(existence_error(stream, S), _)).
 '$resolve_stream'(S, _) :- throw(error(domain_error(stream_or_alias, S), _)).
 
 %!  current_output(?Stream) is det.
@@ -602,11 +604,11 @@ current_output(S) :-
 %!  put_code(+Code), put_code(+Stream, +Code) is det.
 put_char(C) :- '$with_context'('$check_char'(C), put_char/1), '$$write_raw'(0, C, 2).
 put_char(S, C) :-
-    '$with_context'(('$resolve_stream'(S, N), '$check_char'(C)), put_char/2),
+    '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output), '$check_char'(C)), put_char/2),
     '$put'(N, C, S, put_char/2).
 put_code(C) :- '$with_context'('$code_char'(C, Ch), put_code/1), '$$write_raw'(0, Ch, 2).
 put_code(S, C) :-
-    '$with_context'(('$resolve_stream'(S, N), '$code_char'(C, Ch)), put_code/2),
+    '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output), '$code_char'(C, Ch)), put_code/2),
     '$put'(N, Ch, S, put_code/2).
 
 '$put'(N, C, S, PI) :-
@@ -623,14 +625,124 @@ flush_output(S) :-
     ( '$$flush'(N) -> true ; throw(error(existence_error(stream, S), flush_output/1)) ).
 
 %!  open(@Source, @Mode, -Stream) is det.
+%!  open(@Source, @Mode, -Stream, +Options) is det.
 %   A file that cannot be opened raises existence_error, or permission_error
-%   when it or its directory is there.
-open(Source, Mode, Stream) :-
-    '$with_context'('$open_check'(Source, Mode, Stream), open/3),
-    (   '$with_context'('$$open'(Source, Mode, S), open/3)
-    ->  Stream = S
+%   when it or its directory is there. Options are type(text|binary),
+%   alias(Atom), eof_action(error|eof_code|reset) and reposition(Bool), with
+%   Scryer's defaults text, eof_code and false.
+open(Source, Mode, Stream) :- '$open'(Source, Mode, Stream, [], open/3).
+open(Source, Mode, Stream, Options) :-
+    '$open'(Source, Mode, Stream, Options, open/4).
+
+'$open'(Source, Mode, Stream, Options, PI) :-
+    O = opts(Alias, Type, Eof, Repos),
+    '$with_context'(( '$open_check'(Source, Mode, Stream),
+                      '$open_options'(Options, Options, O) ), PI),
+    ( var(Type) -> Type = text ; true ),
+    ( var(Eof) -> Eof = eof_code ; true ),
+    ( var(Repos) -> Repos = false ; true ),
+    (   '$with_context'('$$open'(Source, Mode, S), PI)
+    ->  ( var(Alias) -> true ; '$$assertz'('$user_alias'(Alias, S)) ),
+        '$$assertz'('$stream_info'(S, Source, Mode, Type, Eof, Repos)),
+        Stream = S
     ;   '$open_error'(Source, Mode, E),
-        throw(error(E, open/3))
+        throw(error(E, PI))
+    ).
+
+'$open_options'(L, _, _) :- var(L), !, throw(error(instantiation_error, _)).
+'$open_options'([], _, _) :- !.
+'$open_options'([O|Os], L, Opts) :-
+    !,
+    '$open_option'(O, Opts),
+    '$open_options'(Os, L, Opts).
+'$open_options'(_, L, _) :- throw(error(type_error(list, L), _)).
+
+'$open_option'(O, _) :- var(O), !, throw(error(instantiation_error, _)).
+'$open_option'(O, _) :- compound(O), arg(1, O, V), var(V), !, throw(error(instantiation_error, _)).
+'$open_option'(type(T), opts(_, T0, _, _)) :- memberchk(T, [text, binary]), !, '$open_last'(T0, T).
+'$open_option'(eof_action(A), opts(_, _, A0, _)) :-
+    memberchk(A, [error, eof_code, reset]), !, '$open_last'(A0, A).
+'$open_option'(reposition(B), opts(_, _, _, B0)) :- memberchk(B, [true, false]), !, '$open_last'(B0, B).
+'$open_option'(alias(A), opts(Alias, _, _, _)) :-
+    atom(A),
+    !,
+    (   ( '$user_alias'(A, _) ; '$stream_alias'(A, _) ; A == user_input )
+    ->  throw(error(permission_error(open, source_sink, alias(A)), _))
+    ;   '$open_last'(Alias, A)
+    ).
+'$open_option'(O, _) :- throw(error(domain_error(stream_option, O), _)).
+
+% The first option of a kind counts.
+'$open_last'(V, X) :- ( var(V) -> V = X ; true ).
+
+:- dynamic('$user_alias'/2).
+:- dynamic('$stream_info'/6).
+:- dynamic('$stream_past'/1).
+
+% A stream's alias, from open/4, as the stream itself.
+'$alias_stream'(A, S) :- atom(A), '$user_alias'(A, S0), !, S = S0.
+'$alias_stream'(S, S).
+
+%!  close(@Stream) is det.
+close(S0) :-
+    '$alias_stream'(S0, S),
+    '$$close'(S),
+    (   '$$retract'('$user_alias'(_, S)) -> true ; true ),
+    (   '$$retract'('$stream_info'(S, _, _, _, _, _)) -> true ; true ),
+    (   '$$retract'('$stream_past'(S)) -> true ; true ).
+
+%!  stream_property(?Stream, ?Property) is nondet.
+stream_property(S, P) :-
+    '$with_context'('$stream_property_args'(S, P, S1), stream_property/2),
+    (   var(S1)
+    ->  ( member(S1, [user_input, user_output, user_error]) ; '$stream_info'(S1, _, _, _, _, _) )
+    ;   true
+    ),
+    '$stream_property'(S1, P),
+    ( var(S) -> S = S1 ; true ).
+
+'$stream_property_args'(S, P, S1) :-
+    (   nonvar(P), \+ '$stream_property_name'(P)
+    ->  throw(error(domain_error(stream_property, P), _))
+    ;   var(S) -> true
+    ;   memberchk(S, [user_input, user_output, user_error]) -> S1 = S
+    ;   '$alias_stream'(S, S1), S1 = '$stream'(_), '$stream_info'(S1, _, _, _, _, _) -> true
+    ;   S = '$stream'(_) -> throw(error(existence_error(stream, S), _))
+    ;   atom(S) -> throw(error(existence_error(stream, S), _))
+    ;   throw(error(domain_error(stream, S), _))
+    ).
+
+'$stream_property_name'(P) :-
+    memberchk(P, [input, output, file_name(_), mode(_), alias(_), end_of_stream(_),
+                  eof_action(_), reposition(_), type(_), position(_)]).
+
+'$stream_property'(user_input, P) :-
+    member(P, [input, mode(read), alias(user_input), end_of_stream(not),
+               eof_action(eof_code), reposition(false), type(text)]).
+'$stream_property'(user_output, P) :-
+    member(P, [output, mode(write), alias(user_output), eof_action(eof_code),
+               reposition(false), type(text)]).
+'$stream_property'(user_error, P) :-
+    member(P, [output, mode(write), alias(user_error), eof_action(eof_code),
+               reposition(false), type(text)]).
+'$stream_property'('$stream'(Id), P) :-
+    S = '$stream'(Id),
+    '$stream_info'(S, F, M, T, E, R),
+    ( M == read -> IO = input ; IO = output ),
+    (   P = IO
+    ;   P = file_name(F)
+    ;   P = mode(M)
+    ;   '$user_alias'(A, S), P = alias(A)
+    ;   M == read, '$end_of_stream'(S, EOS), P = end_of_stream(EOS)
+    ;   P = eof_action(E)
+    ;   P = reposition(R)
+    ;   P = type(T)
+    ).
+
+'$end_of_stream'(S, E) :-
+    (   '$stream_past'(S) -> E = past
+    ;   '$$get_byte'(S, 1, -1) -> E = at
+    ;   E = not
     ).
 
 '$open_check'(Source, Mode, Stream) :-
@@ -673,14 +785,14 @@ close(S, Opts) :-
 %   TODO: no operator-aware output.
 write(T) :- '$$write_raw'(0, T, 2).
 write(S, T) :-
-    '$with_context'('$resolve_stream'(S, N), write/2),
+    '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output)), write/2),
     ( '$$write_raw'(N, T, 2) -> true ; throw(error(existence_error(stream, S), write/2)) ).
 
 %!  writeq(@Term) is det.
 %!  writeq(+Stream, @Term) is det.
 writeq(T) :- '$$write_raw'(0, T, 3).
 writeq(S, T) :-
-    '$with_context'('$resolve_stream'(S, N), writeq/2),
+    '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output)), writeq/2),
     ( '$$write_raw'(N, T, 3) -> true ; throw(error(existence_error(stream, S), writeq/2)) ).
 
 %!  write_term(@Term, +Options) is det.
@@ -691,7 +803,7 @@ write_term(T, Opts) :-
     '$with_context'('$write_options'(Opts, Q, VNs), write_term/2),
     '$write_term'(0, T, Q, VNs).
 write_term(S, T, Opts) :-
-    '$with_context'(('$resolve_stream'(S, N), '$write_options'(Opts, Q, VNs)), write_term/3),
+    '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output), '$write_options'(Opts, Q, VNs)), write_term/3),
     ( '$write_term'(N, T, Q, VNs) -> true ; throw(error(existence_error(stream, S), write_term/3)) ).
 
 '$write_term'(N, T, Q, []) :- !, '$$write_raw'(N, T, Q).
@@ -791,6 +903,38 @@ peek_char(C) :-
 peek_char(S, C) :- '$with_context'('$get_char'(S, 1, C), peek_char/2).
 get_code(C) :-
     '$with_context'(('$current_input'(S), '$get_code'(S, 0, C)), get_code/1).
+
+%!  get_byte(?Byte), get_byte(+Stream, ?Byte) is det.
+%!  peek_byte(?Byte), peek_byte(+Stream, ?Byte) is det.
+%!  put_byte(+Byte), put_byte(+Stream, +Byte) is det.
+%   On a binary stream; -1 is the end. A byte of 0 cannot be written: atoms
+%   are C strings.
+get_byte(B) :- '$with_context'(('$current_input'(S), '$get_byte'(S, 0, B)), get_byte/1).
+get_byte(S, B) :- '$with_context'('$get_byte'(S, 0, B), get_byte/2).
+peek_byte(B) :- '$with_context'(('$current_input'(S), '$get_byte'(S, 1, B)), peek_byte/1).
+peek_byte(S, B) :- '$with_context'('$get_byte'(S, 1, B), peek_byte/2).
+put_byte(B) :- '$with_context'('$put_byte'(user_output, B), put_byte/1).
+put_byte(S, B) :- '$with_context'('$put_byte'(S, B), put_byte/2).
+
+'$get_byte'(S0, Peek, B) :-
+    '$alias_stream'(S0, S),
+    (   var(B) -> true
+    ;   integer(B), B >= -1, B =< 255 -> true
+    ;   throw(error(type_error(in_byte, B), _))
+    ),
+    '$want_type'(S, binary, input),
+    '$read_byte'(S, Peek, B0),
+    B = B0.
+
+'$put_byte'(S, B) :-
+    '$resolve_stream'(S, N),
+    (   var(B) -> throw(error(instantiation_error, _))
+    ;   integer(B), B >= 0, B =< 255 -> true
+    ;   throw(error(type_error(byte, B), _))
+    ),
+    '$want_type'(N, binary, output),
+    char_code(C, B),
+    '$$write_raw'(N, C, 2).
 get_code(S, C) :- '$with_context'('$get_code'(S, 0, C), get_code/2).
 peek_code(C) :-
     '$with_context'(('$current_input'(S), '$get_code'(S, 1, C)), peek_code/1).
@@ -809,11 +953,14 @@ read_term(T, Opts) :-
 read_term(S, T, Opts) :-
     '$with_context'('$read_term'(S, T, Opts), read_term/3).
 
-'$read_term'(S, T, Opts) :-
+'$read_term'(S0, T, Opts) :-
+    '$alias_stream'(S0, S),
+    '$want_type'(S, text, input),
     '$options_list'(Opts),
     '$read_options_check'(Opts),
     '$read_byte'(S, 1, _),
     '$$read_term'(S, T0, Names),
+    ( T0 == end_of_file -> '$hit_eof'(S, 0) ; true ),
     term_variables(T0, Vars),
     '$read_options_bind'(Opts, T0, Names, Vars),
     T = T0.
@@ -877,15 +1024,18 @@ current_input(S) :-
 
 set_input(S) :- '$with_context'('$set_input'(S), set_input/1).
 
-'$set_input'(S) :-
-    ( var(S) -> throw(error(instantiation_error, _)) ; true ),
+'$set_input'(S0) :-
+    ( var(S0) -> throw(error(instantiation_error, _)) ; true ),
+    '$alias_stream'(S0, S),
     '$input_stream'(S),
     ( S == user_input -> true ; '$read_byte'(S, 1, _) ),
     ( '$$retract'('$input'(_)) -> true ; true ),
     '$$assertz'('$input'(S)).
 
-'$get_char'(S, Peek, C) :-
+'$get_char'(S0, Peek, C) :-
+    '$alias_stream'(S0, S),
     '$check_in_char'(C),
+    '$want_type'(S, text, input),
     '$read_byte'(S, Peek, B),
     (   B =:= -1
     ->  C = end_of_file
@@ -893,8 +1043,10 @@ set_input(S) :- '$with_context'('$set_input'(S), set_input/1).
         C = C0
     ).
 
-'$get_code'(S, Peek, C) :-
+'$get_code'(S0, Peek, C) :-
+    '$alias_stream'(S0, S),
     '$check_in_code'(C),
+    '$want_type'(S, text, input),
     '$read_byte'(S, Peek, B),
     C = B.
 
@@ -904,14 +1056,50 @@ set_input(S) :- '$with_context'('$set_input'(S), set_input/1).
     '$$get_byte'(S, Peek, B0),
     (   B0 =:= -2 -> throw(error(existence_error(stream, S), _))
     ;   B0 =:= -3 -> throw(error(permission_error(input, stream, S), _))
+    ;   B0 =:= -1 -> '$hit_eof'(S, Peek), B = -1
     ;   B = B0
     ).
+
+% A read that hits the end puts the stream past it; one more read then does
+% what its eof_action says. A peek moves nothing.
+'$hit_eof'(S, Peek) :-
+    (   '$stream_past'(S)
+    ->  (   '$stream_info'(S, _, _, _, error, _)
+        ->  throw(error(permission_error(input, past_end_of_stream, S), _))
+        ;   true
+        )
+    ;   Peek =:= 1
+    ->  true
+    ;   S = '$stream'(_)
+    ->  '$$assertz'('$stream_past'(S))
+    ;   true
+    ).
+
+% Text predicates want a text stream, byte predicates a binary one; the
+% standard streams are text.
+'$want_type'(S, _, _) :- var(S), !.
+'$want_type'(S0, Want, Dir) :-
+    '$std_name'(S0, S),
+    (   '$stream_info'(S, _, Mode, Type, _, _) -> true ; Mode = none, Type = text ),
+    (   Dir == input, Mode \== read, Mode \== none
+    ->  throw(error(permission_error(input, stream, S), _))
+    ;   Dir == output, Mode == read
+    ->  throw(error(permission_error(output, stream, S), _))
+    ;   Type == Want
+    ->  true
+    ;   Type == binary
+    ->  throw(error(permission_error(Dir, binary_stream, S), _))
+    ;   throw(error(permission_error(Dir, text_stream, S), _))
+    ).
+
+'$std_name'(N, S) :- ( integer(N), '$stream_alias'(S0, N) -> S = S0 ; S = N ).
 
 '$input_stream'(user_input) :- !.
 '$input_stream'('$stream'(_)) :- !.
 '$input_stream'(S) :-
     '$stream_alias'(S, _), !,
     throw(error(permission_error(input, stream, S), _)).
+'$input_stream'(S) :- atom(S), !, throw(error(existence_error(stream, S), _)).
 '$input_stream'(S) :- throw(error(domain_error(stream_or_alias, S), _)).
 
 '$check_in_char'(C) :- var(C), !.
