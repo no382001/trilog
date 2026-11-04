@@ -241,6 +241,9 @@ M:G :-
     !.
 '$with_extension'(File, File).
 
+% Loaded early, so directives from here on can use must_be/2.
+:- consult('../lib/error.pl').
+
 '$directory'(Path, Dir) :-
     '$$atom_codes'(Path, Cs),
     reverse(Cs, Rs),
@@ -1110,5 +1113,4 @@ current_prolog_flag(Flag, Value) :-
 
 % The core's own dependencies.
 :- consult('../lib/lists.pl').
-:- consult('../lib/error.pl').
 :- consult('../lib/misc.pl').
