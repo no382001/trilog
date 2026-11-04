@@ -285,18 +285,8 @@ compare(O, A, B) :-
 '\\='(X, Y) :- \+ X = Y.
 
 % --- type checks ---
-% var/1, atom/1, integer/1, float/1, compound/1 are native.
-
-%!  nonvar(@Term) is semidet.
-nonvar(X) :- \+ var(X).
-
-%!  number(@Term) is semidet.
-number(X) :- integer(X).
-number(X) :- float(X).
-
-%!  atomic(@Term) is semidet.
-atomic(X) :- atom(X).
-atomic(X) :- number(X).
+% var/1, nonvar/1, atom/1, number/1, integer/1, float/1, atomic/1,
+% compound/1 and callable/1 are native.
 
 %!  subsumes_term(@General, @Specific) is semidet.
 subsumes_term(General, Specific) :-
@@ -308,10 +298,6 @@ subsumes_term(General, Specific) :-
 
 %!  ground(@Term) is semidet.
 ground(T) :- term_variables(T, []).
-
-%!  callable(@Term) is semidet.
-callable(X) :- atom(X).
-callable(X) :- compound(X).
 
 % --- errors ---
 

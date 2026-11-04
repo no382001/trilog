@@ -2182,16 +2182,25 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
 
   if (arity == 1 &&
       (id == atom_var || id == atom_kw_atom || id == atom_integer ||
-       id == atom_kw_float || id == atom_compound)) {
+       id == atom_kw_float || id == atom_compound || id == atom_nonvar ||
+       id == atom_number || id == atom_atomic || id == atom_callable)) {
     tag_t t = T->heap[heap_deref(T, f + 1)].tag;
     if (id == atom_var)
       *ok = t == TAG_REF;
+    else if (id == atom_nonvar)
+      *ok = t != TAG_REF;
     else if (id == atom_kw_atom)
       *ok = t == TAG_ATOM;
     else if (id == atom_integer)
       *ok = t == TAG_INT;
     else if (id == atom_kw_float)
       *ok = t == TAG_FLT;
+    else if (id == atom_number)
+      *ok = t == TAG_INT || t == TAG_FLT;
+    else if (id == atom_atomic)
+      *ok = t == TAG_ATOM || t == TAG_INT || t == TAG_FLT;
+    else if (id == atom_callable)
+      *ok = t == TAG_ATOM || t == TAG_STR;
     else
       *ok = t == TAG_STR; // compound
     return 1;
