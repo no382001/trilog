@@ -156,24 +156,34 @@ meta_predicate(Heads) :-
     ;   throw(error(syntax_error(invalid_meta_predicate_decl), load/1))
     ).
 
-'$meta_decls'(V, _) :- var(V), !, fail.
-'$meta_decls'((A, B), Ds) :- !, '$meta_decls'(A, D1), '$meta_decls'(B, D2), append(D1, D2, Ds).
-'$meta_decls'([], []) :- !.
-'$meta_decls'([H|T], Ds) :- !, '$meta_decls'(H, D1), '$meta_decls'(T, D2), append(D1, D2, Ds).
-'$meta_decls'(_:H, Ds) :- !, '$meta_decls'(H, Ds).
-'$meta_decls'(H, [N/A-Specs]) :-
+'$meta_decls'(Heads, Decls) :- '$meta_decls'(Heads, Decls, []).
+
+'$meta_decls'(V, _, _) :- var(V), !, fail.
+'$meta_decls'((A, B), Ds0, Ds) :- !, '$meta_decls'(A, Ds0, Ds1), '$meta_decls'(B, Ds1, Ds).
+'$meta_decls'([], Ds, Ds) :- !.
+'$meta_decls'([H|T], Ds0, Ds) :- !, '$meta_decls'(H, Ds0, Ds1), '$meta_decls'(T, Ds1, Ds).
+'$meta_decls'(_:H, Ds0, Ds) :- !, '$meta_decls'(H, Ds0, Ds).
+'$meta_decls'(H, [N/A-Specs|Ds], Ds) :-
     callable(H),
-    H =.. [N|Specs],
-    '$meta_specs'(Specs),
-    length(Specs, A).
+    functor(H, N, A),
+    H =.. [_|Specs],
+    '$meta_specs'(Specs).
 
 '$meta_specs'([]).
 '$meta_specs'([S|Ss]) :-
     nonvar(S),
     (   integer(S) -> S >= 0, S =< 9
-    ;   atom(S), memberchk(S, [':', '^', '//', '?', '+', '-', '*'])
+    ;   atom(S), '$meta_spec_atom'(S)
     ),
     '$meta_specs'(Ss).
+
+'$meta_spec_atom'(':').
+'$meta_spec_atom'('^').
+'$meta_spec_atom'('//').
+'$meta_spec_atom'('?').
+'$meta_spec_atom'('+').
+'$meta_spec_atom'('-').
+'$meta_spec_atom'('*').
 
 '$meta_assert'([]).
 '$meta_assert'([N/A-Specs|Ds]) :-
@@ -241,9 +251,6 @@ M:G :-
     !.
 '$with_extension'(File, File).
 
-% Loaded early, so directives from here on can use must_be/2.
-:- consult('../lib/error.pl').
-
 '$directory'(Path, Dir) :-
     '$$atom_codes'(Path, Cs),
     reverse(Cs, Rs),
@@ -309,7 +316,8 @@ callable(X) :- compound(X).
 % --- errors ---
 
 %!  '$with_context'(:Goal, +PI) is nondet.
-%   An error Goal raises without a context gets PI as its context.
+%   An error Goal raises without a context, or from must_be/2 or can_be/2,
+%   gets PI as its context.
 '$with_context'(Goal, PI) :-
     catch(Goal, error(Formal, Context), '$rethrow'(Formal, Context, PI)).
 
@@ -1103,5 +1111,6 @@ current_prolog_flag(Flag, Value) :-
     ).
 
 % The core's own dependencies.
+:- consult('../lib/error.pl').
 :- consult('../lib/lists.pl').
 :- consult('../lib/misc.pl').

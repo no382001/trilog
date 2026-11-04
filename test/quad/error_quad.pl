@@ -102,6 +102,54 @@
 ?- can_be(_, a).
    error(instantiation_error).
 
+% A type must be one library(error) knows.
+
+?- must_be(foo, a).
+   error(type_error(type, foo)).
+
+?- must_be(foo, _).
+   error(type_error(type, foo)).
+
+?- can_be(foo, a).
+   error(type_error(type, foo)).
+
+?- can_be(foo, _).
+   error(type_error(type, foo)).
+
+?- must_be(boolean, _).
+   error(instantiation_error).
+
+?- must_be(type, _).
+   error(instantiation_error).
+
+?- must_be(type, integer).
+   true.
+
+?- must_be(type, foo).
+   error(type_error(type, foo)).
+
+?- must_be(integer, 1.5).
+   error(type_error(integer, 1.5)).
+
+% term is an acyclic term; must_be/2 also wants it ground.
+
+?- must_be(term, a).
+   true.
+
+?- must_be(term, f(_)).
+   error(instantiation_error).
+
+?- can_be(term, f(_)).
+   true.
+
+% error is a module: its helpers are private.
+
+?- must_be_(atom, a, must_be/2).
+   error(existence_error(procedure, must_be_/3)).
+
+?- error:must_be_(atom, a, must_be/2).
+   true.
+
 % A built-in that checks its arguments with must_be/2 names itself.
 
 ?- catch(sub_atom(1, _, _, _, _), error(E, C), true).
@@ -112,3 +160,32 @@
 
 ?- catch(keysort([a-1], [b|c]), error(E, C), true).
    E = type_error(list, [b|c]), C = keysort/2.
+
+% call_with_error_context/2 puts a pair in front of an error's context.
+
+?- call_with_error_context(true, predicate-foo/1).
+   true.
+
+?- call_with_error_context(fail, predicate-foo/1).
+   false.
+
+?- call_with_error_context(true, foo).
+   error(type_error(pair, foo)).
+
+?- call_with_error_context(true, _).
+   error(instantiation_error).
+
+?- catch(call_with_error_context(throw(error(type_error(a, b), x)), k-v), error(E, C), true).
+   E = type_error(a,b), C = [k-v|x].
+
+?- catch(call_with_error_context(throw(oops), k-v), B, true).
+   B = oops.
+
+?- findall(X, call_with_error_context((X = 1 ; X = 2), k-v), L).
+   L = [1,2].
+
+?- must_be(pair, a-b).
+   true.
+
+?- must_be(pair, a).
+   error(type_error(pair, a)).
