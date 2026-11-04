@@ -1,0 +1,26 @@
+% Integer text in both directions: number_codes/2, integer printing and '$VAR' names.
+t(G) :- catch((G -> R = yes(G) ; R = no), E, R = caught(E)), writeq(R), nl.
+main :-
+  t(number_codes(_, [0'1,0'2])),
+  t(number_codes(_, [0' ,0'1,0'2])),
+  t(number_codes(_, [0'+,0'1,0'2])),
+  t(number_codes(_, [0'-,0'1,0'2])),
+  t(number_codes(_, [0'-,0' ,0'1])),
+  t(number_codes(_, [0'1,0'2,0'a])),
+  t(number_codes(_, [])),
+  t((atom_codes('9223372036854775807', C2), number_codes(_, C2))),
+  t((atom_codes('-9223372036854775808', C3), number_codes(_, C3))),
+  t((atom_codes('9223372036854775808', C4), number_codes(_, C4))),
+  t((atom_codes('-9223372036854775809', C5), number_codes(_, C5))),
+  t((atom_codes('99999999999999999999999', C6), number_codes(_, C6))),
+  t((X is -9223372036854775807 - 1, number_codes(X, D), atom_codes(Y, D))),
+  t((number_codes(0, D0), atom_codes(Y0, D0))),
+  t((number_codes(-7, D7), atom_codes(Y7, D7))),
+  t((atom_codes(' 007', C8), number_codes(_, C8))),
+  t((atom_codes('\t\n5', C9), number_codes(_, C9))),
+  t((write_term('$VAR'(0), [numbervars(true)]), nl)),
+  t((write_term('$VAR'(27), [numbervars(true)]), nl)),
+  t((write_term('$VAR'(260), [numbervars(true)]), nl)),
+  t((write_term('$VAR'(9223372036854775807), [numbervars(true)]), nl)),
+  t((X1 is -9223372036854775807 - 1, write(X1), nl)),
+  t((write(f(-1, 0, 42)), nl)).

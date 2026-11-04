@@ -1,4 +1,0 @@
-[wokwi]
-version = 1
-firmware = 'build/trilog/trilog.elf'
-elf = 'build/trilog/trilog.elf'

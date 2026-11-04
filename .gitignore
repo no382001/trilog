@@ -1,12 +1,12 @@
-_build/*
-wokwi/build/
-wokwi/core_embed.h
-wokwi/rp2040_embed.h
+_build/
+trilog
+trilog-hostile
+examples/embed
+pico/build/
 *.o
 *.a
 *.so
 *.dylib
-trilog
 *.exe
 *.out
 *.dSYM/
@@ -22,4 +22,3 @@ Thumbs.db
 compile_commands.json
 vgcore.*
 *.log
-trilog
