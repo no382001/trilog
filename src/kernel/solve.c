@@ -2559,10 +2559,10 @@ A:
       goto A;
     return QUERY_ERROR;
   }
+  // check cn == true before decompose, or a mid-clause true goal
+  // wrongly ends the query.
+  size_t cnd = heap_deref(T, cn);
   {
-    // check cn == true before decompose, or a mid-clause true goal
-    // wrongly ends the query.
-    size_t cnd = heap_deref(T, cn);
     if (T->heap[cnd].tag == TAG_ATOM && T->heap[cnd].as.atom_id == atom_true) {
       any_found = 1;
       T->solution_rename = rename;
@@ -2571,9 +2571,9 @@ A:
       goto C;
     }
   }
-  decompose(T, cn, &first, &rest);
+  decompose(T, cnd, &first, &rest);
   {
-    size_t fd = heap_deref(T, first);
+    size_t fd = first;
     if (T->heap[fd].tag == TAG_ATOM && T->heap[fd].as.atom_id == atom_true) {
       cn = rest;
       goto A;

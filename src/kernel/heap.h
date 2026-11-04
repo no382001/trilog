@@ -41,8 +41,6 @@ size_t heap_new_flt(trilog_t *T, double v);
 size_t heap_new_struct(trilog_t *T, int32_t functor_id, int32_t arity,
                        size_t *arg_idx);
 
-size_t heap_deref(trilog_t *T, size_t r);
-
 size_t heap_mark(trilog_t *T);
 void heap_release(trilog_t *T, size_t mark);
 size_t heap_peak_size(trilog_t *T);

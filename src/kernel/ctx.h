@@ -209,3 +209,9 @@ static inline void wstack_push(trilog_t *T, size_t x) {
                 (T->wsp + 1) * sizeof(size_t));
   T->wstack[T->wsp++] = x;
 }
+
+static inline size_t heap_deref(trilog_t *T, size_t r) {
+  while (T->heap[r].tag == TAG_REF && T->heap[r].as.ref != r)
+    r = T->heap[r].as.ref;
+  return r;
+}

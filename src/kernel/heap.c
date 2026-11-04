@@ -89,12 +89,6 @@ size_t heap_new_struct(trilog_t *T, int32_t functor_id, int32_t arity,
   return str;
 }
 
-size_t heap_deref(trilog_t *T, size_t r) {
-  while (T->heap[r].tag == TAG_REF && T->heap[r].as.ref != r)
-    r = T->heap[r].as.ref;
-  return r;
-}
-
 size_t heap_mark(trilog_t *T) { return T->heap_top; }
 void heap_release(trilog_t *T, size_t mark) {
   T->heap_top = mark;
