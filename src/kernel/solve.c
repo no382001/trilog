@@ -338,6 +338,8 @@ static void unmark_consulted(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
 void db_add(trilog_t *T, tterm_t *head, tterm_t **body, int32_t nbody,
             int32_t nvars, int mark_static) {
   idx_key_t key = key_of_template(head);
+  if (key.pred_id == atom_op_pred)
+    T->op_gen++;
   pred_bucket_grow_if_needed(
       T, pred_bucket_find_or_create(T, key.pred_id, key.pred_arity));
   db_ensure_cap(T);
@@ -362,6 +364,8 @@ static void db_fixup_choice_points_insert_at(trilog_t *T, int32_t at) {
 static void db_add_front(trilog_t *T, tterm_t *head, tterm_t **body,
                          int32_t nbody, int32_t nvars) {
   idx_key_t key = key_of_template(head);
+  if (key.pred_id == atom_op_pred)
+    T->op_gen++;
   pred_bucket_grow_if_needed(
       T, pred_bucket_find_or_create(T, key.pred_id, key.pred_arity));
   db_ensure_cap(T);
@@ -408,6 +412,8 @@ static void db_compact(trilog_t *T) {
 // outnumber live ones.
 static void db_kill(trilog_t *T, int32_t idx) {
   idx_key_t key = clause_key(&T->db[idx]);
+  if (key.pred_id == atom_op_pred)
+    T->op_gen++;
   pred_bucket_remove_index(T, key.pred_id, key.pred_arity, idx);
   arena_free_chunks(T, T->db[idx].mem);
   T->db[idx].mem = NULL;
@@ -2789,49 +2795,54 @@ C:
 enum { OP_CLASS_PREFIX, OP_CLASS_INFIX, OP_CLASS_POSTFIX };
 
 // Assoc codes: 0 xfx, 1 xfy, 2 yfx, 3 fx, 4 fy, 5 xf, 6 yf.
-static int op_lookup(trilog_t *T, int32_t name_atom_id, int want, int *pri,
-                     int *assoc_code) {
-  pred_bucket_t *b = pred_bucket_find(T, atom_op_pred, 3);
-  if (!b)
-    return 0;
-  int found = 0;
-  for (int32_t i = 0; i < b->count; i++) {
+static int op_type_code(int32_t tid) {
+  return tid == atom_optype_xfx   ? 0
+         : tid == atom_optype_xfy ? 1
+         : tid == atom_optype_yfx ? 2
+         : tid == atom_optype_fx  ? 3
+         : tid == atom_optype_fy  ? 4
+         : tid == atom_optype_xf  ? 5
+         : tid == atom_optype_yf  ? 6
+                                  : -1;
+}
+
+// Later '$$op' clauses win, as the clause order of op/3 says.
+static void ops_rebuild(trilog_t *T, pred_bucket_t *b) {
+  T->ops = mem_grow_n(T, T->ops, (size_t)T->atom_count, sizeof *T->ops);
+  T->ops_len = T->atom_count;
+  memset(T->ops, 0, (size_t)T->ops_len * sizeof *T->ops);
+  for (int32_t i = 0; b && i < b->count; i++) {
     tterm_t *head = T->db[b->indices[i]].head;
     tterm_t *pri_t = head->as.str.args[0];
     tterm_t *type_t = head->as.str.args[1];
     tterm_t *name_t = head->as.str.args[2];
-    if (name_t->tag != T_ATOM || name_t->as.atom_id != name_atom_id)
+    if (name_t->tag != T_ATOM || pri_t->tag != T_INT || type_t->tag != T_ATOM)
       continue;
-    if (pri_t->tag != T_INT || type_t->tag != T_ATOM)
-      continue; // malformed fact
-    int32_t tid = type_t->as.atom_id;
-    int code;
-    if (tid == atom_optype_xfx)
-      code = 0;
-    else if (tid == atom_optype_xfy)
-      code = 1;
-    else if (tid == atom_optype_yfx)
-      code = 2;
-    else if (tid == atom_optype_fx)
-      code = 3;
-    else if (tid == atom_optype_fy)
-      code = 4;
-    else if (tid == atom_optype_xf)
-      code = 5;
-    else if (tid == atom_optype_yf)
-      code = 6;
-    else
-      continue; // unrecognized Type atom
+    int code = op_type_code(type_t->as.atom_id);
+    if (code < 0 || name_t->as.atom_id >= T->ops_len)
+      continue;
     int class = code <= 2   ? OP_CLASS_INFIX
                 : code <= 4 ? OP_CLASS_PREFIX
                             : OP_CLASS_POSTFIX;
-    if (class != want)
-      continue;
-    *pri = (int)pri_t->as.ival;
-    *assoc_code = code;
-    found = 1;
+    struct atom_ops *o = &T->ops[name_t->as.atom_id];
+    o->pri[class] = (int16_t)pri_t->as.ival;
+    o->assoc[class] = (int8_t)code;
   }
-  return found;
+  T->ops_gen = T->op_gen;
+}
+
+static int op_lookup(trilog_t *T, int32_t name_atom_id, int want, int *pri,
+                     int *assoc_code) {
+  if (T->ops_gen != T->op_gen)
+    ops_rebuild(T, pred_bucket_find(T, atom_op_pred, 3));
+  if (name_atom_id < 0 || name_atom_id >= T->ops_len)
+    return 0;
+  const struct atom_ops *o = &T->ops[name_atom_id];
+  if (o->pri[want] == 0)
+    return 0;
+  *pri = o->pri[want];
+  *assoc_code = o->assoc[want];
+  return 1;
 }
 
 int op_lookup_infix(trilog_t *T, int32_t name_atom_id, int *pri,

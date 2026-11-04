@@ -735,8 +735,7 @@ static bool is_load_error(trilog_t *T, size_t ball) {
   if (T->heap[b].tag != TAG_STR)
     return false;
   size_t f = T->heap[b].as.ptr;
-  if (T->heap[f].as.func.atom_id != atom_error ||
-      T->heap[f].as.func.arity != 2)
+  if (T->heap[f].as.func.atom_id != atom_error || T->heap[f].as.func.arity != 2)
     return false;
   size_t c = heap_deref(T, f + 2);
   if (T->heap[c].tag != TAG_STR)
@@ -844,8 +843,7 @@ static void module_closure(trilog_t *T, tterm_t **slot, int32_t extra) {
   if ((*slot)->tag == T_VAR) {
     if (!caller_goal(T, *slot))
       module_wrap(T, slot);
-  }
-  else if (extra == 0)
+  } else if (extra == 0)
     module_goal(T, slot);
   else
     module_ref(T, *slot, extra);
@@ -949,8 +947,8 @@ static void collect_caller_goals(trilog_t *T, const tterm_t *h) {
       continue;
     if (T->module_nmeta_vars == T->module_meta_vars_cap) {
       int32_t cap = T->module_meta_vars_cap ? T->module_meta_vars_cap * 2 : 8;
-      T->module_meta_vars = mem_grow_n(T, T->module_meta_vars, (size_t)cap,
-                                       sizeof(int32_t));
+      T->module_meta_vars =
+          mem_grow_n(T, T->module_meta_vars, (size_t)cap, sizeof(int32_t));
       T->module_meta_vars_cap = cap;
     }
     T->module_meta_vars[T->module_nmeta_vars++] = arg->as.slot;

@@ -131,6 +131,14 @@ struct trilog {
   // An error(_, load/1) a directive raised: the consult stops and
   // '$$consult' raises it. (size_t)-1 when there is none.
   size_t load_error_ball;
+  // ops[atom] holds the atom's prefix, infix and postfix operator; rebuilt
+  // when op_gen, bumped by every '$$op' clause added or removed, has moved.
+  struct atom_ops {
+    int16_t pri[3];   // by OP_CLASS_*, 0 when there is none
+    int8_t assoc[3];
+  } *ops;
+  int32_t ops_len;
+  uint32_t op_gen, ops_gen;
   // Variables of the clause being patched that hold a caller's goal.
   int32_t *module_meta_vars;
   int32_t module_nmeta_vars, module_meta_vars_cap;
