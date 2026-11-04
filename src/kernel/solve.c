@@ -2529,6 +2529,31 @@ _Static_assert(atom_comma < atom_call && atom_semicolon < atom_call &&
                "run_query_body skips control constructs above atom_call");
 #endif
 
+// A body call/1 can run: no number among its ',', ';' and '->' parts. A
+// variable is fine; it is called as call(V).
+static bool body_callable(trilog_t *T, size_t g) {
+  size_t wbase = T->wsp;
+  wstack_push(T, g);
+  while (T->wsp > wbase) {
+    size_t r = heap_deref(T, T->wstack[--T->wsp]);
+    tag_t t = T->heap[r].tag;
+    if (t == TAG_INT || t == TAG_FLT) {
+      T->wsp = wbase;
+      return false;
+    }
+    if (t != TAG_STR)
+      continue;
+    size_t f = T->heap[r].as.ptr;
+    int32_t id = T->heap[f].as.func.atom_id;
+    if (T->heap[f].as.func.arity == 2 &&
+        (id == atom_comma || id == atom_semicolon || id == atom_arrow)) {
+      wstack_push(T, f + 1);
+      wstack_push(T, f + 2);
+    }
+  }
+  return true;
+}
+
 static query_result_t run_query_body(trilog_t *T, tterm_t **goals,
                                      int32_t ngoals, int32_t nvars,
                                      solution_fn on_solution, void *ud) {
@@ -2645,7 +2670,14 @@ A:
           goto A;
         }
         if (fd_arity == 1 && fd_id == atom_call) {
-          size_t goal = heap_rebake_cuts(T, heap_deref(T, cf + 1), T->sp);
+          size_t g = heap_deref(T, cf + 1);
+          if (!body_callable(T, g)) {
+            if (do_throw(T, make_type_error(T, "callable", g), &cn,
+                         &active_catch))
+              goto A;
+            return QUERY_ERROR;
+          }
+          size_t goal = heap_rebake_cuts(T, g, T->sp);
           cn = build_conj_tail(T, &goal, 1, rest);
           goto A;
         }

@@ -524,6 +524,7 @@ term_variables(Term, Vars) :-
 %   or under V^; with none, the findall/3 of Goal, failing when empty. The
 %   bags come in the standard order of their bindings, as in Scryer.
 bagof(Template, Goal0, Bag) :-
+    '$with_context'(can_be(list, Bag), bagof/3),
     '$bagof_strip'(Goal0, Goal, Ex),
     term_variables(Goal, GVs),
     term_variables(Template-Ex, Bound),
@@ -533,6 +534,7 @@ bagof(Template, Goal0, Bag) :-
         Bag \== []
     ;   findall(W-Template, Goal, Pairs),
         Pairs \== [],
+        '$bagof_share'(Pairs, _),
         keysort(Pairs, Sorted),
         '$bagof_pick'(Sorted, W, Bag)
     ).
@@ -552,6 +554,15 @@ bagof(Template, Goal0, Bag) :-
     '$bagof_free'(Vs, Bound, W1).
 
 '$bagof_member'(V, [U|Us]) :- ( V == U -> true ; '$bagof_member'(V, Us) ).
+
+% findall/3 copies each solution apart, so a variable shared between them comes
+% back as several; the n-th variable of every witness is made one again, as
+% in Scryer.
+'$bagof_share'([], _).
+'$bagof_share'([W-_|Ps], Dict) :-
+    term_variables(W, Vs),
+    append(Vs, _, Dict),
+    '$bagof_share'(Ps, Dict).
 
 % Each run of pairs with identical witnesses is one bag.
 '$bagof_pick'([K-T|Ps], W, Bag) :-

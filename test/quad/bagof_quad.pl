@@ -33,3 +33,17 @@
 
 ?- bagof(X, 1, L).
    error(type_error(callable, 1)).
+
+% An unbound variable shared between solutions stays one variable.
+
+?- once(( bagof(X, member(X-Y, [1-A,2-B,3-A]), L), L == [1,3], Y == A )).
+   L = [1,3].
+
+?- findall(L, bagof(X, member(X-Y, [1-A,2-B,3-A]), L), Ls).
+   Ls = [[1,3],[2]].
+
+?- findall(L, bagof(X, member(X-Y, [1-f(_),2-f(_),3-g]), L), Ls).
+   Ls = [[3],[1],[2]].
+
+?- bagof(X, member(X, [1]), foo).
+   error(type_error(list, foo)).
