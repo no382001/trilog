@@ -293,9 +293,9 @@ load common
     compare(O2, foo, abc),
     compare(O3, foo(1), foo(1)).
   "
-  [[ "$output" == *"O1 = <"* ]]
-  [[ "$output" == *"O2 = >"* ]]
-  [[ "$output" == *'O3 = ='* ]]
+  [[ "$output" == *"O1 = (<)"* ]]
+  [[ "$output" == *"O2 = (>)"* ]]
+  [[ "$output" == *'O3 = (=)'* ]]
 }
 
 @test "atom_codes, char_code, and number_codes round-trip both ways" {

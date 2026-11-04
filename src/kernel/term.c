@@ -697,7 +697,7 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
   size_t wbase = T->wsp, mbase = T->template_marks_len;
   T->print_last = 0;
   T->print_prefix = false;
-  print_push(T, P_TERM, r, flags & PRINT_ANSWER ? 699 : 1200);
+  print_push(T, P_TERM, r, flags & PRINT_ANSWER ? 699 | OPERAND : 1200);
   char buf[64];
   while (T->wsp > wbase) {
     size_t prio = T->wstack[--T->wsp];

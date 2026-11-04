@@ -84,13 +84,13 @@ load common
 
 @test "a bare operator atom parses as a plain atom in argument position" {
   run "$TRILOG" -e "
-    X = \\+,
-    Y = -,
+    X = (\\+),
+    Y = (-),
     Z = [\\+, -, +].
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"X = \\+"* ]]
-  [[ "$output" == *"Y = -"* ]]
+  [[ "$output" == *"X = (\\+)"* ]]
+  [[ "$output" == *"Y = (-)"* ]]
   [[ "$output" == *"Z = [\\+,-,+]"* ]]
 }
 
@@ -178,7 +178,7 @@ PLEOF
   run "$TRILOG" -f -e "
     Ts = [[a, b], [a|b], '[]', {a, b}, '{}'(x), f(:-, (a :- b)), - 1, -(-(1)), 1 - -1,
           1.5, -0.0, 'hello world', 'it''s', '\\n', 'B', f(A, B, A), '\$VAR'(1),
-          f(;, '|', ','), \\+ a, a = \\+, [-]],
+          f(;, '|', ','), \\+ a, a = (\\+), [-]],
     findall(T,
             ( member(T, Ts),
               with_output_to(chars(Cs), write_canonical(T)),

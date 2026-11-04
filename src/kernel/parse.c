@@ -425,13 +425,13 @@ static int peek_op(trilog_t *T, size_t *len_out, op_t *out,
 enum {
   K_DONE,
   K_INFIX, // a = prec
-  K_RIGHT, // a = prec | op priority << 16, b = op, c = left
+  K_RIGHT, // a = prec | op priority << 16 | xfy << 30, b = op, c = left
   K_PAREN,
   K_BRACE,
   K_ARGS,   // a = name, b = base, c = argc
   K_LIST,   // b = base
   K_TAIL,   // b = base
-  K_PREFIX, // a = op, b = its priority
+  K_PREFIX, // a = op, b = its priority, c = its operand's priority
 };
 
 static void frame_push(trilog_t *T, size_t kind, size_t a, size_t b, size_t c) {
@@ -463,6 +463,7 @@ static tterm_t *build_list(trilog_t *T, size_t base, tterm_t *tail) {
 }
 
 static int prefix_applies(trilog_t *T) {
+  skip_ws(T);
   return *T->P != '\0' && !at_clause_end(T) && *T->P != ')' && *T->P != ',' &&
          *T->P != ']' && *T->P != '|';
 }
@@ -542,6 +543,7 @@ start:
       goto start;
     }
     v = tt_atom(T, ";");
+    vpri = 1201;
     goto produced;
   case '\'': {
     const char *name = atom_name(T, atom_intern(T, read_quoted(T, '\'')));
@@ -552,13 +554,16 @@ start:
     skip_ws(T);
     if (*T->P == '(')
       goto compound_name;
-    op_t pre;
-    if (find_prefix(T, name, &pre) && prefix_applies(T)) {
-      frame_push(T, K_PREFIX, PTR(name), (size_t)pre.pri, 0);
+    op_t pre, dummy;
+    if (find_prefix(T, name, &pre) && pre.pri <= prec && prefix_applies(T)) {
       prec = pre.assoc == FY ? pre.pri : pre.pri - 1;
+      frame_push(T, K_PREFIX, PTR(name), (size_t)pre.pri, (size_t)prec);
       goto start;
     }
     v = tt_atom(T, name);
+    if (find_prefix(T, name, &dummy) || find_infix(T, name, &dummy) ||
+        find_postfix(T, name, &dummy))
+      vpri = 1201;
     goto produced;
   compound_name:
     T->P++;
@@ -600,10 +605,10 @@ start:
       goto start;
     }
     op_t pre, dummy;
-    if (find_prefix(T, name, &pre) && prefix_applies(T) &&
+    if (find_prefix(T, name, &pre) && pre.pri <= prec && prefix_applies(T) &&
         !(lower && find_infix(T, name, &dummy))) {
-      frame_push(T, K_PREFIX, PTR(name), (size_t)pre.pri, 0);
       prec = pre.assoc == FY ? pre.pri : pre.pri - 1;
+      frame_push(T, K_PREFIX, PTR(name), (size_t)pre.pri, (size_t)prec);
       goto start;
     }
     v = tt_atom(T, name);
@@ -625,9 +630,12 @@ produced:
       T->wsp = wbase;
       return v;
     case K_RIGHT: {
+      int pri = (int)((a >> 16) & 0x3FFF);
+      if (vpri > ((a >> 30) & 1 ? pri : pri - 1))
+        perr(T, "operator priority clash");
       tterm_t *args[2] = {TERM(c), v};
       v = tt_struct(T, NAME(b), 2, args);
-      vpri = (int)(a >> 16);
+      vpri = pri;
       a &= 0xFFFF;
     }
       // fall through
@@ -645,7 +653,9 @@ produced:
         continue;
       T->P += len;
       skip_ws(T);
-      frame_push(T, K_RIGHT, a | (size_t)op.pri << 16, PTR(op.name), PTR(v));
+      frame_push(T, K_RIGHT,
+                 a | (size_t)op.pri << 16 | (size_t)(op.assoc == XFY) << 30,
+                 PTR(op.name), PTR(v));
       prec = op.assoc == XFY ? op.pri : op.pri - 1;
       goto start;
     }
@@ -696,6 +706,8 @@ produced:
       vpri = 0;
       continue;
     case K_PREFIX:
+      if (vpri > (int)c)
+        perr(T, "operator priority clash");
       v = tt_struct(T, NAME(a), 1, &v);
       vpri = (int)b;
       continue;

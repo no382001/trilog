@@ -33,7 +33,7 @@ path_segments(A, Segs) :-
 segments([S|Ss]) --> segment(S), "/", !, segments(Ss).
 segments([S]) --> segment(S).
 
-segment([C|Cs]) --> [C], { C \== '/' }, segment(Cs).
+segment([C|Cs]) --> [C], { C \== (/) }, segment(Cs).
 segment([]) --> [].
 
 entries_nodes([], []).
