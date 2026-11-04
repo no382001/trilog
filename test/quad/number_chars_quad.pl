@@ -132,6 +132,15 @@
 88 ?- number_chars(N,"0''").
       syntax_error(...).
 
+75 ?- number_chars(N,"0'''").
+      N = 39.
+
+76 ?- number_chars(N,"0'\\'").
+      N = 39.
+
+77 ?- number_chars(N,"0' ").
+      N = 32.
+
 57 ?- number_chars(N,"- /**/1").
       N = -1.
 

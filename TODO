@@ -1,10 +1,9 @@
 regressions:
 
 must have:
-- syntax conformity (make conformity): 325/366
+- syntax conformity (make conformity): 336/366
 
 correctness:
-- the CLI's five default libraries add about 18 ms to boot (4.4 ms with -n, 22.3 ms by default, 5979680 release); ensure_loaded/consult is slow for small files
 - reconsulting a file while one of its predicates still has a choicepoint breaks the logical update view: member(X, [a,b]), consult('lib/lists.pl'), write(X), fail loops on b forever
 - sub_atom/atom_length count bytes, not utf-8 chars (atom_length('Pécs', 5)) I mean how correct should we be?
 - 7/2 gives 3 (iso: 3.5); floats print as 1e+10 (iso: 1.0e10)
@@ -13,12 +12,13 @@ correctness:
 - the reader takes an infix operator that is also a prefix operator, followed by (, as a functor: a:-(b:-c) does not parse, though writeq prints it
 - a quoted operator atom, like '-', can still be a bare operand; iso gives it priority 1201 like the unquoted one
 - floats print with %g, 6 significant digits, so they do not read back exactly (10.0** -323 prints 9.88131e-324)
+- bagof/3 and setof/3 do not group by the free variables: bagof(X, member(X-Y, [1-a,2-b,3-a]), L) gives L = [1,2,3] once (iso: Y = a, L = [1,3]; Y = b, L = [2])
 - get_char/2 and friends return end_of_file on every read past the end; iso's default eof_action(error) raises permission_error(input, past_end_of_stream, S) on the second; they also read bytes, not utf-8 chars
 
 missing requirements:
-- modules: meta_predicate/1, so a closure passed to call/N, maplist/2.., foldl/4.. or phrase/2,3 keeps its module; imports are not per module yet (every export is visible everywhere)
+- modules: imports are not per module yet (every export is visible everywhere)
 - missing iso builtins: set_output/1 (current_output/1 is always user_output), open/4, set_prolog_flag/2, char_conversion/2
-- pico 2: building a 100-deep term and round-tripping it through term_to_atom runs out of memory; the prolog heap doubles to 8192 cells between GC points, then asks for 16384, it should be possible to modify the multiplier from the outside
+- pico 2: building a 100-deep term and round-tripping it through term_to_atom runs out of memory; the prolog heap doubles to 8192 cells between GC points, then asks for 16384; trilog_config_t's heap_grow_percent and gc_grow_percent can now lower that, but pico/ does not set them yet
 - fix main-specific test expectations: 32-bit max_integer, last/2 arg order, sub_atom/5 single answer, answer printing (unhandled exception, X = Y)
 - a build without glibc: drop getenv, assert, ctype and errno from the engine, leaving stdio (default I/O), setjmp and libm
 - debug flag, and trace?
