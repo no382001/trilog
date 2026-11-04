@@ -1291,12 +1291,12 @@ static int call_foreign(trilog_t *T, const foreign_t *f, size_t goal,
       break;
     case 'f':
       if (c.tag != TAG_INT && c.tag != TAG_FLT) {
-        *ball = make_type_error(T, "number", a);
+        *ball = make_type_error(T, "number", a); // FIXME why not a float err? it was tagged as such
         return -1;
       }
       in[i].f = c.tag == TAG_INT ? (double)c.as.ival : c.as.fval;
       break;
-    default:
+    default: // FIXME case 'a' this is parsed before but still
       if (c.tag != TAG_ATOM) {
         *ball = make_type_error(T, "atom", a);
         return -1;

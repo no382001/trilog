@@ -6,6 +6,7 @@
 #include "image.h"
 #include "io.h"
 #include "mem.h"
+#include "module.h"
 #include "parse.h"
 #include "platform.h"
 #include "solve.h"

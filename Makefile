@@ -14,7 +14,7 @@ ifeq ($(PLATFORM),freestanding)
   override CFLAGS += -ffreestanding -fno-stack-protector -U_FORTIFY_SOURCE
 endif
 KERNEL_SRCS = src/kernel/fmt.c src/kernel/heap.c src/kernel/unify.c src/kernel/term.c src/kernel/solve.c \
-              src/kernel/parse.c src/kernel/arena.c src/kernel/gc.c src/kernel/mem.c
+              src/kernel/parse.c src/kernel/module.c src/kernel/arena.c src/kernel/gc.c src/kernel/mem.c
 IO_SRCS = src/io/io.c src/io/streams.c
 LIB_SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c src/platform/$(PLATFORM).c src/platform/$(if $(filter 0,$(LIBC)),nolibc,libc).c
 CLI_SRCS = cli/main.c cli/toplevel.c cli/host_default.c cli/terminal_$(PLATFORM).c
