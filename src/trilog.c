@@ -115,8 +115,10 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   } else {
     platform_register(t);
     ops_seed(t);
-    booted = consult_file(
-        t, c.boot_path ? c.boot_path : "embedded:boot/core.pl", NULL);
+    booted =
+        consult_file(t, c.boot_path ? c.boot_path : "embedded:boot/core.pl",
+                     NULL) &&
+        t->directive_errors == 0;
   }
 #ifdef TRILOG_IMAGE_DUMP
   image_dump_register(t);

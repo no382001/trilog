@@ -129,6 +129,7 @@ struct trilog {
   int32_t module_nexports, module_nprivate, module_private_cap;
   // A directive's error(_, load/1) for '$$consult'; (size_t)-1 if none.
   size_t load_error_ball;
+  size_t directive_errors; // directives that raised an uncaught error
   // Rebuilt from the '$$op' clauses whenever op_gen has moved.
   struct atom_ops {
     int16_t pri[3]; // by OP_CLASS_*, 0 when there is none

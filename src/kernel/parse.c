@@ -763,6 +763,7 @@ static void run_directive(trilog_t *T, tterm_t *goal, int32_t nvars) {
     io_write_err(T, "uncaught exception: ");
     print_term_via(T, query_error_ball(T), 0, io_write_err);
     io_write_err(T, "\n");
+    T->directive_errors++;
   }
   catch_stack_set_size(T, cmark);
   trail_release(T, tmark);

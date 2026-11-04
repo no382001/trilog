@@ -458,6 +458,10 @@ static long keep_last_line(void *ud, void *handle, const char *buf, size_t n) {
   return (long)n;
 }
 
+static void test_bad_boot(void) {
+  CHECK(!trilog_new(&(trilog_config_t){.boot_path = "test/api/bad_boot.pl"}));
+}
+
 static void test_growth(void) {
   CHECK(!trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl",
                                        .heap_grow_percent = 100}));
@@ -583,6 +587,7 @@ int main(void) {
   test_usage(t);
   test_two_interpreters();
   test_create_free();
+  test_bad_boot();
   test_growth();
 
   trilog_usage_t u;

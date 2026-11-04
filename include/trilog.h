@@ -75,8 +75,9 @@ typedef struct {
 } trilog_usage_t;
 
 // A NULL config or hook uses the default, which a freestanding build lacks.
-// Returns NULL if booting fails, the allocator or I/O hooks are incomplete, or
-// a grow percent is 100 or less.
+// Returns NULL if booting fails, including a directive of the core raising an
+// error, the allocator or I/O hooks are incomplete, or a grow percent is 100
+// or less.
 trilog_t *trilog_new(const trilog_config_t *config);
 void trilog_free(trilog_t *t);
 
