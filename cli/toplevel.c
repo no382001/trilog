@@ -114,6 +114,16 @@ static bool tl_raw(trilog_t *t, void *ud, const trilog_value_t *in,
   return terminal_raw(in[0].i != 0);
 }
 
+static bool tl_history_file(trilog_t *t, void *ud, const trilog_value_t *in,
+                            trilog_value_t *out) {
+  (void)t, (void)ud, (void)in;
+  static char path[4096];
+  if (!terminal_history_path(path, sizeof path))
+    return false;
+  out[0].a = path;
+  return true;
+}
+
 static bool tl_read_line(trilog_t *t, void *ud, const trilog_value_t *in,
                          trilog_value_t *out) {
   (void)t, (void)ud, (void)in;
@@ -136,6 +146,7 @@ trilog_status_t toplevel_repl(trilog_t *t) {
   trilog_register(t, "$tl_key", ">i", tl_key, NULL);
   trilog_register(t, "$tl_read_line", ">a", tl_read_line, NULL);
   trilog_register(t, "$tl_raw", "i", tl_raw, NULL);
+  trilog_register(t, "$tl_history_file", ">a", tl_history_file, NULL);
   trilog_status_t s = trilog_query(t, "use_module(library(toplevel)), toplevel",
                                    stop_after_first, NULL);
   if (s == TRILOG_ERROR &&

@@ -43,3 +43,9 @@ bool terminal_executable_path(char *buf, size_t cap) {
   (void)buf, (void)cap;
   return false;
 }
+
+bool terminal_history_path(char *buf, size_t cap) {
+  (void)buf;
+  (void)cap;
+  return false;
+}

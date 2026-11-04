@@ -14,3 +14,6 @@ bool terminal_raw(bool on);
 bool terminal_read_line(char *buf, size_t cap);
 
 bool terminal_executable_path(char *buf, size_t cap);
+
+// Where the REPL keeps its history; false if there is no such place.
+bool terminal_history_path(char *buf, size_t cap);

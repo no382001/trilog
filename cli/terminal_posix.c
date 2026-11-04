@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "terminal.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
@@ -59,4 +60,12 @@ bool terminal_executable_path(char *buf, size_t cap) {
     return false;
   buf[len] = '\0';
   return true;
+}
+
+bool terminal_history_path(char *buf, size_t cap) {
+  const char *home = getenv("HOME");
+  if (!home || !home[0])
+    return false;
+  int n = snprintf(buf, cap, "%s/.trilog_history", home);
+  return n > 0 && (size_t)n < cap;
 }

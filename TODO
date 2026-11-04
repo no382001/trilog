@@ -7,7 +7,6 @@ correctness:
 - reconsulting a file while one of its predicates still has a choicepoint breaks the logical update view: member(X, [a,b]), consult('lib/lists.pl'), write(X), fail loops on b forever
 - sub_atom/atom_length count bytes, not utf-8 chars (atom_length('Pécs', 5)) I mean how correct should we be?
 - quoted text cannot hold \0\ (atoms are C strings); iso also allows a representation error there
-- the toplevel reads one line per query, not one term; queries cannot span lines
 - the reader takes an infix operator that is also a prefix operator, followed by (, as a functor: a:-(b:-c) does not parse, though writeq prints it
 - bagof/3 and setof/3 do not group by the free variables: bagof(X, member(X-Y, [1-a,2-b,3-a]), L) gives L = [1,2,3] once (iso: Y = a, L = [1,3]; Y = b, L = [2])
 - get_char/2 and friends return end_of_file on every read past the end; iso's default eof_action(error) raises permission_error(input, past_end_of_stream, S) on the second; they also read bytes, not utf-8 chars
@@ -21,7 +20,6 @@ missing requirements:
 - fix main-specific test expectations: 32-bit max_integer, last/2 arg order, sub_atom/5 single answer, answer printing (unhandled exception, X = Y)
 - a build without glibc: drop getenv, assert, ctype and errno from the engine, leaving stdio (default I/O), setjmp and libm
 - debug flag, and trace?
-- readline/history in repl
 
 guidelines:
 - as much logic in prolog as possible

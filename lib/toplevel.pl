@@ -11,6 +11,7 @@
 %!  toplevel is det.
 %   Reads and runs queries until end of input or halt/0,1.
 toplevel :-
+    (   '$tl_tty', '$tl_history_file'(F) -> load_history(F) ; true ),
     repeat,
     (   read_query(Q)
     ->  run_query(Q),

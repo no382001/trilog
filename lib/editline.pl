@@ -2,11 +2,13 @@
 
 :- module(editline, [edit_line/3,
                      add_history/1,
+                     load_history/1,
                      edit_keys/4]).
 
 :- use_module(library(dcgs)).
 
 :- dynamic(history/1).
+:- dynamic(history_file/1).
 
 %!  edit_line(+Prompt, +Initial, -Line) is semidet.
 %   Reads a line from the terminal with editing and history; Initial is the
@@ -26,12 +28,55 @@ edit_line(Prompt, Initial, Line) :-
 %!  add_history(+Text) is det.
 %   Text becomes the newest history entry, its line breaks made spaces, so a
 %   query that spanned lines comes back as one; the same text twice running
-%   is kept once.
+%   is kept once. It is also appended to the history file, if there is one.
 add_history(Text) :-
     atom_codes(Text, Cs0),
     one_line(Cs0, Cs),
     findall(H, history(H), Hs),
-    (   last(Hs, Cs) -> true ; assertz(history(Cs)) ).
+    (   last(Hs, Cs)
+    ->  true
+    ;   assertz(history(Cs)),
+        (   history_file(F) -> ignore_errors(append_line(F, Cs)) ; true )
+    ).
+
+append_line(F, Cs) :-
+    atom_codes(A, Cs),
+    open(F, append, S),
+    write(S, A),
+    nl(S),
+    close(S).
+
+%!  load_history(+File) is det.
+load_history(File) :-
+    retractall(history(_)),
+    retractall(history_file(_)),
+    assertz(history_file(File)),
+    ignore_errors(read_history(File)).
+
+read_history(File) :-
+    open(File, read, S),
+    catch(read_lines(S, Ls), E, ( close(S), throw(E) )),
+    close(S),
+    length(Ls, N),
+    Drop is max(0, N - 256),
+    length(Old, Drop),
+    append(Old, Keep, Ls),
+    forall(member(L, Keep), ( atom_codes(L, Cs), assertz(history(Cs)) )),
+    (   Drop > 0 -> ignore_errors(rewrite(File, Keep)) ; true ).
+
+read_lines(S, Ls) :-
+    read_line_to_atom(S, L),
+    (   L == end_of_file -> Ls = []
+    ;   L == '' -> read_lines(S, Ls)
+    ;   Ls = [L|Ls1], read_lines(S, Ls1)
+    ).
+
+ignore_errors(G) :- ( catch(G, _, fail) -> true ; true ).
+
+rewrite(File, Ls) :-
+    open(File, write, S),
+    forall(member(L, Ls), ( write(S, L), nl(S) )),
+    close(S).
 
 one_line([], []).
 one_line([C0|Cs0], [C|Cs]) :-
