@@ -154,6 +154,7 @@
   X(atom_qualify, "$$qualify")                                                 \
   X(atom_meta_spec, "$meta_spec")                                              \
   X(atom_load, "load")                                                         \
+  X(atom_known_module, "$known_module")                                        \
   X(atom_qmark_dash, "?-")
 
 enum {

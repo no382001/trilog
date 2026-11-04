@@ -501,6 +501,40 @@ int db_is_dynamic(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
   return is_dynamic(T, pred_id, pred_arity);
 }
 
+bool db_module_known(trilog_t *T, int32_t module) {
+  pred_bucket_t *b = pred_bucket_find(T, atom_known_module, 1);
+  for (int32_t i = 0; b && i < b->count; i++) {
+    tterm_t *a = T->db[b->indices[i]].head->as.str.args[0];
+    if (a->tag == T_ATOM && a->as.atom_id == module)
+      return true;
+  }
+  return false;
+}
+
+bool db_has_pred(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
+  pred_bucket_t *b = pred_bucket_find(T, pred_id, pred_arity);
+  return b && (b->count > 0 || b->dynamic);
+}
+
+bool db_has_dcg(trilog_t *T, int32_t pred_id, int32_t arity) {
+  if (db_has_pred(T, pred_id, arity + 2))
+    return true;
+  pred_bucket_t *b = pred_bucket_find(T, atom_dcg_arrow, 2);
+  for (int32_t i = 0; b && i < b->count; i++) {
+    tterm_t *nt = T->db[b->indices[i]].head->as.str.args[0];
+    if (nt->tag == T_STR && nt->as.str.atom_id == atom_comma &&
+        nt->as.str.arity == 2)
+      nt = nt->as.str.args[0];
+    int32_t id = nt->tag == T_ATOM  ? nt->as.atom_id
+                 : nt->tag == T_STR ? nt->as.str.atom_id
+                                    : -1;
+    int32_t n = nt->tag == T_STR ? nt->as.str.arity : 0;
+    if (id == pred_id && n == arity)
+      return true;
+  }
+  return false;
+}
+
 tterm_t *db_meta_specs(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
   pred_bucket_t *b = pred_bucket_find(T, atom_meta_spec, 3);
   for (int32_t i = 0; b && i < b->count; i++) {

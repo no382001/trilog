@@ -139,6 +139,7 @@ struct trilog {
   // Variables of the clause being patched that hold a caller's goal.
   int32_t *module_meta_vars;
   int32_t module_nmeta_vars, module_meta_vars_cap;
+  bool module_final; // the end-of-file pass, when every head is known
   // Kept here, not on the C stack, so an unwind cannot lose it.
   struct module_state {
     int32_t id, nexports, nprivate, private_cap;

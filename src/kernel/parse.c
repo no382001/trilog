@@ -829,6 +829,30 @@ static void module_goal(trilog_t *T, tterm_t **slot);
 static void module_dcg(trilog_t *T, tterm_t **slot);
 static bool caller_goal(trilog_t *T, const tterm_t *t);
 
+static void module_unqualify(trilog_t *T, tterm_t **slot, int32_t extra) {
+  tterm_t *m = (*slot)->as.str.args[0], *g = (*slot)->as.str.args[1];
+  int32_t id, arity;
+  if (m->tag != T_ATOM || !callable_name(g, &id, &arity) ||
+      (g->tag == T_STR && id == atom_colon && arity == 2))
+    return;
+  int32_t mod = m->as.atom_id;
+  bool self = mod == T->module_id;
+  if (mod != atom_user && !self && !db_module_known(T, mod))
+    return;
+  int32_t q = mod == atom_user ? -1 : module_qualified(T, mod, id, false);
+  bool private_g =
+      q >= 0 && (extra ? db_has_dcg(T, q, arity) : db_has_pred(T, q, arity));
+  if (self && !private_g) {
+    if (decl_has(T->module_private, T->module_nprivate, id, arity + extra))
+      private_g = true, q = module_qualified(T, mod, id, true);
+    else if (!T->module_final)
+      return;
+  }
+  if (private_g)
+    rename_callable(g, q);
+  *slot = g;
+}
+
 // A goal bound later must still find the module's private predicates.
 static void module_wrap(trilog_t *T, tterm_t **slot) {
   tterm_t *args[2] = {tt_atom(T, atom_name(T, T->module_id)), *slot};
@@ -881,7 +905,11 @@ static void module_dcg(trilog_t *T, tterm_t **slot) {
     return;
   int32_t id = t->as.str.atom_id, n = t->as.str.arity;
   tterm_t **a = t->as.str.args;
-  if ((id == atom_dot && n == 2) || id == atom_call || id == atom_colon)
+  if (id == atom_colon && n == 2) {
+    module_unqualify(T, slot, 2);
+    return;
+  }
+  if ((id == atom_dot && n == 2) || id == atom_call)
     return;
   if (id == atom_curly && n == 1)
     module_closure(T, &a[0], 0);
@@ -912,6 +940,7 @@ static void module_goal(trilog_t *T, tterm_t **slot) {
       t->as.str.arity == 2) {
     if (t->as.str.args[1]->tag == T_STR)
       module_meta_args(T, t->as.str.args[1]);
+    module_unqualify(T, slot, 0);
     return;
   }
   if (t->tag == T_STR)
@@ -1204,8 +1233,11 @@ static bool consult_nested(trilog_t *T, const char *text, const char *file,
   T->consulting = file;
   T->consulting_atom = file ? atom_intern(T, file) : -1;
   bool ok = consult_source(T, text, name);
-  if (T->module_id >= 0)
+  if (T->module_id >= 0) {
+    T->module_final = true;
     module_patch(T);
+    T->module_final = false;
+  }
   mem_free(T, T->module_exports);
   mem_free(T, T->module_private);
   struct module_state m = T->module_saved[--T->module_saved_len];

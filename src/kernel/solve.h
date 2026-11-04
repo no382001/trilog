@@ -72,6 +72,11 @@ size_t foreign_error_ball(trilog_t *T, const char *formal);
 
 void db_unload(trilog_t *T, int32_t source);
 int db_is_dynamic(trilog_t *T, int32_t pred_id, int32_t pred_arity);
+bool db_module_known(trilog_t *T, int32_t module);
+// Whether Name/Arity has clauses or is dynamic.
+bool db_has_pred(trilog_t *T, int32_t pred_id, int32_t pred_arity);
+// Whether a nonterminal Name//Arity has --> rules, compiled or not.
+bool db_has_dcg(trilog_t *T, int32_t pred_id, int32_t arity);
 // The argument specs meta_predicate/1 declared for Name/Arity, or NULL.
 tterm_t *db_meta_specs(trilog_t *T, int32_t pred_id, int32_t pred_arity);
 // The atom 'Module:Name'; with create false, -1 when it does not exist.

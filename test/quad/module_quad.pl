@@ -145,3 +145,23 @@ helper(user).
 ?- consult('test/quad/files/colors'), color(C).
    C = red
 ;  C = green.
+
+% Module:Goal inside a module is settled when the module loads.
+
+?- use_module('test/quad/files/callers').
+   true.
+
+?- c1(X).
+   X = 9.
+
+?- c2(A).
+   A = 4.
+
+?- c3(X).
+   X = ok.
+
+?- c4(W).
+   W = circle.
+
+?- later(X).
+   error(existence_error(procedure, later/1)).
