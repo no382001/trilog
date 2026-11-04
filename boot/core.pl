@@ -225,7 +225,7 @@ M:G :-
 '$source_file'(Spec, _) :- var(Spec), !, throw(error(instantiation_error, _)).
 '$source_file'(library(Name), File) :-
     !,
-    '$must_be_atom'(Name),
+    must_be(atom, Name),
     '$boot_file'(Boot),
     '$directory'(Boot, Dir),
     atom_concat(Dir, '/../lib/', D1),
@@ -313,8 +313,11 @@ callable(X) :- compound(X).
 '$with_context'(Goal, PI) :-
     catch(Goal, error(Formal, Context), '$rethrow'(Formal, Context, PI)).
 
-'$rethrow'(Formal, Context, PI) :-
-    ( var(Context) -> Context = PI ; true ),
+'$rethrow'(Formal, Context0, PI) :-
+    (   ( var(Context0) ; Context0 == must_be/2 ; Context0 == can_be/2 )
+    ->  Context = PI
+    ;   Context = Context0
+    ),
     throw(error(Formal, Context)).
 
 % --- sorting ---
@@ -365,7 +368,7 @@ keysort(Pairs, Sorted) :-
 '$keysort'(Pairs, Sorted) :-
     '$sort_length'(Pairs, Pairs, 0, _),
     '$keysort_index'(Pairs, 0, Indexed),
-    '$can_be_list'(Sorted),
+    can_be(list, Sorted),
     '$msort'(Indexed, S),
     '$keysort_strip'(S, Sorted0),
     Sorted = Sorted0.
@@ -383,9 +386,6 @@ keysort(Pairs, Sorted) :-
 '$keysort_strip'([], []).
 '$keysort_strip'([K-(_-V)|Is], [K-V|Ps]) :- '$keysort_strip'(Is, Ps).
 
-'$can_be_list'(L) :-
-    '$$skip_list'(L, _, T),
-    ( var(T) -> true ; T == [] -> true ; throw(error(type_error(list, L), _)) ).
 
 % --- database ---
 
@@ -641,7 +641,7 @@ atom_codes(A, Cs) :-
     '$with_context'('$atom_codes'(A, Cs), atom_codes/2).
 '$atom_codes'(A, Cs) :-
     (   nonvar(A)
-    ->  '$must_be_atom'(A),
+    ->  must_be(atom, A),
         '$$atom_codes'(A, Cs0),
         Cs = Cs0
     ;   '$codes_list'(Cs),
@@ -813,7 +813,7 @@ set_input(S) :- '$with_context'('$set_input'(S), set_input/1).
 atom_length(A, L) :-
     '$with_context'('$atom_length'(A, L), atom_length/2).
 '$atom_length'(A, L) :-
-    '$must_be_atom'(A),
+    must_be(atom, A),
     (   var(L) -> true
     ;   integer(L) -> ( L >= 0 -> true ; throw(error(domain_error(not_less_than_zero, L), _)) )
     ;   throw(error(type_error(integer, L), _))
@@ -827,9 +827,9 @@ atom_concat(A, B, C) :-
     '$with_context'('$atom_concat_check'(A, B, C), atom_concat/3),
     '$atom_concat'(A, B, C).
 '$atom_concat_check'(A, B, C) :-
-    '$can_be_atom'(A),
-    '$can_be_atom'(B),
-    '$can_be_atom'(C),
+    can_be(atom, A),
+    can_be(atom, B),
+    can_be(atom, C),
     (   var(C), ( var(A) ; var(B) )
     ->  throw(error(instantiation_error, _))
     ;   true
@@ -875,18 +875,18 @@ sub_atom(Atom, Before, Length, After, Sub) :-
 '$sub_prefix'(_, L, L, []).
 '$sub_prefix'([C|Cs], L0, L, [C|P]) :- L1 is L0 + 1, '$sub_prefix'(Cs, L1, L, P).
 '$sub_atom_check'(Atom, Before, Length, After, Sub) :-
-    '$must_be_atom'(Atom),
-    '$can_be_atom'(Sub),
-    '$can_be_integer'(Before),
-    '$can_be_integer'(Length),
-    '$can_be_integer'(After).
+    must_be(atom, Atom),
+    can_be(atom, Sub),
+    can_be(integer, Before),
+    can_be(integer, Length),
+    can_be(integer, After).
 
 %!  atom_chars(?Atom, ?Chars) is det.
 atom_chars(A, Chars) :-
     '$with_context'('$atom_chars'(A, Chars), atom_chars/2).
 '$atom_chars'(A, Chars) :-
     (   nonvar(A)
-    ->  '$must_be_atom'(A),
+    ->  must_be(atom, A),
         '$$atom_codes'(A, Codes),
         '$codes_chars'(Codes, Chars)
     ;   '$chars_list'(Chars),
@@ -899,7 +899,7 @@ number_codes(N, Cs) :-
     '$with_context'('$number_codes'(N, Cs), number_codes/2).
 '$number_codes'(N, Cs) :-
     (   nonvar(N)
-    ->  '$must_be_number'(N),
+    ->  must_be(number, N),
         '$text_list_bound'(Cs, '$check_code'),
         (   '$complete_list'(Cs)
         ->  '$parse_number'(Cs, N)
@@ -915,7 +915,7 @@ number_chars(N, Chars) :-
     '$with_context'('$number_chars'(N, Chars), number_chars/2).
 '$number_chars'(N, Chars) :-
     (   nonvar(N)
-    ->  '$must_be_number'(N),
+    ->  must_be(number, N),
         '$text_list_bound'(Chars, '$check_char'),
         (   '$complete_list'(Chars)
         ->  '$codes_chars'(Codes, Chars),
@@ -939,18 +939,9 @@ number_chars(N, Chars) :-
     '$$atom_codes'(Char, [Code]),
     '$codes_chars'(Codes, Chars).
 
-'$must_be_atom'(A) :- var(A), !, throw(error(instantiation_error, _)).
-'$must_be_atom'(A) :- atom(A), !.
-'$must_be_atom'(A) :- throw(error(type_error(atom, A), _)).
 
-'$must_be_number'(N) :- number(N), !.
-'$must_be_number'(N) :- throw(error(type_error(number, N), _)).
 
-'$can_be_atom'(A) :- ( var(A) ; atom(A) ), !.
-'$can_be_atom'(A) :- throw(error(type_error(atom, A), _)).
 
-'$can_be_integer'(I) :- ( var(I) ; integer(I) ), !.
-'$can_be_integer'(I) :- throw(error(type_error(integer, I), _)).
 
 '$codes_list'(L) :- '$text_list'(L, '$check_code').
 '$check_code'(C) :- var(C), !, throw(error(instantiation_error, _)).
