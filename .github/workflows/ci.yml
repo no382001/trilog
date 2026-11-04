@@ -20,7 +20,11 @@ jobs:
       - name: install build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang-format bats
+          sudo apt-get install -y build-essential bats
+          pipx install clang-format==21.1.8
+
+      - name: format check
+        run: make format-check
 
       - name: build
         run: make
@@ -43,7 +47,8 @@ jobs:
       - name: install cross compilers
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang-format gcc-multilib gcc-arm-none-eabi libnewlib-arm-none-eabi
+          sudo apt-get install -y build-essential gcc-multilib gcc-arm-none-eabi libnewlib-arm-none-eabi
+          pipx install clang-format==21.1.8
 
       - name: posix, no_posix and freestanding
         run: |
@@ -86,7 +91,8 @@ jobs:
       - name: install test deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats clang-format ${{ matrix.variant == 'freestanding' && 'gcc-multilib' || '' }}
+          sudo apt-get install -y bats ${{ matrix.variant == 'freestanding' && 'gcc-multilib' || '' }}
+          pipx install clang-format==21.1.8
           chmod +x ./trilog
 
       - name: build the hostile freestanding CLI
