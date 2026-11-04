@@ -6,7 +6,7 @@ must have:
 correctness:
 - reconsulting a file while one of its predicates still has a choicepoint breaks the logical update view: member(X, [a,b]), consult('lib/lists.pl'), write(X), fail loops on b forever
 - sub_atom/atom_length count bytes, not utf-8 chars (atom_length('Pécs', 5)) I mean how correct should we be?
-- 7/2 gives 3 (iso: 3.5); floats print as 1e+10 (iso: 1.0e10)
+- floats print as 1e+10 (iso: 1.0e10)
 - quoted text cannot hold \0\ (atoms are C strings); iso also allows a representation error there
 - the toplevel reads one line per query, not one term; queries cannot span lines
 - the reader takes an infix operator that is also a prefix operator, followed by (, as a functor: a:-(b:-c) does not parse, though writeq prints it

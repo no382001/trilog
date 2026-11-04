@@ -841,25 +841,12 @@ static size_t eval_arith(trilog_t *T, size_t r, int *ok) {
         }
         return heap_new_int(T, res);
       }
-      // "/" is polymorphic: int/int truncates, any float divides exactly.
+      // "/" always divides as floats: 7/2 is 3.5, as in Scryer; // truncates.
       if (id == atom_slash) {
-        if (mixed) {
-          double fb = arith_dbl(T, b);
-          if (fb == 0.0) {
-            T->pending_error_ball = make_evaluation_error(T, atom_zero_divisor);
-            *ok = 0;
-            return 0;
-          }
-          return heap_new_flt(T, arith_dbl(T, a) / fb);
-        }
-        if (T->heap[b].as.ival == 0) {
-          T->pending_error_ball = make_evaluation_error(T, atom_zero_divisor);
-          *ok = 0;
-          return 0;
-        }
-        if (T->heap[a].as.ival == INT64_MIN && T->heap[b].as.ival == -1)
-          return arith_int_overflow(T, ok);
-        return heap_new_int(T, T->heap[a].as.ival / T->heap[b].as.ival);
+        double fb = arith_dbl(T, b);
+        if (fb == 0.0)
+          return arith_eval_error(T, atom_zero_divisor, ok);
+        return arith_float(T, arith_dbl(T, a) / fb, ok);
       }
       if (id == atom_starstar)
         return arith_pow_float(T, arith_dbl(T, a), arith_dbl(T, b), ok);

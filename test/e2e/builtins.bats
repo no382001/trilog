@@ -116,14 +116,14 @@ load common
 }
 
 @test "min_int divided by -1 raises int_overflow instead of trapping (regression)" {
-  # regression: INT64_MIN / -1 killed the process with SIGFPE.
+  # regression: INT64_MIN // -1 killed the process with SIGFPE; / divides as floats.
   run "$TRILOG" -e "
     catch(_ is -9223372036854775808 // -1, error(E1, _), true),
-    catch(_ is -9223372036854775808 / -1, error(E2, _), true),
-    write(r(E1, E2)), nl.
+    X is -9223372036854775808 / -1, float(X),
+    write(r(E1)), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"r(evaluation_error(int_overflow),evaluation_error(int_overflow))"* ]]
+  [[ "$output" == *"r(evaluation_error(int_overflow))"* ]]
 }
 
 @test "mod takes the divisor's sign and never overflows (regression)" {
@@ -186,9 +186,9 @@ load common
   run "$TRILOG" -e "
     A is 1.5 + 2,
     B is 4/2,
-    integer(B),
+    float(B),
     C is 4/3,
-    integer(C),
+    float(C),
     D is min(1, 2.5),
     float(D),
     E is max(1.5, 2),
@@ -205,8 +205,7 @@ load common
   [ "$status" -eq 0 ]
   succeeded
   [[ "$output" == *"A = 3.5"* ]]
-  [[ "$output" == *"B = 2"* ]]
-  [[ "$output" == *"C = 1"* ]]
+  [[ "$output" == *"B = 2.0"* ]]
   [[ "$output" == *"F = 1.5"* ]]
   [[ "$output" == *"G = 3"* ]]
   [[ "$output" == *"H = -3"* ]]

@@ -113,10 +113,10 @@
   X(atom_integer, "integer")                                                   \
   X(atom_kw_float, "float")                                                    \
   X(atom_compound, "compound")                                                 \
-  X(atom_nonvar, "nonvar")                                                  \
-  X(atom_number, "number")                                                  \
-  X(atom_atomic, "atomic")                                                  \
-  X(atom_callable, "callable")                                              \
+  X(atom_nonvar, "nonvar")                                                     \
+  X(atom_number, "number")                                                     \
+  X(atom_atomic, "atomic")                                                     \
+  X(atom_callable, "callable")                                                 \
   X(atom_functor, "functor")                                                   \
   X(atom_arg, "arg")                                                           \
   X(atom_univ, "=..")                                                          \
