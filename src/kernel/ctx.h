@@ -123,16 +123,13 @@ struct trilog {
   size_t rename_tmp_cap, goals_tmp_cap;
   const char *consulting; // path of the file being consulted
   int32_t consulting_atom;
-  // The module the file being consulted declared, -1 for none, with the
-  // predicates it exports and the private ones defined so far.
+  // -1 when the file being consulted declared no module.
   int32_t module_id;
   pred_decl_t *module_exports, *module_private;
   int32_t module_nexports, module_nprivate, module_private_cap;
-  // An error(_, load/1) a directive raised: the consult stops and
-  // '$$consult' raises it. (size_t)-1 when there is none.
+  // A directive's error(_, load/1) for '$$consult'; (size_t)-1 if none.
   size_t load_error_ball;
-  // ops[atom] holds the atom's prefix, infix and postfix operator; rebuilt
-  // when op_gen, bumped by every '$$op' clause added or removed, has moved.
+  // Rebuilt from the '$$op' clauses whenever op_gen has moved.
   struct atom_ops {
     int16_t pri[3]; // by OP_CLASS_*, 0 when there is none
     int8_t assoc[3];
@@ -142,6 +139,14 @@ struct trilog {
   // Variables of the clause being patched that hold a caller's goal.
   int32_t *module_meta_vars;
   int32_t module_nmeta_vars, module_meta_vars_cap;
+  // Kept here, not on the C stack, so an unwind cannot lose it.
+  struct module_state {
+    int32_t id, nexports, nprivate, private_cap;
+    pred_decl_t *exports, *private_decls;
+  } *module_saved;
+  int32_t module_saved_len, module_saved_cap;
+  char *qualified_buf; // scratch for 'Module:Name' text
+  size_t qualified_buf_cap;
 
   clause_t *db;
   int32_t db_count, db_cap, db_dead;

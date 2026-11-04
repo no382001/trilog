@@ -49,7 +49,7 @@ static trilog_status_t unwound(trilog_t *t) {
   t->P = NULL;
   t->consulting = NULL;
   t->consulting_atom = -1;
-  t->module_id = -1;
+  module_state_drop(t);
   t->load_error_ball = (size_t)-1;
   t->foreign_current = NULL;
   t->foreign_error = (size_t)-1;
@@ -165,6 +165,9 @@ void trilog_free(trilog_t *t) {
   mem_free(t, t->consulted_decls);
   mem_free(t, t->dynamic_decls);
   mem_free(t, t->module_meta_vars);
+  module_state_drop(t);
+  mem_free(t, t->module_saved);
+  mem_free(t, t->qualified_buf);
   mem_free(t, t->ops);
   mem_free(t, t->foreign);
   mem_free(t, t->stack);

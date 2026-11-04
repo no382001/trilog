@@ -748,8 +748,7 @@ static bool is_load_error(trilog_t *T, size_t ball) {
          T->heap[a].as.ival == 1;
 }
 
-// A directive shares no variables with the code that loads it, so what it
-// left on the heap is garbage, except a load error that '$$consult' raises.
+// A directive shares no variables with its file, so all it leaves is garbage.
 static void run_directive(trilog_t *T, tterm_t *goal, int32_t nvars) {
   int32_t n;
   tterm_t **goals = flatten_conj(T, goal, &n);
@@ -799,7 +798,6 @@ static void rename_callable(tterm_t *t, int32_t id) {
     t->as.str.atom_id = id;
 }
 
-// A head the module does not export, and that is not dynamic, is private.
 static void module_define(trilog_t *T, tterm_t *t, int32_t extra) {
   int32_t id, arity;
   if (!callable_name(t, &id, &arity))
@@ -831,14 +829,12 @@ static void module_goal(trilog_t *T, tterm_t **slot);
 static void module_dcg(trilog_t *T, tterm_t **slot);
 static bool caller_goal(trilog_t *T, const tterm_t *t);
 
-// An unbound goal in a module runs as Module:Goal, so it finds the module's
-// private predicates once it is bound.
+// A goal bound later must still find the module's private predicates.
 static void module_wrap(trilog_t *T, tterm_t **slot) {
   tterm_t *args[2] = {tt_atom(T, atom_name(T, T->module_id)), *slot};
   *slot = tt_struct(T, ":", 2, args);
 }
 
-// A closure called with `extra` more arguments.
 static void module_closure(trilog_t *T, tterm_t **slot, int32_t extra) {
   if ((*slot)->tag == T_VAR) {
     if (!caller_goal(T, *slot))
@@ -939,8 +935,7 @@ static tterm_t *head_meta_specs(trilog_t *T, const tterm_t *h) {
   return specs;
 }
 
-// A head variable in a goal position of the clause's own meta_predicate
-// holds the caller's goal, which must not be taken as this module's.
+// Head variables in the clause's own meta arguments hold the caller's goals.
 static void collect_caller_goals(trilog_t *T, const tterm_t *h) {
   T->module_nmeta_vars = 0;
   tterm_t *specs = head_meta_specs(T, h);
@@ -963,7 +958,6 @@ static void collect_caller_goals(trilog_t *T, const tterm_t *h) {
   }
 }
 
-// Points the file's calls to its private predicates at their new names.
 static void module_patch(trilog_t *T) {
   for (int32_t i = 0; i < T->db_count; i++) {
     clause_t *c = &T->db[i];
@@ -979,7 +973,6 @@ static void module_patch(trilog_t *T) {
   T->module_nmeta_vars = 0;
 }
 
-// user:H defines H; Module:H defines Module's private H.
 static tterm_t *module_head(trilog_t *T, tterm_t *h) {
   int32_t id, arity;
   if (h->tag == T_STR && h->as.str.atom_id == atom_colon &&
@@ -1196,11 +1189,15 @@ static bool consult_nested(trilog_t *T, const char *text, const char *file,
   size_t saved_psp = T->psp;
   jmp_buf saved_jmp;
   memcpy(saved_jmp, T->err_jmp, sizeof(jmp_buf));
-  int32_t saved_module = T->module_id, saved_nexports = T->module_nexports,
-          saved_nprivate = T->module_nprivate,
-          saved_private_cap = T->module_private_cap;
-  pred_decl_t *saved_exports = T->module_exports,
-              *saved_private = T->module_private;
+  if (T->module_saved_len == T->module_saved_cap) {
+    int32_t cap = T->module_saved_cap ? T->module_saved_cap * 2 : 4;
+    T->module_saved =
+        mem_grow_n(T, T->module_saved, (size_t)cap, sizeof *T->module_saved);
+    T->module_saved_cap = cap;
+  }
+  T->module_saved[T->module_saved_len++] = (struct module_state){
+      T->module_id,          T->module_nexports, T->module_nprivate,
+      T->module_private_cap, T->module_exports,  T->module_private};
   T->module_id = -1;
   T->module_exports = T->module_private = NULL;
   T->module_nexports = T->module_nprivate = T->module_private_cap = 0;
@@ -1211,18 +1208,32 @@ static bool consult_nested(trilog_t *T, const char *text, const char *file,
     module_patch(T);
   mem_free(T, T->module_exports);
   mem_free(T, T->module_private);
-  T->module_id = saved_module;
-  T->module_exports = saved_exports;
-  T->module_private = saved_private;
-  T->module_nexports = saved_nexports;
-  T->module_nprivate = saved_nprivate;
-  T->module_private_cap = saved_private_cap;
+  struct module_state m = T->module_saved[--T->module_saved_len];
+  T->module_id = m.id;
+  T->module_exports = m.exports;
+  T->module_private = m.private_decls;
+  T->module_nexports = m.nexports;
+  T->module_nprivate = m.nprivate;
+  T->module_private_cap = m.private_cap;
   T->consulting = saved_consulting;
   T->consulting_atom = saved_atom;
   T->P = saved_P;
   T->psp = saved_psp;
   memcpy(T->err_jmp, saved_jmp, sizeof(jmp_buf));
   return ok;
+}
+
+void module_state_drop(trilog_t *T) {
+  while (T->module_saved_len > 0) {
+    struct module_state *m = &T->module_saved[--T->module_saved_len];
+    mem_free(T, m->exports);
+    mem_free(T, m->private_decls);
+  }
+  mem_free(T, T->module_exports);
+  mem_free(T, T->module_private);
+  T->module_exports = T->module_private = NULL;
+  T->module_nexports = T->module_nprivate = T->module_private_cap = 0;
+  T->module_id = -1;
 }
 
 bool consult_file(trilog_t *T, const char *path, int32_t *source) {

@@ -234,7 +234,6 @@ M:G :-
 '$source_file'(File, File) :- atom(File), !.
 '$source_file'(Spec, _) :- throw(error(domain_error(source_sink, Spec), _)).
 
-% A file name that does not exist as given is tried with .pl added.
 '$with_extension'(File, File) :- '$$source_path'(File, _), !.
 '$with_extension'(File, File1) :-
     atom_concat(File, '.pl', File1),

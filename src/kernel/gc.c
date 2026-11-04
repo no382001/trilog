@@ -189,8 +189,7 @@ static void flag_heap_marks(trilog_t *T, size_t base, size_t top,
   }
 }
 
-// Live cells only point at live cells, so only they and the heap marks of
-// frames and catches need a new index.
+// Live cells point only at live cells: only they and heap marks get an index.
 static size_t compact_heap(trilog_t *T, size_t base, size_t old_top,
                            size_t *trail, size_t trail_top, frame_t *frames,
                            size_t nframes, catch_frame_t *catches,

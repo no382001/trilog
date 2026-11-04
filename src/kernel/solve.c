@@ -516,13 +516,13 @@ int32_t module_qualified(trilog_t *T, int32_t module, int32_t name,
                          bool create) {
   const char *m = atom_name(T, module), *n = atom_name(T, name);
   size_t lm = strlen(m), ln = strlen(n);
-  char *buf = mem_grow_n(T, NULL, lm + ln + 2, 1);
+  mem_reserve(T, (void **)&T->qualified_buf, &T->qualified_buf_cap,
+              lm + ln + 2);
+  char *buf = T->qualified_buf;
   memcpy(buf, m, lm);
   buf[lm] = ':';
   memcpy(buf + lm + 1, n, ln + 1);
-  int32_t id = create ? atom_intern(T, buf) : atom_find(T, buf);
-  mem_free(T, buf);
-  return id;
+  return create ? atom_intern(T, buf) : atom_find(T, buf);
 }
 
 static void stack_push(trilog_t *T, frame_t f) {
@@ -1773,8 +1773,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     T->module_id = T->heap[m].as.atom_id;
     return 1;
   }
-  // '$$qualify'(+Module, +Goal, -Goal1): Goal1 names Module's private
-  // predicate when Module has one by that name, else Goal1 = Goal.
+  // '$$qualify'(+Module, +Goal, -Goal1): Module's private Goal if it has one.
   if (arity == 3 && id == atom_qualify) {
     size_t m = heap_deref(T, f + 1), g = heap_deref(T, f + 2), out = g;
     int32_t gname = -1, gar = 0;

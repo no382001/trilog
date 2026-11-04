@@ -55,7 +55,6 @@ dcg_cbody(\+ G, S0, S, (\+ GT, S0 = S)) :- !, dcg_body(G, S0, _, GT).
 dcg_cbody(M:B, S0, S, '$dcg_module'(M, B, S0, S)) :- !.
 dcg_cbody(Call, S0, S, '$dcg_call'(G, Extra, S0, S)) :- Call =.. [call, G|Extra].
 
-% Module:Body uses Module's private nonterminal of that name if it has one.
 '$dcg_module'(M, B, S0, S) :-
     atom(M),
     callable(B),
@@ -155,6 +154,5 @@ phrase(GRBody, S0, S) :-
 '$dcg_fold_head'(G, _, G).
 
 %!  seq(?List)// is nondet.
-%   Describes the elements of List, in order.
 seq([], S, S).
 seq([E|Es], [E|S0], S) :- seq(Es, S0, S).
