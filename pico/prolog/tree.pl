@@ -1,6 +1,10 @@
-:- ensure_loaded(library(dcgs)).
-:- ensure_loaded(library(apply)).
-:- ensure_loaded(library(between)).
+:- module(tree, [tree/1]).
+
+:- use_module(library(dcgs)).
+:- use_module(library(apply)).
+:- use_module(library(between)).
+:- use_module(text).
+:- use_module(pages).
 
 tree(Out) :-
     vfs_count(0, N),
@@ -8,11 +12,11 @@ tree(Out) :-
     findall(Segs-A, (between(0, Last, I), vfs_file(I, A), path_segments(A, Segs)), Es),
     msort(Es, Sorted),
     entries_nodes(Sorted, Nodes),
-    emit(Out, title),
-    emit(Out, "<pre>.\n"),
+    text:emit(Out, pages:title),
+    text:emit(Out, "<pre>.\n"),
     emit_nodes(Out, Nodes, []),
     count(Nodes, 0, Dirs, 0, Files),
-    emit(Out, tree_footer(Dirs, Files)).
+    text:emit(Out, tree_footer(Dirs, Files)).
 
 vfs_count(I, N) :-
     (   vfs_file(I, _)
@@ -52,7 +56,7 @@ emit_nodes(Out, [N|Ns], Prefix) :-
     ->  Branch = "└── ", Indent = "    "
     ;   Branch = "├── ", Indent = "│   "
     ),
-    emit(Out, (Prefix, Branch, node(N))),
+    text:emit(Out, (Prefix, Branch, node(N))),
     (   N = dir(_, Kids)
     ->  append(Prefix, Indent, Prefix1),
         emit_nodes(Out, Kids, Prefix1)
@@ -60,9 +64,9 @@ emit_nodes(Out, [N|Ns], Prefix) :-
     ),
     emit_nodes(Out, Ns, Prefix).
 
-node(dir(Name, _)) --> atom(Name), "\n".
+node(dir(Name, _)) --> text:atom(Name), "\n".
 node(file(Name, A)) -->
-    "<a href=\"/fs/", atom(A), "\">", atom(Name), "</a>", loaded(A), "\n".
+    "<a href=\"/fs/", text:atom(A), "\">", text:atom(Name), "</a>", loaded(A), "\n".
 
 loaded(A) --> { loaded_file(A) }, !, "  (loaded)".
 loaded(_) --> [].

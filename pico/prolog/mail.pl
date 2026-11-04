@@ -1,22 +1,30 @@
-:- ensure_loaded(library(dcgs)).
-:- ensure_loaded(library(between)).
+:- module(mail, [send/3,
+                 log/1,
+                 mail/0,
+                 mail/1,
+                 log/0
+                ]).
 
-send_mail(From, Subject, Body) :-
+:- use_module(library(dcgs)).
+:- use_module(library(between)).
+:- use_module(text).
+
+send(From, Subject, Body) :-
     mail_new(From, Subject),
     open(mail, write, S),
-    emit(S, Body),
+    text:emit(S, Body),
     close(S).
 
-log_line(Body) :-
+log(Body) :-
     open(log, append, S),
-    emit(S, Body),
+    text:emit(S, Body),
     close(S).
 
 mail :-
     mail_ids(First, Last),
     (   Last < First
     ->  write('No mail.'), nl
-    ;   forall(between(First, Last, Id), emit(user_output, mail_summary(Id)))
+    ;   forall(between(First, Last, Id), text:emit(user_output, mail_summary(Id)))
     ).
 
 mail(Id) :-
@@ -29,12 +37,8 @@ log :-
 
 mail_summary(Id) -->
     { mail_info(Id, From, Subject, Ms, New) },
-    new_mark(New), " ", int(Id), "  ", atom(From), "  ", atom(Subject),
-    "  ", age(Ms), "\n".
+    new_mark(New), " ", text:int(Id), "  ", text:atom(From), "  ", text:atom(Subject),
+    "  ", text:age(Ms), "\n".
 
 new_mark(1) --> "N".
 new_mark(0) --> " ".
-
-age(Ms) -->
-    { S is Ms // 1000, D is Ms mod 1000 // 100 },
-    "+", int(S), ".", int(D), "s".

@@ -1,16 +1,30 @@
-:- ensure_loaded(library(dcgs)).
+:- module(pages, [home/1,
+                  stats/1,
+                  mailbox/2,
+                  title//0,
+                  version//0,
+                  board//0
+                 ]).
+
+:- use_module(library(dcgs)).
+:- use_module(library(between)).
+:- use_module(text).
 
 home(Out) :-
-    emit(Out, title),
-    emit(Out, "<ul>\n"),
-    forall(home_link(Href, Text), emit(Out, link(Href, Text))),
-    emit(Out, "</ul>\n").
+    text:emit(Out, title),
+    text:emit(Out, "<ul>\n"),
+    forall(home_link(Href, Text), text:emit(Out, link(Href, Text))),
+    text:emit(Out, "</ul>\n").
 
 title -->
     "<h1>trilog ", version, "</h1>\n",
     "<p>running on ", board, "</p>\n".
 
 version --> { trilog_version(V) }, V.
+
+trilog_version(V) :-
+    '$trilog_version'(A),
+    atom_chars(A, V).
 
 board -->
     { board_info(Board, Chip, MHz, FlashKB),
@@ -26,19 +40,19 @@ home_link("/led/off", "LED off").
 home_link("/stats", "stats").
 home_link("/mail", Text) :-
     mail_unread(N),
-    phrase(("mail (", int(N), " new)"), Text).
+    phrase(("mail (", text:int(N), " new)"), Text).
 home_link("/log", "request log").
 
 link(Href, Text) --> "<li><a href=\"", Href, "\">", Text, "</a>\n".
 
 stats(Out) :-
-    emit(Out, title),
-    emit(Out, "<pre>\n"),
-    forall(chart_line(Line), emit(Out, Line)),
-    emit(Out, "</pre>\n"),
-    emit(Out, "<table>\n"),
-    forall(stat(Name, N, Unit), emit(Out, stat_row(Name, N, Unit))),
-    emit(Out, "</table>\n").
+    text:emit(Out, title),
+    text:emit(Out, "<pre>\n"),
+    forall(chart_line(Line), text:emit(Out, Line)),
+    text:emit(Out, "</pre>\n"),
+    text:emit(Out, "<table>\n"),
+    forall(stat(Name, N, Unit), text:emit(Out, stat_row(Name, N, Unit))),
+    text:emit(Out, "</table>\n").
 
 stat("uptime", T, "ms") :- get_time_ms(T).
 stat("malloc in use", N, "B") :- memory_usage(N, _, _, _, _).
@@ -88,11 +102,11 @@ gauge(Label, Part, Whole, Unit) -->
       N is Part * W // Whole,
       M is W - N },
     pad(Label, 12), "[", rep(N, '#'), rep(M, '.'), "] ",
-    int(Part), " / ", int(Whole), " ", Unit, "\n".
+    text:int(Part), " / ", text:int(Whole), " ", Unit, "\n".
 
 kb(B) -->
     { K is B // 1024, D is B mod 1024 * 10 // 1024 },
-    int(K), ".", int(D), " KB".
+    text:int(K), ".", text:int(D), " KB".
 
 pad(Text, Width) -->
     Text,
@@ -108,23 +122,23 @@ stat_row(Name, N, Unit) -->
     "</td></tr>\n".
 
 mailbox(Conn, Out) :-
-    emit(Out, title),
+    text:emit(Out, title),
     mail_ids(First, Last),
     (   Last < First
-    ->  emit(Out, "<p>no mail\n")
+    ->  text:emit(Out, "<p>no mail\n")
     ;   forall(between(First, Last, Id), mail_entry(Conn, Out, Id))
     ).
 
 mail_entry(Conn, Out, Id) :-
-    emit(Out, mail_head(Id)),
+    text:emit(Out, mail_head(Id)),
     mail_show_html(Conn, Id),
-    emit(Out, "</pre>\n").
+    text:emit(Out, "</pre>\n").
 
 mail_head(Id) -->
     { mail_info(Id, From, Subject, Ms, New) },
-    "<hr>\n<p>", int(Id), ". ",
-    strong(New, ("<a href=\"/mail/", int(Id), "\">", atom(Subject), "</a>")),
-    " from ", atom(From), ", ", age(Ms), "</p>\n<pre>".
+    "<hr>\n<p>", text:int(Id), ". ",
+    strong(New, ("<a href=\"/mail/", text:int(Id), "\">", text:atom(Subject), "</a>")),
+    " from ", text:atom(From), ", ", text:age(Ms), "</p>\n<pre>".
 
 strong(1, Body) --> "<b>", Body, "</b>".
 strong(0, Body) --> Body.
