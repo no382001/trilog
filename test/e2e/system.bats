@@ -69,9 +69,7 @@ load common
   [[ "$output" == *"L = [5]"* ]]
 }
 
-@test "bagof does not group by Goal's free variables (regression)" {
-  # NOT ISO grouping, deliberately: K/L here stay unbound in the single
-  # collected pair rather than backtracking over distinct witnesses.
+@test "bagof groups by Goal's free variables, one bag for each" {
   run "$TRILOG" -e "
     assertz(bagof_p(a,1)),
     assertz(bagof_p(a,2)),
@@ -79,7 +77,8 @@ load common
     findall(K-L, bagof(X,bagof_p(K,X),L), Groups), length(Groups, N), write(N).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"N = 1"* ]]
+  [[ "$output" == *"N = 2"* ]]
+  [[ "$output" == *"Groups = [a-[1,2],b-[3]]"* ]]
 }
 
 @test "bagof with V^Goal has no effect on the ungrouped result (regression)" {

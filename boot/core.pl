@@ -519,24 +519,51 @@ term_variables(Term, Vars) :-
 '$var_memberchk'(V, [W|_]) :- V == W, !.
 '$var_memberchk'(V, [_|T]) :- '$var_memberchk'(V, T).
 
-%!  bagof(+Template, :Goal, -Bag) is semidet.
-%   NOT ISO grouping: always merges into one bag
-%   regardless of free vars/^. It's a findall/3 that fails on [].
+%!  bagof(+Template, :Goal, -Bag) is nondet.
+%   One Bag for each binding of Goal's free variables, those not in Template
+%   or under V^; with none, the findall/3 of Goal, failing when empty. The
+%   bags come in the standard order of their bindings, as in Scryer.
 bagof(Template, Goal0, Bag) :-
-    '$bagof_strip'(Goal0, Goal),
-    findall(Template, Goal, Bag),
-    Bag \= [].
+    '$bagof_strip'(Goal0, Goal, Ex),
+    term_variables(Goal, GVs),
+    term_variables(Template-Ex, Bound),
+    '$bagof_free'(GVs, Bound, W),
+    (   W == []
+    ->  findall(Template, Goal, Bag),
+        Bag \== []
+    ;   findall(W-Template, Goal, Pairs),
+        Pairs \== [],
+        keysort(Pairs, Sorted),
+        '$bagof_pick'(Sorted, W, Bag)
+    ).
 
 % nonvar first: an unbound Goal0 would otherwise unify with V^G0
 % itself (binding fresh vars) and recurse on that fresh var forever.
-'$bagof_strip'(Goal0, G) :-
+'$bagof_strip'(Goal0, G, [V|Ex]) :-
     nonvar(Goal0),
-    Goal0 = _ ^ G0,
+    Goal0 = V ^ G0,
     !,
-    '$bagof_strip'(G0, G).
-'$bagof_strip'(G, G).
+    '$bagof_strip'(G0, G, Ex).
+'$bagof_strip'(G, G, []).
 
-%!  setof(+Template, :Goal, -Set) is semidet.
+'$bagof_free'([], _, []).
+'$bagof_free'([V|Vs], Bound, W) :-
+    (   '$bagof_member'(V, Bound) -> W = W1 ; W = [V|W1] ),
+    '$bagof_free'(Vs, Bound, W1).
+
+'$bagof_member'(V, [U|Us]) :- ( V == U -> true ; '$bagof_member'(V, Us) ).
+
+% Each run of pairs with identical witnesses is one bag.
+'$bagof_pick'([K-T|Ps], W, Bag) :-
+    '$bagof_run'(Ps, K, Ts, Rest),
+    (   W = K, Bag = [T|Ts]
+    ;   Rest \== [], '$bagof_pick'(Rest, W, Bag)
+    ).
+
+'$bagof_run'([K1-T|Ps], K, [T|Ts], Rest) :- K1 == K, !, '$bagof_run'(Ps, K, Ts, Rest).
+'$bagof_run'(Rest, _, [], Rest).
+
+%!  setof(+Template, :Goal, -Set) is nondet.
 setof(Template, Goal, Set) :-
     bagof(Template, Goal, Bag),
     sort(Bag, Set).

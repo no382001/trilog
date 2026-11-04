@@ -333,7 +333,8 @@ bpair3(1, x).
 bpair3(2, y).
 
 ?- bagof(B, bpair3(A, B), L).
-   L = "xy".
+   A = 1, L = "x"
+;  A = 2, L = "y".
 
 % --- nl/0 ---
 
