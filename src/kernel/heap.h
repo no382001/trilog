@@ -31,15 +31,8 @@ typedef struct {
 
 void heap_init(trilog_t *T);
 
-size_t heap_alloc(trilog_t *T, size_t n);
-
-size_t heap_new_var(trilog_t *T);
-size_t heap_new_atom(trilog_t *T, int32_t atom_id);
-size_t heap_new_int(trilog_t *T, int64_t v);
-size_t heap_new_flt(trilog_t *T, double v);
-// NULL arg_idx: unbound arguments.
-size_t heap_new_struct(trilog_t *T, int32_t functor_id, int32_t arity,
-                       size_t *arg_idx);
+// Grows the heap so n more cells fit; heap_alloc's slow path.
+void heap_grow(trilog_t *T, size_t n);
 
 size_t heap_mark(trilog_t *T);
 void heap_release(trilog_t *T, size_t mark);

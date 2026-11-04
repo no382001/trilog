@@ -107,7 +107,7 @@ freestanding_symbols() {
   [ "$status" -eq 0 ]
   run bash -c "nm -g --defined-only '$BATS_TEST_DIRNAME/../../_build/dev-posix-open/libtrilog.a' | awk '\$2 ~ /T/ {print \$3}'"
   [[ "$output" == *"unify"* ]]
-  [[ "$output" == *"heap_alloc"* ]]
+  [[ "$output" == *"heap_grow"* ]]
   [[ "$output" == *"trilog_new"* ]]
 }
 

@@ -26,68 +26,17 @@ void heap_init(trilog_t *T) {
     engine_fatal(T, "duplicate well-known atom\n");
 }
 
-size_t heap_alloc(trilog_t *T, size_t n) {
-  if (T->heap_top + n > T->heap_cap) {
-    size_t cap = T->heap_cap;
-    while (T->heap_top + n > cap)
-      cap = mem_grow_by(T, cap, T->heap_grow_percent);
-    T->heap = mem_grow_n(T, T->heap, cap, sizeof(cell_t));
-    T->heap_cap = cap;
-  }
-  size_t base = T->heap_top;
-  T->heap_top += n;
-  if (T->heap_top > T->heap_peak)
-    T->heap_peak = T->heap_top;
-  return base;
+void heap_grow(trilog_t *T, size_t n) {
+  size_t cap = T->heap_cap;
+  while (T->heap_top + n > cap)
+    cap = mem_grow_by(T, cap, T->heap_grow_percent);
+  T->heap = mem_grow_n(T, T->heap, cap, sizeof(cell_t));
+  T->heap_cap = cap;
 }
 
 // high-water mark in cells, independent of heap_top (which drops on
 // backtracking and GC compaction).
 size_t heap_peak_size(trilog_t *T) { return T->heap_peak; }
-
-size_t heap_new_var(trilog_t *T) {
-  size_t i = heap_alloc(T, 1);
-  T->heap[i].tag = TAG_REF;
-  T->heap[i].as.ref = i;
-  return i;
-}
-
-size_t heap_new_atom(trilog_t *T, int32_t atom_id) {
-  size_t i = heap_alloc(T, 1);
-  T->heap[i].tag = TAG_ATOM;
-  T->heap[i].as.atom_id = atom_id;
-  return i;
-}
-
-size_t heap_new_int(trilog_t *T, int64_t v) {
-  size_t i = heap_alloc(T, 1);
-  T->heap[i].tag = TAG_INT;
-  T->heap[i].as.ival = v;
-  return i;
-}
-
-size_t heap_new_flt(trilog_t *T, double v) {
-  size_t i = heap_alloc(T, 1);
-  T->heap[i].tag = TAG_FLT;
-  T->heap[i].as.fval = v;
-  return i;
-}
-
-size_t heap_new_struct(trilog_t *T, int32_t functor_id, int32_t arity,
-                       size_t *arg_idx) {
-  size_t base = heap_alloc(T, (size_t)(1 + arity));
-  T->heap[base].tag = TAG_FUNCTOR;
-  T->heap[base].as.func.atom_id = functor_id;
-  T->heap[base].as.func.arity = arity;
-  for (int32_t i = 0; i < arity; i++) {
-    T->heap[base + 1 + i].tag = TAG_REF;
-    T->heap[base + 1 + i].as.ref = arg_idx ? arg_idx[i] : base + 1 + (size_t)i;
-  }
-  size_t str = heap_alloc(T, 1);
-  T->heap[str].tag = TAG_STR;
-  T->heap[str].as.ptr = base;
-  return str;
-}
 
 size_t heap_mark(trilog_t *T) { return T->heap_top; }
 void heap_release(trilog_t *T, size_t mark) {

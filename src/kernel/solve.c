@@ -2553,7 +2553,8 @@ A:
     if (!T->yield_fn(T, T->sp, T->yield_ud))
       engine_abort(T);
   }
-  gc_maybe_run(T, &cn, T->stack, T->sp, rename, nvars, &active_catch);
+  if (T->heap_top >= T->gc_threshold)
+    gc_maybe_run(T, &cn, T->stack, T->sp, rename, nvars, &active_catch);
   if (gc_heap_exhausted(T)) {
     if (do_throw(T, make_resource_error(T, "memory"), &cn, &active_catch))
       goto A;
