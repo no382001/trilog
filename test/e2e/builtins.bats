@@ -689,9 +689,9 @@ q(X, 4) :- X == a.' >"$BATS_TEST_TMPDIR/q.pl"
   run "$TRILOG" -e "
     findall(x, catch(open('no/such/file', read, _), _, fail), _),
     length(Ss, 16), maplist(open('README.md', read), Ss), Ss = [S1|_],
-    ( open('README.md', read, _) -> R1 = opened ; R1 = full ),
+    catch(( open('README.md', read, _), R1 = opened ), error(resource_error(streams), _), R1 = full),
     close(S1),
-    ( open('README.md', read, _) -> R2 = reused ; R2 = full ),
+    catch(( open('README.md', read, _), R2 = reused ), error(resource_error(streams), _), R2 = full),
     write(r(R1, R2)), nl.
   "
   [ "$status" -eq 0 ]

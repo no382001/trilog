@@ -1696,6 +1696,8 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     }
     int stream_id =
         stream_open(T, atom_name(T, T->heap[path_d].as.atom_id), fmode);
+    if (stream_id == -2)
+      T->pending_error_ball = make_resource_error(T, "streams");
     if (stream_id < 0) {
       *ok = 0;
       return 1;

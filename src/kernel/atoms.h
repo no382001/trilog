@@ -72,7 +72,7 @@
   X(atom_gt, ">")                                                              \
   X(atom_get_code, "get_code")                                                 \
   X(atom_write_raw, "$$write_raw")                                             \
-  X(atom_open, "open")                                                         \
+  X(atom_open, "$$open")                                                       \
   X(atom_close, "close")                                                       \
   X(atom_consult, "$$consult")                                                 \
   X(atom_dynamic, "dynamic")                                                   \

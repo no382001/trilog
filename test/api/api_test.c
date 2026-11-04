@@ -423,7 +423,7 @@ static void test_io(trilog_t *t) {
                               "leak(N) :- open('mem/v.pl', read, _), "
                               "N1 is N - 1, leak(N1).") == TRILOG_TRUE);
   CHECK(trilog_query(t, "leak(16)", collect, &e) == TRILOG_TRUE);
-  CHECK(trilog_query(t, "leak(1)", collect, &e) == TRILOG_FALSE);
+  CHECK(trilog_query(t, "leak(1)", collect, &e) == TRILOG_ERROR);
   trilog_close_streams(t);
   CHECK(trilog_query(t, "leak(1)", collect, &e) == TRILOG_TRUE);
   trilog_close_streams(t);

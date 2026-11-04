@@ -9,7 +9,7 @@ int stream_open(trilog_t *T, const char *path, const char *mode) {
   while (i < MAX_OPEN_STREAMS && T->streams[i])
     i++;
   if (i == MAX_OPEN_STREAMS)
-    return -1;
+    return -2;
   io_reader_t *r = mem_grow_n(T, NULL, 1, sizeof *r);
   void *h = io_file_open(T, path, mode);
   if (!h) {

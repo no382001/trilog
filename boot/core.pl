@@ -577,6 +577,39 @@ flush_output(S) :-
     '$with_context'('$resolve_stream'(S, N), flush_output/1),
     ( '$$flush'(N) -> true ; throw(error(existence_error(stream, S), flush_output/1)) ).
 
+%!  open(@Source, @Mode, -Stream) is det.
+%   A file that cannot be opened raises existence_error, or permission_error
+%   when it or its directory is there.
+open(Source, Mode, Stream) :-
+    '$with_context'('$open_check'(Source, Mode, Stream), open/3),
+    (   '$with_context'('$$open'(Source, Mode, S), open/3)
+    ->  Stream = S
+    ;   '$open_error'(Source, Mode, E),
+        throw(error(E, open/3))
+    ).
+
+'$open_check'(Source, Mode, Stream) :-
+    (   var(Source) -> throw(error(instantiation_error, _))
+    ;   var(Mode) -> throw(error(instantiation_error, _))
+    ;   \+ atom(Mode) -> throw(error(type_error(atom, Mode), _))
+    ;   nonvar(Stream) -> throw(error(uninstantiation_error(Stream), _))
+    ;   \+ atom(Source) -> throw(error(domain_error(source_sink, Source), _))
+    ;   memberchk(Mode, [read, write, append]) -> true
+    ;   throw(error(domain_error(io_mode, Mode), _))
+    ).
+
+'$open_error'(F, Mode, E) :-
+    (   '$file_exists'(F)
+    ->  E = permission_error(open, source_sink, F)
+    ;   Mode \== read, '$directory'(F, Dir), '$file_exists'(Dir)
+    ->  E = permission_error(open, source_sink, F)
+    ;   E = existence_error(source_sink, F)
+    ).
+
+% file_mtime/2 is the platform's; without it nothing is known to exist.
+'$file_exists'(F) :-
+    catch(file_mtime(F, _), error(existence_error(procedure, _), _), fail).
+
 %!  close(+Stream, +Options) is det.
 %   Options: force(Bool), which changes nothing; close/1 never raises.
 close(S, Opts) :-
