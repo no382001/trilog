@@ -201,6 +201,7 @@ struct trilog {
   int answer_fresh;
   bool answer_naming;
   bool answer_plain; // an unnamed variable prints as _G<n>, not a fresh _A
+  bool parse_repr;   // the last parse error is a representation_error
   int print_last;    // the last char the printer wrote, 0 at the start
   bool print_prefix; // a prefix operator was just written
 };

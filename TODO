@@ -1,7 +1,7 @@
 regressions:
 
 must have:
-- syntax conformity (make conformity): 353/366
+- syntax conformity (make conformity): 356/366
 
 correctness:
 - reconsulting a file while one of its predicates still has a choicepoint breaks the logical update view: member(X, [a,b]), consult('lib/lists.pl'), write(X), fail loops on b forever
@@ -26,3 +26,6 @@ guidelines:
 - minimize the interpreter code in C
 - same kind of embeddability goals as on main; builds as a library for linux and the rp2040 (pico/)
 - malloc/realloc usage minimized, ideally the memory we can use is up to the user embedding the interpreter
+
+good to have:
+- tracing?
