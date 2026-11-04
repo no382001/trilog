@@ -1,5 +1,32 @@
 :- '$builtin_file'.
 
+:- module(lists, [append/3,
+                  member/2,
+                  memberchk/2,
+                  length/2,
+                  reverse/2,
+                  is_list/1,
+                  last/2,
+                  nth0/3,
+                  nth1/3,
+                  nth0/4,
+                  nth1/4,
+                  sum_list/2,
+                  max_list/2,
+                  min_list/2,
+                  select/3,
+                  delete/3,
+                  subtract/3,
+                  intersection/3,
+                  union/3,
+                  flatten/2,
+                  list_to_set/2,
+                  max_member/2,
+                  min_member/2,
+                  permutation/2,
+                  numlist/3
+                 ]).
+
 %!  append(?List1, ?List2, ?List3) is nondet.
 append([], L, L).
 append([H|T], L, [H|R]) :- append(T, L, R).
