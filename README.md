@@ -2,21 +2,28 @@
 
 [![CI](https://github.com/no382001/trilog/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/no382001/trilog/actions/workflows/ci.yml?query=branch%3Amain)
 
-A Prolog interpreter aiming to be embeddable.
+An embeddable Prolog interpreter written in C11, aiming for ISO conformance.
 
-Tri as in three, is a play on the 3 states of the the stack machine that is the ABC algorithm in M. H. van Emden's *An Algorithm for Interpreting Prolog Programs* (University of Waterloo, CS-81-28, 1981). ABC is not short for anything. A, B and C are the three labels: go down while there is an untried alternative, come back up and try the next one when there is not, and fail once you have climbed past the root. trilog's solver is built on this algorithm.
+The "tri" is for three: the three states of the ABC algorithm, which trilog's solver is built on (see [How the solver works](#how-the-solver-works)). The "tri" could also, coincidentally, refer to Trismegistos, the thrice-great, quoted in [History](#history).
 
 ## Contents
 
+- [Current goals](#current-goals)
 - [Build](#build)
 - [Embedding](#embedding)
 - [Libraries](#libraries)
+- [How the solver works](#how-the-solver-works)
 - [History](#history)
 - [License](#license)
 
+## Current goals
+
+- **Conformity.** Syntax comes first: trilog passes 336 of the 366 [syntactic conformity tests](https://www.complang.tuwien.ac.at/ulrich/iso-prolog/conformity_testing). Where the standard leaves room, as in how the toplevel prints answers or which error a library predicate throws, trilog follows [Scryer Prolog](https://codeberg.org/mthom/scryer-prolog).
+- **Useful work on a Raspberry Pi Pico W.** The aim is a system that does real tasks (at least) on a 264 KB microcontroller, written in portable ISO Prolog, with C only for the hardware. [`pico/`](pico/) is the current state: an HTTP server in Prolog that serves pages, switches the LED, and shows memory stats, a mail log and the files built into the image.
+
 ## Build
 
-You need `build-essential` and `clang-format`.
+You need `build-essential` and `clang-format` 21.1.8 (`pipx install clang-format==21.1.8`). Every build formats the C sources first, and an older `clang-format` rewrites some of them.
 
 ```sh
 make           # debug build: ./trilog
@@ -24,6 +31,13 @@ make release   # release build: _build/trilog and _build/release-posix/libtrilog
 ```
 
 The release build has the Prolog core and libraries built in, so it runs without the source tree.
+
+| Command | Runs |
+| --- | --- |
+| `make test` | the system tests in `test/e2e/` and the C API tests |
+| `make quad` | the Prolog tests in `test/quad/` |
+| `make conformity` | the ISO conformity tests in `test/conformity/` |
+| `make format` | `clang-format` on every C source |
 
 ## Embedding
 
@@ -66,6 +80,8 @@ X = 2, Y = 4
 X = 3, Y = 6
 ```
 
+`trilog_new(NULL)` creates an interpreter with the defaults: the C library's `realloc` and `free`, standard files for I/O, and the Prolog core built into the library. Pass a `trilog_config_t` to change any of these; a freestanding build has no defaults and the embedder must supply them.
+
 The public API is [`include/trilog.h`](include/trilog.h):
 
 | Function | Use |
@@ -82,7 +98,7 @@ The public API is [`include/trilog.h`](include/trilog.h):
 | `trilog_set_yield` | call back every N steps, to stop a long query |
 | `trilog_usage`, `trilog_version` | memory use and build version |
 
-[`examples/embed.c`](examples/embed.c) uses `trilog_register` and `trilog_set_yield`.
+[`examples/embed.c`](examples/embed.c) uses `trilog_register` and `trilog_set_yield`. [`pico/`](pico/) embeds trilog on a Raspberry Pi Pico W, with an HTTP server written as Prolog modules in [`pico/prolog/`](pico/prolog/).
 
 The library builds three ways:
 
@@ -92,11 +108,13 @@ The library builds three ways:
 | no POSIX | `make PLATFORM=no_posix release` | needs a C library but no POSIX; no `get_time_ms/1` or `file_mtime/2`, so `make/0` raises `existence_error`; relative file names are not made absolute |
 | freestanding | `make PLATFORM=freestanding release` | no C library, for kernels and firmware; builds only `libtrilog.a` |
 
-The freestanding build has no default allocator or I/O, so `trilog_new` needs both in `trilog_config_t`. It calls only `mem*`, `str*`, `setjmp`, `longjmp` and libm, plus two functions for float text that the embedder defines. You can find the list in: [`include/trilog_platform.h`](include/trilog_platform.h), and an example for the complete embedding in: [`test/api/api_freestanding_test.c`](test/api/api_freestanding_test.c).
+The freestanding build has no default allocator or I/O, so `trilog_new` needs both in `trilog_config_t`. It calls only `mem*`, `str*`, `setjmp`, `longjmp` and libm, plus two functions for float text that the embedder defines. The list is in [`include/trilog_platform.h`](include/trilog_platform.h), and [`test/api/api_freestanding_test.c`](test/api/api_freestanding_test.c) is a complete example.
 
 ## Libraries
 
-The core holds the built-in predicates. Everything else is a library in [`lib/`](lib/), loaded with `ensure_loaded(library(Name))`. There is no module system yet: `use_module(library(Name))` is accepted as a placeholder and does the same as `ensure_loaded/1`.
+The core holds the built-in predicates. Everything else is a library in [`lib/`](lib/), loaded with `use_module(library(Name))` or `ensure_loaded(library(Name))`.
+
+A file that starts with `:- module(Name, Exports).` is a module. Its exported predicates are visible everywhere, and the rest are private to it. `Module:Goal` calls a module's predicate, private or not, and `meta_predicate/1` makes goals passed into a module run in the caller's module. `lists` is a module. The module system is new and may still change: private predicates are renamed when the file loads, so there is one global predicate table rather than one per module.
 
 | Library | Contents | Loaded by |
 | --- | --- | --- |
@@ -111,31 +129,74 @@ The core holds the built-in predicates. Everything else is a library in [`lib/`]
 
 `trilog_new` loads only the core. The CLI also loads the four marked "the CLI"; `./trilog -n` skips them.
 
+## How the solver works
+
+The solver is the ABC algorithm from M. H. van Emden's *An Algorithm for Interpreting Prolog Programs* (University of Waterloo, CS-81-28, 1981). It walks Prolog's search tree depth first, with an explicit stack instead of recursion, so a deep program does not use up the C stack.
+
+ABC is not short for anything, the way WAM is short for Warren's Abstract Machine. A, B and C are the labels of the algorithm's three states. This is van Emden's stack version (Fig. 2 in the paper). `cn` is the current node, `son(cn, x)` hands out the next untried child of `cn`, and `P(cn)` is the property being searched for:
+
+```text
+initialize the stack at empty
+cn := root
+push cn
+
+A: if P(cn)
+      then halt with success
+      else initialise son( ) for cn;
+           goto B
+   fi
+
+B: if son(cn, x)
+      then {x is the next son of cn}
+           cn := x; push cn; goto A
+      else {all sons of cn have been tried}
+           pop stack; goto C
+   fi
+
+C: if stack empty
+      then halt with failure
+      else cn becomes top of stack
+           goto B
+   fi
+```
+
+- **A** asks whether we are done.
+- **B** tries to go one level deeper.
+- **C** climbs back up when there is nowhere left to go at the current level.
+
+For Prolog, a node is the list of goals still to prove, and its children are the clauses whose head unifies with the first goal. `P(cn)` holds when no goals are left, so A has found an answer. trilog reports it and goes on to C to look for the next one. B tries the clauses in order, skipping the ones whose first argument cannot match, and a matching clause's body replaces the goal it matched.
+
+The labels `A:`, `B:` and `C:` are in `solve()` in [`src/kernel/solve.c`](src/kernel/solve.c). Each stack frame (`frame_t` in [`src/kernel/solve.h`](src/kernel/solve.h)) holds what C needs to resume: the goal list, the index of the next clause to try, the heap and trail marks to undo bindings back to, and the stack depth a cut removes frames down to.
+
 ## History
 
-trilog uses the ABC algorithm because it is very simple. Van Emden himself presented it that way:
+trilog was started as an effort to understand how a Prolog system works by building one, because:
+
+> Μαθεῖν θέλω τὰ ὄντα καὶ νοῆσαι τὴν τούτων φύσιν καὶ γνῶναι τὸν θεόν. "I wish to learn about the things that are, to understand their nature and to know God." — *Poimandres* (Corpus Hermeticum I.3)
+
+trilog uses the ABC algorithm because it is simple, where an efficient solver is usually complicated. As van Emden puts it:
 
 > The only novelty we believe this paper to have is the human-oriented form of the algorithm and its derivation from a mathematical description of the SLD (Selective Linear Definite clause resolution) theorem-prover. — M. H. van Emden, *An interpreting algorithm for Prolog programs*, First International Logic Programming Conference (1982)
 
-trilog is not a WAM. The goal is the most efficient interpreter that stays this simple. A WAM would be much faster, but trilog is fast enough for now; a WAM-style backend may come later.
+trilog has no WAM. The goal is the most efficient interpreter that stays this simple. A WAM, ZIP or BinWAM backend would be much faster. trilog is fast enough for now, but one would be nice to have later.
 
-The first engine is on `main` ([`a3536a4`](https://github.com/no382001/trilog/commit/a3536a4597ec586ace19cc373ceccc0b86343f0b)). Lots of things already worked there, but it was getting harder to see what the engine was actually doing, and the design problems kept piling up. So it was rewritten, starting again from the solver:
+The first engine is on [`a3536a4`](https://github.com/no382001/trilog/commit/a3536a4597ec586ace19cc373ceccc0b86343f0b). Lots of things already worked there, but it was getting harder to see what the engine was actually doing and the design problems kept piling up. It also did not fit on a Raspberry Pi Pico W, which was the goal. So it was rewritten from the ground up, because:
 
 > The only applicable research method is to accumulate experience by implementing a system, synthesize the experience, think for a while and start over. — E. Sandewall, *Programming in an Interactive Environment: The LISP Experience* (1978)
 
-Both engines were measured on the same machine with `perf stat`: the current engine as a release build, the first engine with `-O2` and no sanitiser. Times are median CPU time (`task-clock`) of 7 runs (63 for start-up). Instructions are user-space instructions retired, which barely change between runs. Peak memory is measured with GNU `time`. "Now" runs `./trilog -n`, which loads only the core; the benchmarks need nothing else. `fib/2` cuts on `N < 2`, because the first engine runs out of stack on the version without the cut.
+Both engines were measured on the same machine, an AMD Ryzen 5 5600, with [`test/perf/run.sh`](test/perf/run.sh): the current engine as a release build, the first engine with `-O2` and no sanitizer. Each figure is the median of 7 runs (63 for start-up). Times are CPU time (`task-clock`). Instructions are user-space instructions retired, which barely change between runs. Peak memory is the peak resident set size. "Now" runs `_build/trilog -f -n`, which loads only the core; the benchmarks need nothing else. `fib/2` cuts on `N < 2`, because the first engine runs out of stack on the version without the cut.
 
-| Workload | First engine | Now | Faster | Fewer instructions | Less memory |
+| Workload | First engine | Now, v0.2.0 ([`5b8feef`](https://github.com/no382001/trilog/commit/5b8feef550df7375eab563fd1a72ab316da3899e)) | Faster | Fewer instructions | Less memory |
 | --- | --- | --- | --- | --- | --- |
-| start and exit | 10.0 ms, 12.5M ins, 2.6 MB | 4.3 ms, 5.7M ins, 2.2 MB | 2.3x | 2.2x | 1.2x |
-| naive reverse, 300 elements | 1,418 ms, 4,222M ins, 232 MB | 49 ms, 157M ins, 2.8 MB | 29x | 27x | 84x |
-| 8 queens, all solutions | 4,029 ms, 14,289M ins, 16.3 MB | 512 ms, 2,595M ins, 2.5 MB | 7.9x | 5.5x | 6.5x |
-| `fib(21)` | 4,525 ms, 7,809M ins, 61 MB | 80 ms, 218M ins, 2.8 MB | 56x | 36x | 22x |
-| build 20,000 atoms | 11,766 ms, 41,079M ins, 28.9 MB | 1,006 ms, 4,107M ins, 3.3 MB | 12x | 10x | 8.6x |
+| start and exit | 2.35 ms, 14.3M ins, 4.5 MB | 0.52 ms, 1.1M ins, 2.4 MB | 4.5x | 13x | 1.9x |
+| naive reverse, 300 elements | 308 ms, 4,373M ins, 234 MB | 7.0 ms, 105M ins, 3.0 MB | 44x | 42x | 78x |
+| 8 queens, all solutions | 1,014 ms, 14,376M ins, 18.4 MB | 128 ms, 2,137M ins, 2.5 MB | 7.9x | 6.7x | 7.4x |
+| `fib(21)` | 648 ms, 6,686M ins, 57.3 MB | 11.9 ms, 178M ins, 3.0 MB | 54x | 37x | 19x |
+| build 20,000 atoms | 3,822 ms, 41,105M ins, 31.5 MB | 237 ms, 3,473M ins, 3.3 MB | 16x | 12x | 9.5x |
 
-On average (geometric mean) the new engine is 12.8x faster, runs 10.3x fewer instructions and uses 10.4x less memory.
+On average (geometric mean) the new engine is 16.9x faster, runs 17.5x fewer instructions and uses 11.5x less memory. Sadly the interpreter used to be marginally faster in some previous commits after the rearchitecture, but added features lost some performance.
 
-Without `-n`, the CLI also loads its four libraries, and start-up takes 5.2 ms, 10.1M instructions and 2.7 MB.
+Without `-n`, the CLI also loads its four libraries, and start-up takes 1.1 ms, 5.3M instructions and 2.9 MB.
 
 ## License
 
