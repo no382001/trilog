@@ -6,7 +6,6 @@ builtins_quad	current_prolog_flag(max_integer, V)
 builtins_quad	current_prolog_flag(min_integer, V)
 conformity	#163 op(9,fy,p),op(9,xfy,p). ⏎ write_canonical(1 p p p 2).
 conformity	#164 op(7,fy,p),op(9,yfx,p). ⏎ write_canonical(1 p p p 2).
-conformity	#170 set_prolog_flag( ⏎  double_quotes,chars).
 conformity	#259 X = 0'\ ⏎ +'/*'. %*/1.
 conformity	#271 get_char(C).%a
 conformity	#300 writeq("\0\").

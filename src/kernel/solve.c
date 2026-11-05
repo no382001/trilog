@@ -1918,13 +1918,12 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
         {heap_new_atom(T, atom_flag_max_arity),
          heap_new_atom(T, atom_intern(T, "unbounded"))},
         {heap_new_atom(T, atom_flag_double_quotes),
-         heap_new_atom(T, atom_chars_kw)},
-        {heap_new_atom(T, atom_intern(T, "unknown")),
-         heap_new_atom(T, atom_error)},
-        {heap_new_atom(T, atom_intern(T, "char_conversion")),
-         heap_new_atom(T, atom_intern(T, "off"))},
-        {heap_new_atom(T, atom_intern(T, "debug")),
-         heap_new_atom(T, atom_intern(T, "off"))},
+         heap_new_atom(T, T->flag_double_quotes)},
+        {heap_new_atom(T, atom_flag_unknown),
+         heap_new_atom(T, T->flag_unknown)},
+        {heap_new_atom(T, atom_flag_char_conversion),
+         heap_new_atom(T, T->flag_char_conversion)},
+        {heap_new_atom(T, atom_flag_debug), heap_new_atom(T, T->flag_debug)},
     };
     size_t list = heap_new_atom(T, atom_nil);
     for (size_t i = sizeof flags / sizeof *flags; i-- > 0;) {
@@ -1933,6 +1932,23 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       list = heap_new_struct(T, atom_dot, 2, cell);
     }
     *ok = unify(T, f + 1, list);
+    return 1;
+  }
+  // '$$set_flag'(+Flag, +Value): set_prolog_flag/2 has checked both.
+  if (arity == 2 && id == atom_set_flag) {
+    int32_t flag = T->heap[heap_deref(T, f + 1)].as.atom_id;
+    int32_t value = T->heap[heap_deref(T, f + 2)].as.atom_id;
+    *ok = 1;
+    if (flag == atom_flag_double_quotes)
+      T->flag_double_quotes = value;
+    else if (flag == atom_flag_unknown)
+      T->flag_unknown = value;
+    else if (flag == atom_flag_char_conversion)
+      T->flag_char_conversion = value;
+    else if (flag == atom_flag_debug)
+      T->flag_debug = value;
+    else
+      *ok = 0;
     return 1;
   }
   // with_output_to/2's C half. capture_buf is a stack arena: each nested
@@ -2871,6 +2887,15 @@ B: {
       // heap_new_atom(-1) and later corrupt the heap.
       size_t first_d = heap_deref(T, first);
       size_t ball;
+      if (caller_key.pred_id != -1 && T->flag_unknown != atom_error) {
+        if (T->flag_unknown == atom_warning) {
+          char msg[256];
+          fmt(msg, sizeof msg, "%% Warning: unknown procedure %s/%d\n",
+              atom_name(T, caller_key.pred_id), (int)caller_key.pred_arity);
+          io_write_err(T, msg);
+        }
+        goto C;
+      }
       if (caller_key.pred_id != -1)
         ball = make_existence_error(T, "procedure", caller_key.pred_id,
                                     caller_key.pred_arity);

@@ -268,11 +268,16 @@ static void pstack_push(trilog_t *T, tterm_t *t) {
 
 static tterm_t *parse_string(trilog_t *T) {
   const char *buf = read_quoted(T, '"');
+  if (T->flag_double_quotes == atom_kw_atom)
+    return tt_atom(T, buf);
   tterm_t *acc = tt_atom(T, "[]");
   size_t n = strlen(buf);
   for (size_t i = n; i-- > 0;) {
     char c[2] = {buf[i], '\0'};
-    tterm_t *cons[2] = {tt_atom(T, c), acc};
+    tterm_t *e = T->flag_double_quotes == atom_kw_codes
+                     ? tt_int(T, (unsigned char)buf[i])
+                     : tt_atom(T, c);
+    tterm_t *cons[2] = {e, acc};
     acc = tt_struct(T, ".", 2, cons);
   }
   return acc;

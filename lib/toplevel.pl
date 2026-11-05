@@ -9,16 +9,12 @@
 :- dynamic(answered/0).
 :- dynamic(show_all/0).
 :- dynamic(pending/1).
-:- dynamic(tracing/0).
 
 %!  trace is det.
 %!  notrace is det.
-%   Queries after trace/0 run through library(trace), which shows each port
-%   and, at a terminal, waits for a key; notrace/0 stops that.
-trace :-
-    use_module(library(trace)),
-    ( tracing -> true ; assertz(tracing) ).
-notrace :- retractall(tracing).
+%   While the debug flag is on, queries run through library(trace)
+trace :- set_prolog_flag(debug, on).
+notrace :- set_prolog_flag(debug, off).
 
 %!  toplevel is det.
 %   Reads and runs queries until end of input or halt/0,1.
@@ -108,7 +104,8 @@ answers(Goal, VNs) :-
 
 run(Goal, VNs) :-
     (   tracing, Goal \== notrace
-    ->  trace_goal(user:Goal, VNs)
+    ->  use_module(library(trace)),
+        trace_goal(user:Goal, VNs)
     ;   call(user:Goal)
     ).
 
@@ -207,7 +204,8 @@ write_pairs([N-S|Ps], Names, Sep) :-
 % The right side of =, so an operator atom or a term whose operator binds
 % looser than 699 is bracketed.
 write_value(V, Names) :-
-    Opts = [quoted(true), double_quotes(true), variable_names(Names)],
+    ( current_prolog_flag(double_quotes, chars) -> DQ = true ; DQ = false ),
+    Opts = [quoted(true), double_quotes(DQ), variable_names(Names)],
     (   bracket(V)
     ->  write('('), write_term(V, Opts), write(')')
     ;   write_term(V, Opts)
@@ -223,6 +221,8 @@ bracket(V) :-
     ;   A =:= 1 -> memberchk(T, [fy, fx, xf, yf])
     ),
     !.
+
+tracing :- current_prolog_flag(debug, on).
 
 stop :-
     \+ show_all,

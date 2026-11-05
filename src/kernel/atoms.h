@@ -100,6 +100,13 @@
   X(atom_flag_integer_rounding_function, "integer_rounding_function")          \
   X(atom_flag_max_arity, "max_arity")                                          \
   X(atom_flag_double_quotes, "double_quotes")                                  \
+  X(atom_flag_unknown, "unknown")                                              \
+  X(atom_flag_char_conversion, "char_conversion")                              \
+  X(atom_flag_debug, "debug")                                                  \
+  X(atom_kw_codes, "codes")                                                    \
+  X(atom_off, "off")                                                           \
+  X(atom_warning, "warning")                                                   \
+  X(atom_set_flag, "$$set_flag")                                               \
   X(atom_toward_zero, "toward_zero")                                           \
   X(atom_chars_kw, "chars")                                                    \
   X(atom_bitand, "/\\")                                                        \

@@ -1,7 +1,7 @@
 regressions:
 
 must have:
-- syntax conformity (make conformity): 360/366
+- syntax conformity (make conformity): 361/366
 
 correctness:
 - reconsulting a file while one of its predicates still has a choicepoint breaks the logical update view: member(X, [a,b]), consult('lib/lists.pl'), write(X), fail loops on b forever
@@ -14,11 +14,10 @@ correctness:
 missing requirements:
 - modules: imports are not per module yet (every export is visible everywhere)
 - modules: not all libs use them 
-- missing iso builtins: set_prolog_flag/2, char_conversion/2
+- missing iso builtins: char_conversion/2 (the char_conversion flag can be set, but there is no table)
 - pico 2: building a 100-deep term and round-tripping it through term_to_atom runs out of memory; the prolog heap doubles to 8192 cells between GC points, then asks for 16384; trilog_config_t's heap_grow_percent and gc_grow_percent can now lower that, but pico/ does not set them yet
 - fix main-specific test expectations: 32-bit max_integer, last/2 arg order, sub_atom/5 single answer, answer printing (unhandled exception, X = Y)
 - a build without glibc: drop getenv, assert, ctype and errno from the engine, leaving stdio (default I/O), setjmp and libm
-- debug flag
 
 guidelines:
 - as much logic in prolog as possible

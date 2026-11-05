@@ -1432,7 +1432,6 @@ current_op(P, T, N) :- '$$op'(P, T, N).
 % --- prolog flags ---
 
 %!  current_prolog_flag(?Flag, ?Value) is nondet.
-%   no set_prolog_flag/2 currently
 current_prolog_flag(Flag, Value) :-
     '$$prolog_flags'(Flags),
     (   var(Flag)
@@ -1443,6 +1442,29 @@ current_prolog_flag(Flag, Value) :-
     ->  throw(error(domain_error(prolog_flag, Flag), current_prolog_flag/2))
     ;   throw(error(type_error(atom, Flag), current_prolog_flag/2))
     ).
+
+%!  set_prolog_flag(+Flag, +Value) is det.
+set_prolog_flag(Flag, Value) :-
+    '$with_context'('$check_flag'(Flag, Value), set_prolog_flag/2),
+    '$$set_flag'(Flag, Value).
+
+'$check_flag'(Flag, _) :- var(Flag), !, throw(error(instantiation_error, _)).
+'$check_flag'(_, Value) :- var(Value), !, throw(error(instantiation_error, _)).
+'$check_flag'(Flag, _) :- \+ atom(Flag), !, throw(error(type_error(atom, Flag), _)).
+'$check_flag'(Flag, Value) :-
+    (   '$flag_values'(Flag, Values)
+    ->  (   atom(Value), memberchk(Value, Values) -> true
+        ;   throw(error(domain_error(flag_value, Flag+Value), _))
+        )
+    ;   '$$prolog_flags'(Flags), memberchk(Flag-_, Flags)
+    ->  throw(error(permission_error(modify, flag, Flag), _))
+    ;   throw(error(domain_error(prolog_flag, Flag), _))
+    ).
+
+'$flag_values'(double_quotes, [chars, codes, atom]).
+'$flag_values'(unknown, [error, fail, warning]).
+'$flag_values'(char_conversion, [on, off]).
+'$flag_values'(debug, [on, off]).
 
 % The core's own dependencies.
 :- consult('../lib/error.pl').

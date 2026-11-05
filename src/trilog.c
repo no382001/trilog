@@ -1,5 +1,6 @@
 #include "trilog.h"
 #include "arena.h"
+#include "atoms.h"
 #include "ctx.h"
 #include "fmt.h"
 #include "heap.h"
@@ -100,6 +101,10 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   t->load_error_ball = (size_t)-1;
   t->op_gen = 1;
   t->error_pi_name = -1;
+  t->flag_double_quotes = atom_chars_kw;
+  t->flag_unknown = atom_error;
+  t->flag_char_conversion = atom_off;
+  t->flag_debug = atom_off;
   if (!io_set(t, c.io)) {
     c.free(c.alloc_ud, t);
     return NULL;

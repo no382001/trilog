@@ -779,7 +779,9 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
         break;
       }
       if (is_cons(T, r) && !(flags & PRINT_IGNORE_OPS)) {
-        if ((flags & (PRINT_ANSWER | PRINT_DOUBLE_QUOTES)) &&
+        if (((flags & PRINT_DOUBLE_QUOTES) ||
+             ((flags & PRINT_ANSWER) &&
+              T->flag_double_quotes == atom_chars_kw)) &&
             try_print_char_string(T, r, emit))
           break;
         token(T, emit, "[");

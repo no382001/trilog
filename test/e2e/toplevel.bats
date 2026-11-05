@@ -261,3 +261,11 @@ load common
   [[ "$output" == *"exit: (1) tp(1)"* ]]
   [ "$(printf '%s\n' "$output" | grep -c 'call:')" -eq 1 ]
 }
+
+@test "trace and notrace set the debug flag, and the flag turns tracing on" {
+  run bash -c "printf 'trace.\ncurrent_prolog_flag(debug, A).\nnotrace.\ncurrent_prolog_flag(debug, B).\nassertz(tp(1)).\nset_prolog_flag(debug, on).\ntp(1).\n' | '$TRILOG' -f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"A = on"* ]]
+  [[ "$output" == *"B = off"* ]]
+  [[ "$output" == *"call: (1) tp(1)"* ]]
+}
