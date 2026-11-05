@@ -3218,8 +3218,11 @@ static struct atom_ops *ops_slot(trilog_t *T, int32_t atom) {
 }
 
 static void ops_rebuild(trilog_t *T, pred_bucket_t *b) {
+  int32_t live = 0;
+  for (int32_t i = 0; b && i < b->count; i++)
+    live += clause_alive(&T->db[b->indices[i]]);
   int32_t need = 16;
-  while (b && need < 2 * b->count)
+  while (need < 2 * live)
     need *= 2;
   if (need != T->ops_len) {
     mem_free(T, T->ops);
