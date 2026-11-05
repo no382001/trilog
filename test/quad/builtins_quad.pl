@@ -887,3 +887,10 @@ cp_mine(2).
 
 ?- catch(current_predicate(f/a), error(E, _), true).
    E = type_error(predicate_indicator,f/a).
+
+% atom_chars/2 and number_chars/2 from characters leave no choice point
+?- '$$choice_mark'(_M0), atom_chars(_, [a,b]), '$$choice_mark'(_M1), _M0 == _M1.
+   true.
+
+?- '$$choice_mark'(_M0), number_chars(_, ['1','2']), '$$choice_mark'(_M1), _M0 == _M1.
+   true.

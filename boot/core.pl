@@ -1271,7 +1271,7 @@ atom_chars(A, Chars) :-
         '$$atom_codes'(A, Codes),
         '$codes_chars'(Codes, Chars)
     ;   '$chars_list'(Chars),
-        '$codes_chars'(Codes, Chars),
+        '$chars_codes'(Chars, Codes),
         '$$atom_codes'(A, Codes)
     ).
 
@@ -1299,13 +1299,13 @@ number_chars(N, Chars) :-
     ->  must_be(number, N),
         '$text_list_bound'(Chars, '$check_char'),
         (   '$complete_list'(Chars)
-        ->  '$codes_chars'(Codes, Chars),
+        ->  '$chars_codes'(Chars, Codes),
             '$parse_number'(Codes, N)
         ;   '$$number_codes'(N, Codes),
             '$codes_chars'(Codes, Chars)
         )
     ;   '$chars_list'(Chars),
-        '$codes_chars'(Codes, Chars),
+        '$chars_codes'(Chars, Codes),
         '$parse_number'(Codes, N)
     ).
 
@@ -1319,6 +1319,11 @@ number_chars(N, Chars) :-
 '$codes_chars'([Code|Codes], [Char|Chars]) :-
     '$$atom_codes'(Char, [Code]),
     '$codes_chars'(Codes, Chars).
+
+'$chars_codes'([], []).
+'$chars_codes'([Char|Chars], [Code|Codes]) :-
+    '$$atom_codes'(Char, [Code]),
+    '$chars_codes'(Chars, Codes).
 
 
 
