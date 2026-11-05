@@ -649,8 +649,11 @@ set_output(S) :-
 '$set_output'(S0, N) :-
     '$std_name'(N, S1),
     ( atom(S1), '$stream_alias'(S1, _) -> S = S1 ; '$alias_stream'(S0, S) ),
-    ( '$$retract'('$output'(_, _)) -> true ; true ),
-    '$$assertz'('$output'(S, N)).
+    (   '$output'(S, N)
+    ->  true
+    ;   ( '$$retract'('$output'(_, _)) -> true ; true ),
+        '$$assertz'('$output'(S, N))
+    ).
 
 % The current output's target, checked to be a text stream unless it is a
 % standard one.
