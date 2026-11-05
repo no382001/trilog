@@ -62,22 +62,32 @@ void io_flush_target(trilog_t *T, void *handle) {
   T->hooks.flush(T->hooks.userdata, handle);
 }
 
-// One byte at a time, so input meant for the host is never read ahead.
+// One byte at a time, so input meant for the host is never read ahead
+// further than a peek asks.
+int io_peek_at(trilog_t *T, int i) {
+  while (T->in_ahead_len <= i) {
+    char c;
+    if (T->in_eof ||
+        T->hooks.read(T->hooks.userdata, T->hooks.in, &c, 1) != 1) {
+      T->in_eof = true;
+      return -1;
+    }
+    T->in_ahead[T->in_ahead_len++] = (unsigned char)c;
+  }
+  return T->in_ahead[i];
+}
+
 int io_read_char(trilog_t *T) {
-  int c = io_peek_char(T);
-  T->in_peeked = -2;
+  int c = io_peek_at(T, 0);
+  if (c < 0) {
+    T->in_eof = false;
+    return -1;
+  }
+  memmove(T->in_ahead, T->in_ahead + 1, (size_t)--T->in_ahead_len);
   return c;
 }
 
-int io_peek_char(trilog_t *T) {
-  if (T->in_peeked == -2) {
-    char c;
-    T->in_peeked = T->hooks.read(T->hooks.userdata, T->hooks.in, &c, 1) == 1
-                       ? (unsigned char)c
-                       : -1;
-  }
-  return T->in_peeked;
-}
+int io_peek_char(trilog_t *T) { return io_peek_at(T, 0); }
 
 char *io_read_line(trilog_t *T, char *buf, int size) {
   int n = 0;
@@ -106,6 +116,22 @@ bool io_file_write(trilog_t *T, void *handle, const char *str) {
 
 long io_file_read(trilog_t *T, void *handle, char *buf, size_t n) {
   return T->hooks.read(T->hooks.userdata, handle, buf, n);
+}
+
+int io_reader_peek_at(trilog_t *T, io_reader_t *r, int i) {
+  if (r->pos + (size_t)i >= r->len) {
+    memmove(r->buf, r->buf + r->pos, r->len - r->pos);
+    r->len -= r->pos;
+    r->pos = 0;
+    while (r->len <= (size_t)i) {
+      long got = T->hooks.read(T->hooks.userdata, r->handle, r->buf + r->len,
+                               sizeof r->buf - r->len);
+      if (got <= 0)
+        return -1;
+      r->len += (size_t)got;
+    }
+  }
+  return (unsigned char)r->buf[r->pos + (size_t)i];
 }
 
 int io_reader_byte(trilog_t *T, io_reader_t *r, bool peek) {

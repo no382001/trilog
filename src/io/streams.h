@@ -10,3 +10,4 @@ void stream_close(trilog_t *T, int id);
 void *stream_handle(trilog_t *T, int id);
 char *stream_read_line(trilog_t *T, int id, char *buf, int size);
 int stream_byte(trilog_t *T, int id, bool peek);
+int stream_peek_at(trilog_t *T, int id, int i);

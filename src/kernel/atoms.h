@@ -107,6 +107,7 @@
   X(atom_off, "off")                                                           \
   X(atom_warning, "warning")                                                   \
   X(atom_set_flag, "$$set_flag")                                               \
+  X(atom_get_char, "$$get_char")                                               \
   X(atom_toward_zero, "toward_zero")                                           \
   X(atom_chars_kw, "chars")                                                    \
   X(atom_bitand, "/\\")                                                        \

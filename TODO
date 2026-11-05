@@ -5,9 +5,7 @@ must have:
 
 correctness:
 - reconsulting a file while one of its predicates still has a choicepoint breaks the logical update view: member(X, [a,b]), consult('lib/lists.pl'), write(X), fail loops on b forever
-- sub_atom/atom_length count bytes, not utf-8 chars (atom_length('Pécs', 5)) I mean how correct should we be?
 - quoted text cannot hold \0\ (atoms are C strings); iso also allows a representation error there
-- get_char/2 and friends read bytes, not utf-8 chars
 - put_byte/2 cannot write a 0 byte (atoms are C strings)
 - no set_stream_position/2, so reposition(true) is a property only
 
@@ -26,4 +24,5 @@ guidelines:
 - malloc/realloc usage minimized, ideally the memory we can use is up to the user embedding the interpreter
 
 good to have:
+- unicode: every character outside ascii is a letter; scryer classifies them by unicode category, so Ä starts a variable there
 - trace: built-ins and library predicates are one step, and variables made inside a clause print as _G123

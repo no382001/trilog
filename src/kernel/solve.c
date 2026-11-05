@@ -1051,10 +1051,12 @@ static char *read_whole_line(trilog_t *T, int sid) {
 }
 
 static size_t codes_from_cstr(trilog_t *T, const char *s) {
+  size_t base = T->wsp;
+  for (int code; *s; wstack_push(T, (size_t)code))
+    s += utf8_decode(s, &code);
   size_t acc = heap_new_atom(T, atom_nil);
-  size_t n = strlen(s);
-  for (size_t i = n; i-- > 0;) {
-    size_t args[2] = {heap_new_int(T, (unsigned char)s[i]), acc};
+  while (T->wsp > base) {
+    size_t args[2] = {heap_new_int(T, (int64_t)T->wstack[--T->wsp]), acc};
     acc = heap_new_struct(T, atom_dot, 2, args);
   }
   return acc;
@@ -1088,8 +1090,12 @@ static char *codes_text(trilog_t *T, size_t list, size_t max_len,
       return 0;
     if (n >= max_len)
       return 0;
-    mem_reserve(T, &T->scratch, &T->scratch_cap, n + 2);
-    ((char *)T->scratch)[n++] = (char)T->heap[h].as.ival;
+    mem_reserve(T, &T->scratch, &T->scratch_cap, n + 5);
+    int64_t code = T->heap[h].as.ival;
+    if (code >= 0x80 && code <= 0x10FFFF)
+      n += (size_t)utf8_encode((int)code, (char *)T->scratch + n);
+    else
+      ((char *)T->scratch)[n++] = (char)code;
     d = heap_deref(T, f + 2);
   }
   mem_reserve(T, &T->scratch, &T->scratch_cap, n + 1);
@@ -1463,7 +1469,7 @@ static int read_term_text(trilog_t *T, int sid) {
         return TEXT_CUT_OFF;
       continue;
     }
-    if (c == '\'' && prev == '0' && !ascii_alnum(prev2) && prev2 != '_') {
+    if (c == '\'' && prev == '0' && !name_char(prev2)) {
       int d = read_byte(T, sid, false);
       if (d < 0)
         return TEXT_CUT_OFF;
@@ -1735,6 +1741,35 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       c = stream_byte(T, sid, peek);
     else
       c = -2;
+    *ok = unify(T, f + 3, heap_new_int(T, c));
+    return 1;
+  }
+  // '$$get_char'(+Stream, +Peek, -Code): '$$get_byte' for one UTF-8
+  // character; a byte that does not start one is its own code.
+  if (arity == 3 && id == atom_get_char) {
+    size_t sd = heap_deref(T, f + 1);
+    bool peek = T->heap[heap_deref(T, f + 2)].as.ival != 0;
+    int sid = -1;
+    if ((T->heap[sd].tag != TAG_ATOM ||
+         T->heap[sd].as.atom_id != atom_user_input) &&
+        !resolve_stream_id(T, f + 1, &sid)) {
+      *ok = unify(T, f + 3, heap_new_int(T, -2));
+      return 1;
+    }
+    char b[5] = {0};
+    int c = sid < 0 ? io_peek_at(T, 0) : stream_peek_at(T, sid, 0);
+    if (c >= 0) {
+      b[0] = (char)c;
+      for (int i = 1; i < utf8_len(c); i++) {
+        int d = sid < 0 ? io_peek_at(T, i) : stream_peek_at(T, sid, i);
+        if (d < 0)
+          break;
+        b[i] = (char)d;
+      }
+      int len = utf8_decode(b, &c);
+      for (int i = 0; !peek && i < len; i++)
+        (void)(sid < 0 ? io_read_char(T) : stream_byte(T, sid, false));
+    }
     *ok = unify(T, f + 3, heap_new_int(T, c));
     return 1;
   }

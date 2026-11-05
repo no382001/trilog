@@ -275,9 +275,9 @@ static int atom_needs_quote(const char *s) {
   if (!strcmp(s, "[]") || !strcmp(s, "{}") || !strcmp(s, "!") ||
       !strcmp(s, ";"))
     return 0;
-  if (ascii_lower((unsigned char)s[0])) {
+  if (name_start((unsigned char)s[0])) {
     for (const char *p = s + 1; *p; p++)
-      if (!ascii_alnum((unsigned char)*p) && *p != '_')
+      if (!name_char((unsigned char)*p))
         return 1;
     return 0;
   }
@@ -289,7 +289,7 @@ static int atom_needs_quote(const char *s) {
   return 0;
 }
 
-static bool word_char(int c) { return ascii_alnum(c) || c == '_'; }
+static bool word_char(int c) { return name_char(c); }
 
 // Two tokens that would read back as one get a space between them, as does a
 // prefix operator and a following (, which would otherwise make it a functor.
@@ -467,7 +467,8 @@ static int try_print_char_string(trilog_t *T, size_t r, emit_fn emit) {
     if (T->heap[head].tag != TAG_ATOM)
       return 0;
     const char *name = atom_name(T, T->heap[head].as.atom_id);
-    if (name[0] == '\0' || name[1] != '\0')
+    int code;
+    if (name[0] == '\0' || name[utf8_decode(name, &code)] != '\0')
       return 0;
     size_t tail = heap_deref(T, cf + 2);
     if (T->heap[tail].tag == TAG_ATOM && T->heap[tail].as.atom_id == atom_nil)
@@ -484,8 +485,11 @@ static int try_print_char_string(trilog_t *T, size_t r, emit_fn emit) {
   emit(T, "\"");
   for (cell = r;;) {
     size_t cf = T->heap[cell].as.ptr;
-    char c = atom_name(T, T->heap[heap_deref(T, cf + 1)].as.atom_id)[0];
-    print_quoted_char(T, emit, (unsigned char)c, '"');
+    const char *name = atom_name(T, T->heap[heap_deref(T, cf + 1)].as.atom_id);
+    if (name[1] != '\0')
+      emit(T, name);
+    else
+      print_quoted_char(T, emit, (unsigned char)name[0], '"');
     size_t tail = heap_deref(T, cf + 2);
     if (T->heap[tail].tag == TAG_ATOM && T->heap[tail].as.atom_id == atom_nil)
       break;

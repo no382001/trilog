@@ -1074,7 +1074,7 @@ set_input(S) :- '$with_context'('$set_input'(S), set_input/1).
     '$alias_stream'(S0, S),
     '$check_in_char'(C),
     '$want_type'(S, text, input),
-    '$read_byte'(S, Peek, B),
+    '$read_unit'(char, S, Peek, B),
     (   B =:= -1
     ->  C = end_of_file
     ;   char_code(C0, B),
@@ -1085,13 +1085,16 @@ set_input(S) :- '$with_context'('$set_input'(S), set_input/1).
     '$alias_stream'(S0, S),
     '$check_in_code'(C),
     '$want_type'(S, text, input),
-    '$read_byte'(S, Peek, B),
+    '$read_unit'(char, S, Peek, B),
     C = B.
 
-'$read_byte'(S, _, _) :- var(S), !, throw(error(instantiation_error, _)).
-'$read_byte'(S, Peek, B) :-
+'$read_byte'(S, Peek, B) :- '$read_unit'(byte, S, Peek, B).
+
+% A byte, or a UTF-8 character's code.
+'$read_unit'(_, S, _, _) :- var(S), !, throw(error(instantiation_error, _)).
+'$read_unit'(Unit, S, Peek, B) :-
     '$input_stream'(S),
-    '$$get_byte'(S, Peek, B0),
+    (   Unit == byte -> '$$get_byte'(S, Peek, B0) ; '$$get_char'(S, Peek, B0) ),
     (   B0 =:= -2 -> throw(error(existence_error(stream, S), _))
     ;   B0 =:= -3 -> throw(error(permission_error(input, stream, S), _))
     ;   B0 =:= -1 -> '$hit_eof'(S, Peek), B = -1

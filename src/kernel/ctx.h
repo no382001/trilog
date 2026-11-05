@@ -183,7 +183,10 @@ struct trilog {
   size_t capture_starts[CAPTURE_STACK_MAX];
   int capture_sp;
   size_t tta_pos; // in scratch
-  int in_peeked;  // the byte peek_char/1 saw on user_input, or -2
+  // Bytes peeked on user_input but not read; in_eof once a peek hit the end.
+  unsigned char in_ahead[4];
+  int in_ahead_len;
+  bool in_eof;
   char *read_buf; // the text of the term read/1 is reading
   size_t read_buf_cap;
 

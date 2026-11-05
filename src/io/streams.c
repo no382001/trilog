@@ -41,6 +41,14 @@ char *stream_read_line(trilog_t *T, int id, char *buf, int size) {
   return io_reader_line(T, T->streams[id], buf, size);
 }
 
+int stream_peek_at(trilog_t *T, int id, int i) {
+  if (!stream_handle(T, id))
+    return -2;
+  if (T->streams[id]->output)
+    return -3;
+  return io_reader_peek_at(T, T->streams[id], i);
+}
+
 int stream_byte(trilog_t *T, int id, bool peek) {
   if (!stream_handle(T, id))
     return -2;

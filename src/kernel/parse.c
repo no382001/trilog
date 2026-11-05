@@ -163,7 +163,7 @@ static const char *read_while(trilog_t *T, int (*pred)(int)) {
   return T->tok;
 }
 
-static int is_ident_char(int c) { return ascii_alnum(c) || c == '_'; }
+static int is_ident_char(int c) { return name_char(c); }
 
 // The escape after a backslash: a control or meta escape, octal \NNN\ or
 // hex \xHH\.
@@ -206,21 +206,10 @@ static int read_escape(trilog_t *T) {
 
 // Codes above 127 are stored as their UTF-8 bytes, as source text is.
 static size_t put_code(trilog_t *T, size_t n, int c) {
-  if (c < 0x80) {
-    tok_put(T, n++, (char)c);
-  } else if (c < 0x800) {
-    tok_put(T, n++, (char)(0xC0 | c >> 6));
-    tok_put(T, n++, (char)(0x80 | (c & 0x3F)));
-  } else if (c < 0x10000) {
-    tok_put(T, n++, (char)(0xE0 | c >> 12));
-    tok_put(T, n++, (char)(0x80 | (c >> 6 & 0x3F)));
-    tok_put(T, n++, (char)(0x80 | (c & 0x3F)));
-  } else {
-    tok_put(T, n++, (char)(0xF0 | c >> 18));
-    tok_put(T, n++, (char)(0x80 | (c >> 12 & 0x3F)));
-    tok_put(T, n++, (char)(0x80 | (c >> 6 & 0x3F)));
-    tok_put(T, n++, (char)(0x80 | (c & 0x3F)));
-  }
+  char b[4];
+  int len = utf8_encode(c, b);
+  for (int i = 0; i < len; i++)
+    tok_put(T, n++, b[i]);
   return n;
 }
 
@@ -270,14 +259,19 @@ static tterm_t *parse_string(trilog_t *T) {
   const char *buf = read_quoted(T, '"');
   if (T->flag_double_quotes == atom_kw_atom)
     return tt_atom(T, buf);
+  size_t base = T->psp;
+  for (const char *p = buf; *p;) {
+    int code;
+    int len = utf8_decode(p, &code);
+    char c[5] = {0};
+    memcpy(c, p, (size_t)len);
+    p += len;
+    pstack_push(T, T->flag_double_quotes == atom_kw_codes ? tt_int(T, code)
+                                                          : tt_atom(T, c));
+  }
   tterm_t *acc = tt_atom(T, "[]");
-  size_t n = strlen(buf);
-  for (size_t i = n; i-- > 0;) {
-    char c[2] = {buf[i], '\0'};
-    tterm_t *e = T->flag_double_quotes == atom_kw_codes
-                     ? tt_int(T, (unsigned char)buf[i])
-                     : tt_atom(T, c);
-    tterm_t *cons[2] = {e, acc};
+  while (T->psp > base) {
+    tterm_t *cons[2] = {T->pstack[--T->psp], acc};
     acc = tt_struct(T, ".", 2, cons);
   }
   return acc;
@@ -304,7 +298,9 @@ static int parse_char_code(trilog_t *T) {
   }
   if (*T->P == '\n' || *T->P == '\t')
     perr(T, "layout other than a space after 0'");
-  return (unsigned char)*T->P++;
+  int code;
+  T->P += utf8_decode(T->P, &code);
+  return code;
 }
 
 static int base_digit(int c, int base) {
@@ -425,7 +421,7 @@ static int peek_op(trilog_t *T, size_t *len_out, op_t *out,
       *len_out = len;
     return found;
   }
-  if (ascii_lower((unsigned char)*T->P)) {
+  if (name_start((unsigned char)*T->P)) {
     const char *save = T->P;
     const char *name = read_while(T, is_ident_char);
     int found = find(T, name, out);
@@ -608,7 +604,7 @@ start:
     goto produced;
   }
   {
-    int lower = ascii_lower((unsigned char)*T->P);
+    int lower = name_start((unsigned char)*T->P);
     if (!lower && !is_symbol_char((unsigned char)*T->P))
       perr(T, "unexpected character");
     const char *name = read_name(T, lower ? is_ident_char : is_symbol_char);
