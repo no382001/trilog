@@ -2104,19 +2104,24 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     *ok = 1;
     return 1;
   }
-  if (arity == 1 && id == atom_capture_stop) {
+  // '$$capture_stop'(?Text) or '$$capture_stop'(+Kind, ?Text): the text as
+  // an atom, or as codes, which interns nothing.
+  if ((arity == 1 || arity == 2) && id == atom_capture_stop) {
     if (T->capture_sp <= 0) {
       *ok = 0;
       return 1;
     }
     T->capture_sp--;
     size_t start = T->capture_starts[T->capture_sp];
-    size_t result = heap_new_atom(
-        T, atom_intern(T, T->capture_buf ? T->capture_buf + start : ""));
+    const char *text = T->capture_buf ? T->capture_buf + start : "";
+    bool codes = arity == 2 && T->heap[heap_deref(T, f + 1)].tag == TAG_ATOM &&
+                 T->heap[heap_deref(T, f + 1)].as.atom_id == atom_kw_codes;
+    size_t result = codes ? codes_from_cstr(T, text)
+                          : heap_new_atom(T, atom_intern(T, text));
     if (T->capture_buf)
       T->capture_buf[start] = '\0';
     T->capture_pos = start;
-    *ok = unify(T, f + 1, result);
+    *ok = unify(T, f + arity, result);
     return 1;
   }
   if (arity == 1 && id == atom_bag_open) {

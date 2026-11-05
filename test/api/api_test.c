@@ -556,6 +556,21 @@ static void test_clause_slots(void) {
   trilog_free(t);
 }
 
+static void test_capture_atoms(trilog_t *t) {
+  collected c = {0};
+  const char *q = "with_output_to(chars(_), write(f(_))), "
+                  "with_output_to(codes(_), write(g(_)))";
+  CHECK(trilog_query(t, q, collect, &c) == TRILOG_TRUE);
+  CHECK(trilog_query(t, "atom_chars('_G0123456789', _)", collect, &c) ==
+        TRILOG_TRUE);
+  trilog_usage_t u0, u1;
+  trilog_usage(t, &u0);
+  for (int i = 0; i < 50; i++)
+    CHECK(trilog_query(t, q, collect, &c) == TRILOG_TRUE);
+  trilog_usage(t, &u1);
+  CHECK(u1.atoms == u0.atoms);
+}
+
 static void test_usage(trilog_t *t) {
   trilog_usage_t u;
   trilog_usage(t, &u);
@@ -631,6 +646,7 @@ int main(void) {
   test_yield(t);
   test_io(t);
   test_usage(t);
+  test_capture_atoms(t);
   test_two_interpreters();
   test_create_free();
   test_bad_boot();

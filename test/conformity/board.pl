@@ -13,7 +13,7 @@ conf(N) :- run(N, line).
 %!  page(+Out, +N) is det.
 %   The same lines as HTML on Out, each shown as soon as its entry is done.
 page(Out, N) :-
-    text:emit(Out, "<pre>\n"),
+    text:emit(Out, "<pre>\n#\tresult\tms\tatoms\tbytes\tquery  ->  expected\n"),
     run(N, row(Out)),
     text:emit(Out, "</pre>\n").
 
@@ -46,10 +46,10 @@ report(line, N, _, _, Ok, cost(Ms, DA, DL)) :-
     write(DA), write(' atoms, '), write(DL), write(' B'), nl.
 % A piece at a time: one list for the whole line does not fit the heap.
 report(row(Out), N, QCs, ACs, Ok, cost(Ms, DA, DL)) :-
-    text:emit(Out, (text:int(N), " ", text:atom(Ok), " ", text:int(Ms), " ms, ",
-                    text:int(DA), " atoms, ", text:int(DL), " B: ")),
+    text:emit(Out, (text:int(N), "\t", text:atom(Ok), "\t", text:int(Ms), "\t",
+                    text:int(DA), "\t", text:int(DL), "\t")),
     emit_escaped(Out, QCs),
-    text:emit(Out, "  \x2192\  "),
+    text:emit(Out, "  ->  "),
     emit_escaped(Out, ACs),
     text:emit(Out, "\n").
 
