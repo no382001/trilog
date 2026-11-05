@@ -71,6 +71,12 @@ static bool toplevel_solution(trilog_t *t, void *ud, bool has_more) {
   return false;
 }
 
+int toplevel_typed_ahead(void) {
+  int c = typed_ahead;
+  typed_ahead = EOF;
+  return c;
+}
+
 trilog_status_t toplevel_query(trilog_t *t, const char *goal,
                                bool interactive) {
   toplevel_state st = {.interactive = interactive};

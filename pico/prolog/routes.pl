@@ -17,6 +17,7 @@ route(mail(Id)) -->
     "/mail/", text:path(P),
     { catch(number_chars(Id, P), _, fail), mail_info(Id, _, _, _, _) }.
 route(log) --> "/log".
+route(crash) --> "/crash".
 route(fs) --> "/fs".
 route(fs) --> "/fs/".
 route(file(I)) --> "/fs/", text:path(P), { vfs_index(P, 0, I) }.
@@ -40,6 +41,7 @@ body(stats, _, Out) :- !, pages:stats(Out).
 body(mail, Conn, Out) :- !, pages:mailbox(Conn, Out).
 body(mail(Id), Conn, _) :- !, mail_show(Conn, Id).
 body(log, Conn, _) :- !, log_show(Conn).
+body(crash, _, Out) :- !, ( last_crash(A) -> write(Out, A) ; write(Out, 'no crash recorded\n') ).
 body(file(I), Conn, _) :- !, vfs_send(Conn, I).
 body(Page, _, Out) :- text:emit(Out, page(Page)).
 
