@@ -14,6 +14,7 @@ typedef enum {
   TAG_FUNCTOR
 } tag_t;
 
+#pragma pack(push, 4)
 typedef struct {
   tag_t tag;
   union {
@@ -28,6 +29,9 @@ typedef struct {
     } func; // FUNCTOR
   } as;
 } cell_t;
+#pragma pack(pop)
+
+_Static_assert(sizeof(cell_t) == 12, "cell_t is 12 bytes");
 
 void heap_init(trilog_t *T);
 
