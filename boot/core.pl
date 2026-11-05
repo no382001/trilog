@@ -232,13 +232,41 @@ M:G :-
     ;   call(G)
     ).
 
+% A file in the image has no text, only its '$consulted' name.
 '$ensure_loaded'(Spec) :-
     '$source_file'(Spec, File0),
     '$with_extension'(File0, File),
     (   '$$source_path'(File, Path) -> true
+    ;   '$normal_path'(File, Path), '$consulted'(Path, _) -> true
     ;   throw(error(existence_error(source_sink, Spec), _))
     ),
     ( '$consulted'(Path, _) -> true ; consult(Path) ).
+
+'$normal_path'(File, Path) :-
+    '$$atom_codes'(File, Cs),
+    '$$atom_codes'('embedded:', E),
+    (   append(E, Rest, Cs) -> Prefix = E ; Prefix = [], Rest = Cs ),
+    '$path_segments'(Rest, Ss),
+    '$drop_dots'(Ss, [], Rs),
+    reverse(Rs, Ns),
+    '$join_segments'(Ns, Joined),
+    append(Prefix, Joined, Ps),
+    '$$atom_codes'(Path, Ps).
+
+'$path_segments'(Cs, [S|Ss]) :-
+    (   append(S, [0'/|Rest], Cs) -> '$path_segments'(Rest, Ss) ; S = Cs, Ss = [] ).
+
+'$drop_dots'([], Acc, Acc).
+'$drop_dots'([S|Ss], Acc, Rs) :-
+    (   S == [0'.] -> '$drop_dots'(Ss, Acc, Rs)
+    ;   S == [0'., 0'.], Acc = [P|Acc1], P \== [0'., 0'.] -> '$drop_dots'(Ss, Acc1, Rs)
+    ;   '$drop_dots'(Ss, [S|Acc], Rs)
+    ).
+
+'$join_segments'([S], S) :- !.
+'$join_segments'([S|Ss], Cs) :-
+    '$join_segments'(Ss, Cs1),
+    append(S, [0'/|Cs1], Cs).
 
 '$source_file'(Spec, _) :- var(Spec), !, throw(error(instantiation_error, _)).
 '$source_file'(library(Name), File) :-

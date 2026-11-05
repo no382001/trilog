@@ -18,6 +18,7 @@ add_custom_target(libtrilog
   COMMAND make -C ${ROOT} ${TRILOG_REL}/libtrilog.a
           REL=${TRILOG_REL} PLATFORM=no_posix
           "IMAGE_LOAD=consult('pico/prolog/main.pl')" "IMAGE_DEPS=pico/prolog/*.pl"
+          EMBED_USERS=pico/src/main.c
           CC=arm-none-eabi-gcc AR=arm-none-eabi-gcc-ar
           "CFLAGS=-Wall -Wextra -std=c11 -O2 -mcpu=cortex-m0plus -mthumb -DGC_MIN_CELLS=2048 -DARENA_CHUNK_SIZE=4096 -DGC_SHRINK=0"
           "HIDE_INTERNALS=arm-none-eabi-objcopy --wildcard --keep-global-symbol=trilog_* --keep-global-symbol=embedded_files"

@@ -1,4 +1,6 @@
 regressions:
+- use cstdint everywhere
+- clang-tidy? 
 
 must have:
 - syntax conformity (make conformity): 361/366
@@ -24,6 +26,5 @@ guidelines:
 - malloc/realloc usage minimized, ideally the memory we can use is up to the user embedding the interpreter
 
 good to have:
-- pico embedding: embed only the libraries named in a list in pico/, and fail the build when an embedded file uses a library that is neither embedded nor in the image; boot/core.pl's text is never read when there is an image
 - unicode: every character outside ascii is a letter; scryer classifies them by unicode category, so Ä starts a variable there
 - trace: built-ins and library predicates are one step, and variables made inside a clause print as _G123
