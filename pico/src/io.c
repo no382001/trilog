@@ -1,6 +1,7 @@
 #include "io.h"
 #include "mail.h"
 #include "tcp.h"
+#include "vfs.h"
 #include <stdio.h>
 
 static char std_in, std_out, std_err;
@@ -10,8 +11,10 @@ static bool is_std(void *h) {
 }
 
 static void *io_open(void *ud, const char *path, const char *mode) {
-  (void)ud, (void)mode;
-  void *h = tcp_stream_open(path);
+  (void)ud;
+  void *h = vfs_stream_open(path, mode);
+  if (!h)
+    h = tcp_stream_open(path);
   return h ? h : mail_stream_open(path);
 }
 
@@ -26,6 +29,8 @@ static long io_read(void *ud, void *h, char *buf, size_t n) {
   }
   if (is_std(h) || mail_stream(h))
     return 0;
+  if (vfs_stream(h))
+    return vfs_stream_read(h, buf, n);
   return tcp_stream_read(h, buf, n);
 }
 
@@ -33,7 +38,7 @@ static long io_write(void *ud, void *h, const char *buf, size_t n) {
   (void)ud;
   if (h == &std_out || h == &std_err)
     return (long)fwrite(buf, 1, n, stdout);
-  if (h == &std_in)
+  if (h == &std_in || vfs_stream(h))
     return -1;
   if (mail_stream(h))
     return mail_stream_write(h, buf, n);
@@ -42,7 +47,9 @@ static long io_write(void *ud, void *h, const char *buf, size_t n) {
 
 static void io_close(void *ud, void *h) {
   (void)ud;
-  if (!is_std(h) && !mail_stream(h))
+  if (vfs_stream(h))
+    vfs_stream_close(h);
+  else if (!is_std(h) && !mail_stream(h))
     tcp_stream_close(h);
 }
 
