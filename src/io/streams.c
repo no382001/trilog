@@ -35,6 +35,18 @@ void *stream_handle(trilog_t *T, int id) {
   return T->streams[id]->handle;
 }
 
+void *stream_text_output(trilog_t *T, int id) {
+  if (!stream_handle(T, id) || !T->streams[id]->output ||
+      T->streams[id]->binary)
+    return NULL;
+  return T->streams[id]->handle;
+}
+
+void stream_set_binary(trilog_t *T, int id) {
+  if (stream_handle(T, id))
+    T->streams[id]->binary = true;
+}
+
 char *stream_read_line(trilog_t *T, int id, char *buf, int size) {
   if (!stream_handle(T, id))
     return NULL;

@@ -1291,6 +1291,18 @@ static int resolve_write_target(trilog_t *T, size_t target, int *kind_out,
   return 1;
 }
 
+static void write_target(trilog_t *T, int kind, void *h, size_t term,
+                         int flags) {
+  if (kind == OUT_STDOUT)
+    print_term_via(T, term, flags, io_write_str);
+  else if (kind == OUT_STDERR)
+    print_term_via(T, term, flags, io_write_err);
+  else {
+    T->file_target = h;
+    print_term_via(T, term, flags, emit_to_file);
+  }
+}
+
 static void tta_emit(trilog_t *T, const char *str) {
   size_t len = strlen(str);
   mem_reserve(T, &T->scratch, &T->scratch_cap, T->tta_pos + len + 1);
@@ -1730,6 +1742,40 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     T->answer_plain = false;
     return r;
   }
+  // '$$write_text'(+Stream, @Term, +Flags): '$$write_raw' to a standard or
+  // an open text output stream; fails on anything else.
+  // this is much faster!
+  if (arity == 3 && id == atom_write_text) {
+    size_t s = heap_deref(T, f + 1);
+    int flags = (int)T->heap[heap_deref(T, f + 3)].as.ival;
+    int sid;
+    void *h = NULL;
+    int kind =
+        T->heap[s].tag == TAG_ATOM
+            ? (T->heap[s].as.atom_id == atom_user_output  ? OUT_STDOUT
+               : T->heap[s].as.atom_id == atom_user_error ? OUT_STDERR
+                                                          : -1)
+        : T->heap[s].tag == TAG_INT ? (T->heap[s].as.ival == 0   ? OUT_STDOUT
+                                       : T->heap[s].as.ival == 1 ? OUT_STDERR
+                                                                 : -1)
+        : resolve_stream_id(T, s, &sid) && (h = stream_text_output(T, sid))
+            ? OUT_FILE
+            : -1;
+    if (kind < 0) {
+      *ok = 0;
+      return 1;
+    }
+    write_target(T, kind, h, f + 2, flags);
+    *ok = 1;
+    return 1;
+  }
+  if (arity == 1 && id == atom_stream_binary) {
+    int sid;
+    *ok = resolve_stream_id(T, f + 1, &sid);
+    if (*ok)
+      stream_set_binary(T, sid);
+    return 1;
+  }
   if (arity == 3 && id == atom_write_raw) {
     size_t target = heap_deref(T, f + 1);
     int flags = (int)T->heap[heap_deref(T, f + 3)].as.ival;
@@ -1739,14 +1785,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       *ok = 0;
       return 1;
     }
-    if (kind == OUT_STDOUT)
-      print_term_via(T, f + 2, flags, io_write_str);
-    else if (kind == OUT_STDERR)
-      print_term_via(T, f + 2, flags, io_write_err);
-    else {
-      T->file_target = h;
-      print_term_via(T, f + 2, flags, emit_to_file);
-    }
+    write_target(T, kind, h, f + 2, flags);
     *ok = 1;
     return 1;
   }

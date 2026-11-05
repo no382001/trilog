@@ -5,7 +5,7 @@
 
 typedef struct {
   void *handle;
-  bool output;
+  bool output, binary;
   size_t pos, len;
   char buf[512];
 } io_reader_t;

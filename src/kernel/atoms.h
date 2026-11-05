@@ -87,6 +87,10 @@
   X(atom_read_term, "$$read_term")                                             \
   X(atom_end_of_file, "end_of_file")                                           \
   X(atom_user_input, "user_input")                                             \
+  X(atom_user_output, "user_output")                                           \
+  X(atom_user_error, "user_error")                                             \
+  X(atom_write_text, "$$write_text")                                           \
+  X(atom_stream_binary, "$$stream_binary")                                     \
   X(atom_unload, "$$unload")                                                   \
   X(atom_source_path, "$$source_path")                                         \
   X(atom_loading_file, "$$loading_file")                                       \

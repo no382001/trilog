@@ -708,6 +708,7 @@ open(Source, Mode, Stream, Options) :-
     (   '$with_context'('$$open'(Source, Mode, S), PI)
     ->  ( var(Alias) -> true ; '$$assertz'('$user_alias'(Alias, S)) ),
         '$$assertz'('$stream_info'(S, Source, Mode, Type, Eof, Repos)),
+        ( Type == binary -> '$$stream_binary'(S) ; true ),
         Stream = S
     ;   '$open_error'(Source, Mode, E),
         throw(error(E, PI))
@@ -848,14 +849,22 @@ close(S, Opts) :-
 
 %!  write(@Term), write(+Stream, @Term) is det.
 %   TODO: no operator-aware output.
-write(T) :- '$out_text'(write/1, N), '$$write_raw'(N, T, 2).
+% '$$write_text' writes to a stream it can check alone; the rest, aliases and
+% errors, takes the long way.
+write(T) :-
+    '$output'(_, N),
+    ( '$$write_text'(N, T, 2) -> true ; '$out_text'(write/1, N), '$$write_raw'(N, T, 2) ).
+write(S, T) :- '$$write_text'(S, T, 2), !.
 write(S, T) :-
     '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output)), write/2),
     ( '$$write_raw'(N, T, 2) -> true ; throw(error(existence_error(stream, S), write/2)) ).
 
 %!  writeq(@Term) is det.
 %!  writeq(+Stream, @Term) is det.
-writeq(T) :- '$out_text'(writeq/1, N), '$$write_raw'(N, T, 3).
+writeq(T) :-
+    '$output'(_, N),
+    ( '$$write_text'(N, T, 3) -> true ; '$out_text'(writeq/1, N), '$$write_raw'(N, T, 3) ).
+writeq(S, T) :- '$$write_text'(S, T, 3), !.
 writeq(S, T) :-
     '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output)), writeq/2),
     ( '$$write_raw'(N, T, 3) -> true ; throw(error(existence_error(stream, S), writeq/2)) ).
