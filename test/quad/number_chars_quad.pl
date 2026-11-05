@@ -297,3 +297,8 @@
    |  sto, instantiation_error % literal substitutions
    |  sto, resource_error(...)
    |  sto, loops.
+
+% issue #31: the floats of 13211-1 have no negative zero
+?- number_chars(-0.0,[-|L]).
+   L = "0.0", unexpected.
+   false.
