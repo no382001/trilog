@@ -101,7 +101,7 @@ HOST_MAKE = $(MAKE) --no-print-directory CC=gcc AR=gcc-ar "CFLAGS=-Wall -Wextra 
   PLATFORM=posix LIBC=1 OPAQUE=1 DEV=_build/dev-posix \
   "HIDE_INTERNALS=objcopy --wildcard --keep-global-symbol=trilog_*"
 
-$(REL)/image.c: $(EMBED_FILES) $(LIB_SRCS) $(HDRS) cli/main.c cli/toplevel.c $(IMAGE_DEPS)
+$(REL)/image.c: $(EMBED_FILES) $(LIB_SRCS) src/kernel/image_dump.c $(HDRS) cli/main.c cli/toplevel.c $(IMAGE_DEPS)
 	@mkdir -p $(@D)
 	$(HOST_MAKE) trilog
 	./trilog -n -f -e "$(IMAGE_LOAD), '\$$\$$dump_image'('$@'), halt."
