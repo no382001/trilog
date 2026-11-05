@@ -217,6 +217,18 @@ color(blue).
 ?- (fail -> X = yes ; (true -> X = inner ; X = no)).
    X = inner.
 
+% a cut in the condition is local to it
+ite_cut(X) :- ( !, fail -> X = yes ; X = no ).
+
+?- ( !, fail -> X = yes ; X = no ).
+   X = no.
+
+?- ( (member(_, [1,2]), !), fail -> X = yes ; X = no ).
+   X = no.
+
+?- ite_cut(X).
+   X = no.
+
 % if-then-else with arithmetic
 ?- (1 =:= 1 -> X = equal ; X = not_equal).
    X = equal.

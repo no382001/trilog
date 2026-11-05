@@ -9,8 +9,11 @@ conformity	#164 op(7,fy,p),op(9,yfx,p). ⏎ write_canonical(1 p p p 2).
 conformity	#259 X = 0'\ ⏎ +'/*'. %*/1.
 conformity	#271 get_char(C).%a
 conformity	#300 writeq("\0\").
+core_quad	( !, fail -> X = yes ; X = no )
+core_quad	( (member(_, [1,2]), !), fail -> X = yes ; X = no )
 core_quad	X = Y, X == Y
 core_quad	catch(throw(foo), bar, true)
+core_quad	ite_cut(X)
 core_quad	last(X, [a, b, c])
 float_quad	atom_number(X, 3.5)
 iso_quad	';'('->'(','(!, fail), true), true)

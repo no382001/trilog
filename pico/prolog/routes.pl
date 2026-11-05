@@ -35,15 +35,22 @@ html(fs).
 html(stats).
 html(mail).
 
-body(home, _, Out) :- !, pages:home(Out).
-body(fs, _, Out) :- !, tree:tree(Out).
-body(stats, _, Out) :- !, pages:stats(Out).
-body(mail, Conn, Out) :- !, pages:mailbox(Conn, Out).
+body(Page, Conn, Out) :-
+    html(Page),
+    !,
+    pages:head(Out, Page),
+    content(Page, Conn, Out),
+    text:emit(Out, pages:foot).
 body(mail(Id), Conn, _) :- !, mail_show(Conn, Id).
 body(log, Conn, _) :- !, log_show(Conn).
 body(crash, _, Out) :- !, ( last_crash(A) -> write(Out, A) ; write(Out, 'no crash recorded\n') ).
 body(file(I), Conn, _) :- !, vfs_send(Conn, I).
 body(Page, _, Out) :- text:emit(Out, page(Page)).
+
+content(home, _, Out) :- pages:home(Out).
+content(fs, _, Out) :- tree:tree(Out).
+content(stats, _, Out) :- pages:stats(Out).
+content(mail, Conn, Out) :- pages:mailbox(Conn, Out).
 
 page(led(on)) --> { onboard_led(1) }, "LED on\n".
 page(led(off)) --> { onboard_led(0) }, "LED off\n".
