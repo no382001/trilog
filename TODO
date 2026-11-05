@@ -6,7 +6,6 @@ must have:
 - syntax conformity (make conformity): 361/366
 
 correctness:
-- a cut in an if-then-else's condition cuts the clause instead of only the condition: ( !, fail -> X = y ; X = n ) fails where ISO gives X = n; call/1 around the condition works
 - reconsulting a file while one of its predicates still has a choicepoint breaks the logical update view: member(X, [a,b]), consult('lib/lists.pl'), write(X), fail loops on b forever
 - quoted text cannot hold \0\ (atoms are C strings); iso also allows a representation error there
 - put_byte/2 cannot write a 0 byte (atoms are C strings)

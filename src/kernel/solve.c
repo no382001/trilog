@@ -2811,7 +2811,7 @@ A:
                                   .active_catch = active_catch});
           if (ite) {
             size_t barrier_arg[1] = {heap_new_int(T, (int64_t)sp0)};
-            size_t goals[3] = {heap_deref(T, lf + 1),
+            size_t goals[3] = {heap_rebake_cuts(T, lf + 1, T->sp),
                                heap_new_struct(T, atom_cut, 1, barrier_arg),
                                heap_deref(T, lf + 2)};
             cn = build_conj_tail(T, goals, 3, rest);
@@ -2822,7 +2822,7 @@ A:
         }
         if (fd_arity == 2 && fd_id == atom_arrow) {
           size_t barrier_arg[1] = {heap_new_int(T, (int64_t)T->sp)};
-          size_t goals[3] = {heap_deref(T, cf + 1),
+          size_t goals[3] = {heap_rebake_cuts(T, cf + 1, T->sp),
                              heap_new_struct(T, atom_cut, 1, barrier_arg),
                              heap_deref(T, cf + 2)};
           cn = build_conj_tail(T, goals, 3, rest);

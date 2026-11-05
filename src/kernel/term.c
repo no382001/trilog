@@ -226,6 +226,14 @@ size_t heap_copy_goal(trilog_t *T, tterm_t *t, size_t *rename,
       r = heap_new_struct(T, t->as.str.atom_id, 2, NULL);
       size_t f = T->heap[r].as.ptr;
       fill_hole(T, hole, r, &root);
+      // A condition's cuts are local to it: the if-then-else bakes them when
+      // it runs.
+      if (t->as.str.atom_id == atom_arrow) {
+        fill_hole(T, f + 1, heap_copy(T, t->as.str.args[0], rename, 0), &root);
+        hole = f + 2;
+        t = t->as.str.args[1];
+        continue;
+      }
       push_template_args(T, t, f);
       hole = f + 1;
       t = t->as.str.args[0];
@@ -254,6 +262,12 @@ size_t heap_rebake_cuts(trilog_t *T, size_t r, size_t cut_barrier) {
         out = heap_new_struct(T, id, 2, NULL);
         size_t nf = T->heap[out].as.ptr;
         fill_hole(T, hole, out, &root);
+        if (id == atom_arrow) {
+          fill_hole(T, nf + 1, f + 1, &root);
+          hole = nf + 2;
+          r = f + 2;
+          continue;
+        }
         wstack_push(T, f + 2);
         wstack_push(T, nf + 2);
         hole = nf + 1;
