@@ -474,27 +474,34 @@ static void db_add_front(trilog_t *T, tterm_t *head, tterm_t **body,
 
 // slides live clauses down over dead slots, remapping every stored db index:
 // bucket entries, and choicepoints' resume positions (a lower bound, so it
-// maps to the number of live slots before it).
+// maps to the number of live slots before it). It allocates nothing, as it
+// runs when memory is short; indices only shrink, so a bucket stays sorted
+// while its entries are rewritten.
 static void db_compact(trilog_t *T) {
-  int32_t *newpos =
-      mem_grow_n(T, NULL, (size_t)T->db_count + 1, sizeof(int32_t));
+  for (size_t f = 0; f < T->sp; f++) {
+    int32_t old = T->stack[f].clause_idx, live = 0;
+    if (old == FRAME_GOALS)
+      continue;
+    for (int32_t i = 0; i < old; i++)
+      live += T->db[i].head != NULL;
+    T->stack[f].clause_idx = live;
+  }
   int32_t live = 0;
   for (int32_t i = 0; i < T->db_count; i++) {
-    newpos[i] = live;
-    if (T->db[i].head)
-      T->db[live++] = T->db[i];
+    if (!T->db[i].head)
+      continue;
+    if (live != i) {
+      idx_key_t k = clause_key(&T->db[i]);
+      pred_bucket_t *b = pred_bucket_find(T, k.pred_id, k.pred_arity);
+      int32_t pos = b ? bucket_seek(b, i) : -1;
+      if (pos >= 0 && pos < b->count && b->indices[pos] == i)
+        b->indices[pos] = live;
+      T->db[live] = T->db[i];
+    }
+    live++;
   }
-  newpos[T->db_count] = live;
-  for (int i = 0; i < PRED_HASH_SIZE; i++)
-    for (pred_bucket_t *b = T->pred_hash[i]; b; b = b->next)
-      for (int32_t j = 0; j < b->count; j++)
-        b->indices[j] = newpos[b->indices[j]];
-  for (size_t i = 0; i < T->sp; i++)
-    if (T->stack[i].clause_idx != FRAME_GOALS)
-      T->stack[i].clause_idx = newpos[T->stack[i].clause_idx];
   T->db_count = live;
   T->db_dead = 0;
-  mem_free(T, newpos);
 }
 
 // unlinks the clause from its bucket and leaves db[idx] as a dead slot, so no
