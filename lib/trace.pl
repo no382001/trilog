@@ -1,19 +1,23 @@
 :- '$builtin_file'.
 
-:- module(trace, [trace_goal/1]).
+:- module(trace, [trace_goal/1,
+                  trace_goal/2]).
 
 :- dynamic(mode/1).
 
 %!  trace_goal(:Goal) is nondet.
+%!  trace_goal(:Goal, +VarNames) is nondet.
 %   Runs Goal like call/1, printing the Call, Exit, Redo, Fail and Exception
 %   ports of the predicates current_predicate/1 sees; built-ins and library
-%   predicates are one step each. At a terminal each port waits for a key:
-%   Enter or c steps, s skips the goal, l runs on without stopping, a aborts.
-trace_goal(G) :-
+%   predicates are one step each. VarNames, Name=Var pairs as read_term/3
+%   gives them, name Goal's variables in the ports. At a terminal each port
+%   waits for a key; h lists them.
+trace_goal(G) :- trace_goal(G, []).
+trace_goal(G, VNs) :-
     retractall(mode(_)),
     assertz(mode(creep)),
     '$$choice_mark'(M),
-    solve(G, 0, M).
+    solve(G, t(0, VNs), M).
 
 solve(V, _, _) :- var(V), !, throw(error(instantiation_error, call/1)).
 solve(true, _, _) :- !.
@@ -36,9 +40,9 @@ solve(G, D, _) :-
     ),
     '$$choice_mark'(M1),
     solve(G1, D, M1).
-solve(G, D, _) :-
+solve(G, t(D, VNs), _) :-
     D1 is D + 1,
-    port(G, D1).
+    port(G, t(D1, VNs)).
 
 % One goal's box: Call, then Exit or Fail, and Redo when it is backtracked
 % into; an exception leaving it shows as Exception.
@@ -53,18 +57,18 @@ port(G, D) :-
         fail
     ).
 
-run(G, D) :-
+run(G, T) :-
     functor(G, N, A),
     (   current_predicate(N/A)
     ->  '$$clause_candidates'(G, Cands),
         '$$choice_mark'(M),
         member(H-B, Cands),
         G = H,
-        solve(B, D, M)
+        solve(B, T, M)
     ;   call(G)
     ).
 
-show(Port, G, D) :-
+show(Port, G, t(D, VNs)) :-
     mode(Mode),
     (   Mode == leap
     ->  true
@@ -72,18 +76,18 @@ show(Port, G, D) :-
     ->  true
     ;   Mode = skip(S), D =:= S, Port \== exit, Port \== fail, \+ Port = exception(_)
     ->  true
-    ;   write_port(Port, G, D),
+    ;   write_port(Port, G, D, VNs),
         (   catch('$tl_tty', _, fail) -> ask(Port, D) ; nl )
     ).
 
-write_port(Port, G, D) :-
+write_port(Port, G, D, VNs) :-
     write('   '),
     (   Port = exception(E)
     ->  port_name(exception, X), write(X), write(' '), writeq(E)
     ;   port_name(Port, Name), write(Name)
     ),
     write(' ('), write(D), write(') '),
-    writeq(G).
+    write_term(G, [quoted(true), variable_names(VNs)]).
 
 port_name(call, 'call:').
 port_name(exit, 'exit:').
@@ -96,13 +100,28 @@ ask(Port, D) :-
     flush_output,
     '$tl_key'(K),
     nl,
-    (   K =:= 0'a
-    ->  throw(trace_aborted)
-    ;   K =:= 0'l
-    ->  set_mode(leap)
-    ;   K =:= 0's, Port == call
-    ->  set_mode(skip(D))
-    ;   set_mode(creep)
-    ).
+    (   key(K, Action) -> true ; Action = help ),
+    act(Action, Port, D).
+
+key(0'\r, creep).
+key(0'\n, creep).
+key(0'  , creep).
+key(0'c, creep).
+key(0's, skip).
+key(0'l, leap).
+key(0'a, abort).
+
+act(creep, _, _) :- set_mode(creep).
+act(skip, call, D) :- !, set_mode(skip(D)).
+act(skip, _, _) :- set_mode(creep).
+act(leap, _, _) :- set_mode(leap).
+act(abort, _, _) :- throw(trace_aborted).
+act(help, Port, D) :-
+    write('   Enter, space or c: step to the next port'), nl,
+    write('   s: skip over this goal (at a Call)'), nl,
+    write('   l: run on without stopping'), nl,
+    write('   a: abort the query'), nl,
+    write('  '),
+    ask(Port, D).
 
 set_mode(M) :- retractall(mode(_)), assertz(mode(M)).

@@ -97,7 +97,7 @@ run_query(query(Goal, VNs)) :-
 % choice point is seen as done.
 answers(Goal, VNs) :-
     (   '$$choice_mark'(M0),
-        run(Goal),
+        run(Goal, VNs),
         '$$choice_mark'(M1),
         show(VNs, M0, M1)
     ->  true
@@ -106,9 +106,9 @@ answers(Goal, VNs) :-
     ;   write('   false.'), nl
     ).
 
-run(Goal) :-
+run(Goal, VNs) :-
     (   tracing, Goal \== notrace
-    ->  trace_goal(user:Goal)
+    ->  trace_goal(user:Goal, VNs)
     ;   call(user:Goal)
     ).
 
