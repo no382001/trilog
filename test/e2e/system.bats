@@ -225,6 +225,16 @@ load common
   [ "$status" -eq 0 ]
 }
 
+@test "a finished catch/3 does not outlive a collection (regression)" {
+  # regression: '$$uncatch' kept a catch_stack index from before compaction,
+  # which kept a chain of finished catches, and all they held, alive.
+  run env TRILOG_GC_THRESHOLD=1024 TRILOG_GC_DEBUG=1 timeout 30 "$TRILOG" \
+    test/e2e/files/catch_loop.pl -e "loop(3000)."
+  [ "$status" -eq 0 ]
+  live=$(printf '%s\n' "$output" | awk '/^gc/ { v = $5 } END { sub(",", "", v); print v }')
+  [ "$live" -lt 600 ]
+}
+
 @test "true as a non-final goal does not terminate the query early (regression)" {
   # regression: reaching true as the first pending goal used to end the
   # query, even with real goals still queued after it.
