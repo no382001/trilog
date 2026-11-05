@@ -347,11 +347,18 @@ static int32_t bucket_seek(const pred_bucket_t *b, int32_t from_idx) {
 }
 
 // Position in b of the first clause from pos on that matches arg, or -1.
+#define ALIVE UINT32_MAX
+
+static bool clause_alive(const clause_t *c) { return c->died == ALIVE; }
+
+// The logical update view: a call sees the clauses there when it began.
 static int32_t bucket_match(trilog_t *T, const pred_bucket_t *b, int32_t pos,
-                            arg_key_t arg) {
-  for (; pos < b->count; pos++)
-    if (!first_arg_conflicts(arg, &T->db[b->indices[pos]]))
+                            arg_key_t arg, uint32_t gen) {
+  for (; pos < b->count; pos++) {
+    const clause_t *c = &T->db[b->indices[pos]];
+    if (c->born <= gen && gen < c->died && !first_arg_conflicts(arg, c))
       return pos;
+  }
   return -1;
 }
 
@@ -361,9 +368,13 @@ static void db_reserve(trilog_t *T, int32_t cap) {
 }
 
 static void db_compact(trilog_t *T);
+static void db_reclaim(trilog_t *T);
 
 // Dead slots are reused before the table grows: growing copies all of it.
 static void db_ensure_cap(trilog_t *T) {
+  if (T->db_count < T->db_cap)
+    return;
+  db_reclaim(T);
   if (T->db_count < T->db_cap)
     return;
   if (T->db_dead > 0) {
@@ -425,6 +436,8 @@ void db_add(trilog_t *T, tterm_t *head, tterm_t **body, int32_t nbody,
                           .nbody = nbody,
                           .nvars = nvars,
                           .source = mark_static ? T->consulting_atom : -1,
+                          .born = ++T->db_gen,
+                          .died = ALIVE,
                           .arg = arg_key_of(key)};
   pred_bucket_add_index(T, key.pred_id, key.pred_arity, idx);
 }
@@ -450,6 +463,8 @@ static void db_add_front(trilog_t *T, tterm_t *head, tterm_t **body,
                         .nbody = nbody,
                         .nvars = nvars,
                         .source = -1,
+                        .born = ++T->db_gen,
+                        .died = ALIVE,
                         .arg = arg_key_of(key)};
   db_fixup_choice_points_insert_at(T, 0);
   pred_index_fixup_insert_at(T, 0);
@@ -501,22 +516,70 @@ static void db_maybe_compact(trilog_t *T) {
     db_compact(T);
 }
 
-static void db_remove_at(trilog_t *T, int32_t idx) {
-  db_kill(T, idx);
+// Whether a choice point's call of the clause's predicate can still try it;
+// a frame's next clause is one of the predicate it iterates.
+static bool frames_see(trilog_t *T, int32_t idx) {
+  const clause_t *c = &T->db[idx];
+  idx_key_t key = clause_key(c);
+  for (size_t i = 0; i < T->sp; i++) {
+    const frame_t *f = &T->stack[i];
+    if (f->clause_idx == FRAME_GOALS || f->gen < c->born || f->gen >= c->died)
+      continue;
+    idx_key_t fk = clause_key(&T->db[f->clause_idx]);
+    if (fk.pred_id == key.pred_id && fk.pred_arity == key.pred_arity)
+      return true;
+  }
+  return false;
+}
+
+// Frees the retracted clauses no choice point can see any more.
+static void db_reclaim(trilog_t *T) {
+  if (T->db_pending == 0)
+    return;
+  for (int32_t i = 0; i < T->db_count && T->db_pending > 0; i++)
+    if (T->db[i].head && !clause_alive(&T->db[i]) && !frames_see(T, i)) {
+      db_kill(T, i);
+      T->db_pending--;
+    }
   db_maybe_compact(T);
+}
+
+static void clause_dies(trilog_t *T, int32_t idx) {
+  T->db[idx].died = ++T->db_gen;
+  if (clause_key(&T->db[idx]).pred_id == atom_op_pred)
+    T->op_gen++;
+}
+
+// A clause a choice point may still try stays until db_reclaim frees it.
+static void db_remove_at(trilog_t *T, int32_t idx) {
+  clause_dies(T, idx);
+  if (!frames_see(T, idx)) {
+    db_kill(T, idx);
+    db_maybe_compact(T);
+  } else {
+    T->db_pending++;
+  }
+}
+
+static bool bucket_has_alive(trilog_t *T, int32_t pred_id, int32_t arity) {
+  pred_bucket_t *b = pred_bucket_find(T, pred_id, arity);
+  for (int32_t i = 0; b && i < b->count; i++)
+    if (clause_alive(&T->db[b->indices[i]]))
+      return true;
+  return false;
 }
 
 void db_unload(trilog_t *T, int32_t source) {
   for (int32_t i = 0; i < T->db_count; i++) {
-    if (!T->db[i].head || T->db[i].source != source)
+    if (!T->db[i].head || !clause_alive(&T->db[i]) || T->db[i].source != source)
       continue;
     idx_key_t key = clause_key(&T->db[i]);
-    db_kill(T, i);
-    pred_bucket_t *b = pred_bucket_find(T, key.pred_id, key.pred_arity);
-    if (!b || b->count == 0)
+    clause_dies(T, i);
+    T->db_pending++;
+    if (!bucket_has_alive(T, key.pred_id, key.pred_arity))
       unmark_consulted(T, key.pred_id, key.pred_arity);
   }
-  db_maybe_compact(T);
+  db_reclaim(T);
 }
 
 static void dynamic_declare(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
@@ -579,6 +642,8 @@ int db_is_dynamic(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
 bool db_module_known(trilog_t *T, int32_t module) {
   pred_bucket_t *b = pred_bucket_find(T, atom_known_module, 1);
   for (int32_t i = 0; b && i < b->count; i++) {
+    if (!clause_alive(&T->db[b->indices[i]]))
+      continue;
     tterm_t *a = T->db[b->indices[i]].head->as.str.args[0];
     if (a->tag == T_ATOM && a->as.atom_id == module)
       return true;
@@ -596,6 +661,8 @@ bool db_has_dcg(trilog_t *T, int32_t pred_id, int32_t arity) {
     return true;
   pred_bucket_t *b = pred_bucket_find(T, atom_dcg_arrow, 2);
   for (int32_t i = 0; b && i < b->count; i++) {
+    if (!clause_alive(&T->db[b->indices[i]]))
+      continue;
     tterm_t *nt = T->db[b->indices[i]].head->as.str.args[0];
     if (nt->tag == T_STR && nt->as.str.atom_id == atom_comma &&
         nt->as.str.arity == 2)
@@ -613,6 +680,8 @@ bool db_has_dcg(trilog_t *T, int32_t pred_id, int32_t arity) {
 tterm_t *db_meta_specs(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
   pred_bucket_t *b = pred_bucket_find(T, atom_meta_spec, 3);
   for (int32_t i = 0; b && i < b->count; i++) {
+    if (!clause_alive(&T->db[b->indices[i]]))
+      continue;
     tterm_t **a = T->db[b->indices[i]].head->as.str.args;
     if (a[0]->tag == T_ATOM && a[0]->as.atom_id == pred_id &&
         a[1]->tag == T_INT && a[1]->as.ival == pred_arity)
@@ -2219,7 +2288,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     size_t list = heap_new_atom(T, atom_nil);
     for (int i = 0; i < PRED_HASH_SIZE; i++)
       for (pred_bucket_t *b = T->pred_hash[i]; b; b = b->next) {
-        if (b->count == 0)
+        if (!bucket_has_alive(T, b->pred_id, b->pred_arity))
           continue;
         int32_t source = T->db[b->indices[0]].source;
         size_t pi[2] = {heap_new_atom(T, b->pred_id),
@@ -2251,7 +2320,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     arg_key_t want_arg = arg_key_of(want);
     for (int32_t bi = bucket ? bucket->count - 1 : -1; bi >= 0; bi--) {
       clause_t *c = &T->db[bucket->indices[bi]];
-      if (first_arg_conflicts(want_arg, c))
+      if (!clause_alive(c) || first_arg_conflicts(want_arg, c))
         continue;
       size_t h2, b2;
       fresh_copy_clause(T, c, &h2, &b2);
@@ -2685,6 +2754,7 @@ query_result_t run_query(trilog_t *T, tterm_t **goals, int32_t ngoals,
   T->query_cn = saved_cn;
   T->query_depth--;
   T->sp = T->query_sp_base;
+  db_reclaim(T);
   T->query_sp_base = saved_base;
   T->query_heap_base = saved_heap_base;
   T->query_catch_base = saved_catch_base;
@@ -2755,6 +2825,7 @@ static query_result_t run_query_body(trilog_t *T, tterm_t **goals,
   size_t first, rest;
   int32_t clause_idx = 0;
   int32_t next_match = -1; // the db index after clause_idx that matches, or -1
+  uint32_t call_gen = 0;
   idx_key_t caller_key = {.kind = IDX_ANY};
   size_t active_catch = (size_t)-1;
   int predicate_known = 0;
@@ -2943,7 +3014,8 @@ A:
         int found = 0;
         for (int32_t bi = 0; bucket && bi < bucket->count; bi++) {
           int32_t ci = bucket->indices[bi];
-          if (first_arg_conflicts(want_arg, &T->db[ci]))
+          if (!clause_alive(&T->db[ci]) ||
+              first_arg_conflicts(want_arg, &T->db[ci]))
             continue;
           trail_release(T, rtmark);
           heap_release(T, rmark);
@@ -3003,14 +3075,9 @@ A:
         goto A;
       return QUERY_ERROR;
     }
-    if (dbk && dbk->dynamic) {
-      size_t args[1] = {first};
-      size_t dyn_goal = heap_new_struct(T, atom_dyn_call, 1, args);
-      cn = build_conj_tail(T, &dyn_goal, 1, rest);
-      goto A;
-    }
   }
   clause_idx = 0;
+  call_gen = T->db_gen;
   tmark = trail_mark(T);
   hmark = heap_mark(T);
   cut_barrier = T->sp;
@@ -3022,7 +3089,8 @@ B: {
       pred_bucket_find(T, caller_key.pred_id, caller_key.pred_arity);
   predicate_known = bk && bk->count > 0;
   arg_key_t arg = arg_key_of(caller_key);
-  int32_t pos = bk ? bucket_match(T, bk, bucket_seek(bk, clause_idx), arg) : -1;
+  int32_t pos =
+      bk ? bucket_match(T, bk, bucket_seek(bk, clause_idx), arg, call_gen) : -1;
   if (pos < 0) {
     if (clause_idx > 0)
       goto C; // resuming a call that already matched: out of clauses is a
@@ -3060,7 +3128,7 @@ B: {
     goto C;
   }
   clause_idx = bk->indices[pos];
-  int32_t after = bucket_match(T, bk, pos + 1, arg);
+  int32_t after = bucket_match(T, bk, pos + 1, arg, call_gen);
   next_match = after < 0 ? -1 : bk->indices[after];
 }
   {
@@ -3087,7 +3155,8 @@ B: {
                               .heap_mark = hmark,
                               .trail_mark = tmark,
                               .cut_barrier = cut_barrier,
-                              .active_catch = active_catch});
+                              .active_catch = active_catch,
+                              .gen = call_gen});
     cn = newcn;
     goto A;
   }
@@ -3103,6 +3172,7 @@ C:
     tmark = f.trail_mark;
     cut_barrier = f.cut_barrier;
     active_catch = f.active_catch;
+    call_gen = f.gen;
     if (clause_idx == FRAME_GOALS) {
       trail_release(T, tmark);
       heap_release(T, hmark);
@@ -3153,6 +3223,8 @@ static void ops_rebuild(trilog_t *T, pred_bucket_t *b) {
   for (int32_t i = 0; i < T->ops_len; i++)
     T->ops[i].atom = -1;
   for (int32_t i = 0; b && i < b->count; i++) {
+    if (!clause_alive(&T->db[b->indices[i]]))
+      continue;
     tterm_t *head = T->db[b->indices[i]].head;
     tterm_t *pri_t = head->as.str.args[0];
     tterm_t *type_t = head->as.str.args[1];

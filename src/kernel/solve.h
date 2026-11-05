@@ -30,6 +30,8 @@ typedef struct {
   int32_t nbody;
   int32_t nvars;
   int32_t source; // atom of the file it was consulted from, -1 if asserted
+  // A call made in generation G sees the clause if born <= G < died.
+  uint32_t born, died;
   arg_key_t arg;
   struct chunk *mem; // an asserted clause's own memory, freed with it
 } clause_t;
@@ -41,6 +43,7 @@ typedef struct {
   size_t trail_mark;
   size_t cut_barrier;
   size_t active_catch;
+  uint32_t gen; // the generation the call was made in
 } frame_t;
 
 // A frame's clause_idx when backtracking runs its goals instead of retrying a

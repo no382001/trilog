@@ -1,27 +1,6 @@
 % '$$name' = raw kernel primitive; 
 % '$name' = private helper.
 
-% --- dynamic predicate calls ---
-
-% Calls to dynamic predicates iterate a snapshot of their clauses.
-'$dyn_call'(G) :-
-    '$$clause_candidates'(G, Cands),
-    '$$choice_mark'(Mark),
-    '$dyn_alts'(Cands, G, Mark).
-
-'$dyn_alts'([H - Body|Cs], G, Mark) :- '$dyn_alt'(Cs, H, Body, G, Mark).
-
-'$dyn_alt'([], H, Body, G, Mark) :- G = H, '$dyn_body'(Body, Mark, B), call(B).
-'$dyn_alt'([_|_], H, Body, G, Mark) :- G = H, '$dyn_body'(Body, Mark, B), call(B).
-'$dyn_alt'([C|Cs], _, _, G, Mark) :- '$dyn_alts'([C|Cs], G, Mark).
-
-'$dyn_body'(V, _, call(V)) :- var(V), !.
-'$dyn_body'(!, Mark, '$$cut_to'(Mark)) :- !.
-'$dyn_body'((A, B), Mark, (A1, B1)) :- !, '$dyn_body'(A, Mark, A1), '$dyn_body'(B, Mark, B1).
-'$dyn_body'((A ; B), Mark, (A1 ; B1)) :- !, '$dyn_body'(A, Mark, A1), '$dyn_body'(B, Mark, B1).
-'$dyn_body'((C -> T), Mark, (C -> T1)) :- !, '$dyn_body'(T, Mark, T1).
-'$dyn_body'(G, _, G).
-
 % --- control ---
 
 %!  ;/2, ->/2 is nondet.

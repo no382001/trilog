@@ -870,7 +870,7 @@ cp_mine(2).
 ?- current_predicate(append/3).
    false.
 
-?- current_predicate('$dyn_call'/1).
+?- current_predicate('$with_context'/2).
    false.
 
 ?- current_predicate(no_such_pred/0).

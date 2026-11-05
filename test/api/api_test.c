@@ -553,6 +553,9 @@ static void test_clause_slots(void) {
   size_t before = z.live;
   CHECK(trilog_query(t, "churn(5000)", collect, &c) == TRILOG_TRUE);
   CHECK(z.live < before + 32768);
+  CHECK(trilog_query(t, "once((member(_, [a,b]), churn(5000)))", collect, &c) ==
+        TRILOG_TRUE);
+  CHECK(z.live < before + 32768);
   trilog_free(t);
 }
 
@@ -569,6 +572,26 @@ static void test_capture_atoms(trilog_t *t) {
     CHECK(trilog_query(t, q, collect, &c) == TRILOG_TRUE);
   trilog_usage(t, &u1);
   CHECK(u1.atoms == u0.atoms);
+}
+
+static void test_lazy_dynamic(void) {
+  trilog_t *t = trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl"});
+  CHECK(t != NULL);
+  if (!t)
+    return;
+  collected c = {0};
+  CHECK(trilog_load_string(
+            t, ":- dynamic(g/1).\n"
+               "fill(0) :- !.\n"
+               "fill(N) :- assertz(g(N)), N1 is N - 1, fill(N1).\n") ==
+        TRILOG_TRUE);
+  CHECK(trilog_query(t, "fill(3000)", collect, &c) == TRILOG_TRUE);
+  trilog_usage_t u0, u1;
+  trilog_usage(t, &u0);
+  CHECK(trilog_query(t, "forall(g(_), true)", collect, &c) == TRILOG_TRUE);
+  trilog_usage(t, &u1);
+  CHECK(u1.heap_peak_cells < u0.heap_peak_cells + 2000);
+  trilog_free(t);
 }
 
 static void test_usage(trilog_t *t) {
@@ -652,6 +675,7 @@ int main(void) {
   test_bad_boot();
   test_growth();
   test_clause_slots();
+  test_lazy_dynamic();
 
   trilog_usage_t u;
   trilog_usage(t, &u);

@@ -269,7 +269,7 @@ static void collect_caller_goals(trilog_t *T, const tterm_t *h) {
 void module_patch(trilog_t *T) {
   for (int32_t i = 0; i < T->db_count; i++) {
     clause_t *c = &T->db[i];
-    if (!c->head || c->source != T->consulting_atom)
+    if (!c->head || c->died != UINT32_MAX || c->source != T->consulting_atom)
       continue;
     collect_caller_goals(T, c->head);
     if (c->head->tag == T_STR && c->head->as.str.atom_id == atom_dcg_arrow &&

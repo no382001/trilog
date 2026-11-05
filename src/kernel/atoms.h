@@ -21,7 +21,6 @@
   X(atom_uncatch, "$$uncatch")                                                 \
   X(atom_cut, "$$cut")                                                         \
   X(atom_bang, "!")                                                            \
-  X(atom_dyn_call, "$dyn_call")                                                \
   X(atom_catch, "catch")                                                       \
   X(atom_throw, "throw")                                                       \
   X(atom_assertz, "$$assertz")                                                 \

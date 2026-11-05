@@ -156,6 +156,8 @@ struct trilog {
 
   clause_t *db;
   int32_t db_count, db_cap, db_dead;
+  uint32_t db_gen;    // bumped by every assert and retract
+  int32_t db_pending; // retracted clauses a frame may still see
   pred_bucket_t *pred_hash[PRED_HASH_SIZE];
   // "static" = clause came from literal source text (assemble_clause's own
   // db_add/db_add_front calls, mark_static=1)

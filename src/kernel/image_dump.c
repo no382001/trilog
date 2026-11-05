@@ -181,7 +181,7 @@ static void dump(dump_t *d) {
   int32_t live = 0;
   for (int32_t i = 0; i < T->db_count; i++) {
     const clause_t *c = &T->db[i];
-    if (!c->head)
+    if (!c->head || c->died != UINT32_MAX)
       continue;
     heads[i] = emit(d, c->head);
     live++;
@@ -199,7 +199,7 @@ static void dump(dump_t *d) {
   put(d, "\nstatic const image_clause_t clauses[] = {\n");
   for (int32_t i = 0; i < T->db_count; i++) {
     const clause_t *c = &T->db[i];
-    if (!c->head)
+    if (!c->head || c->died != UINT32_MAX)
       continue;
     putf(d, "    {(tterm_t *)&n%d, ", heads[i]);
     if (c->nbody > 0)
