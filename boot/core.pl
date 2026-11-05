@@ -1086,8 +1086,11 @@ set_input(S) :- '$with_context'('$set_input'(S), set_input/1).
     '$alias_stream'(S0, S),
     '$input_stream'(S),
     ( S == user_input -> true ; '$read_byte'(S, 1, _) ),
-    ( '$$retract'('$input'(_)) -> true ; true ),
-    '$$assertz'('$input'(S)).
+    (   '$input'(S)
+    ->  true
+    ;   ( '$$retract'('$input'(_)) -> true ; true ),
+        '$$assertz'('$input'(S))
+    ).
 
 '$get_char'(S0, Peek, C) :-
     '$alias_stream'(S0, S),
