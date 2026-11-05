@@ -17,6 +17,7 @@ route(mail(Id)) -->
     "/mail/", text:path(P),
     { catch(number_chars(Id, P), _, fail), mail_info(Id, _, _, _, _) }.
 route(log) --> "/log".
+route(conformity) --> "/conformity".
 route(crash) --> "/crash".
 route(fs) --> "/fs".
 route(fs) --> "/fs/".
@@ -34,6 +35,7 @@ html(home).
 html(fs).
 html(stats).
 html(mail).
+html(conformity).
 
 body(Page, Conn, Out) :-
     html(Page),
@@ -51,6 +53,7 @@ content(home, _, Out) :- pages:home(Out).
 content(fs, _, Out) :- tree:tree(Out).
 content(stats, _, Out) :- pages:stats(Out).
 content(mail, Conn, Out) :- pages:mailbox(Conn, Out).
+content(conformity, _, Out) :- board:page(Out, 20).
 
 page(led(on)) --> { onboard_led(1) }, "LED on\n".
 page(led(off)) --> { onboard_led(0) }, "LED off\n".

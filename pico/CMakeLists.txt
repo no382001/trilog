@@ -17,7 +17,7 @@ set(LIBTRILOG ${ROOT}/${TRILOG_REL}/libtrilog.a)
 add_custom_target(libtrilog
   COMMAND make -C ${ROOT} ${TRILOG_REL}/libtrilog.a
           REL=${TRILOG_REL} PLATFORM=no_posix
-          "IMAGE_LOAD=consult('pico/prolog/main.pl')" "IMAGE_DEPS=pico/prolog/*.pl"
+          "IMAGE_LOAD=consult('pico/prolog/main.pl'), consult('test/conformity/board.pl')" "IMAGE_DEPS=pico/prolog/*.pl test/conformity/board.pl"
           EMBED_USERS=pico/src/main.c
           CC=arm-none-eabi-gcc AR=arm-none-eabi-gcc-ar
           "CFLAGS=-Wall -Wextra -std=c11 -O2 -mcpu=cortex-m0plus -mthumb -DGC_MIN_CELLS=2048 -DARENA_CHUNK_SIZE=4096 -DGC_SHRINK=0"
@@ -30,12 +30,21 @@ add_custom_target(libtrilog
 file(GLOB PROLOG_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/prolog/*.pl)
 set(PROLOG_ASM ".section .rodata\n")
 set(PROLOG_TABLE "")
-set(i 0)
+set(VFS_PATHS "")
+set(VFS_NAMES "")
 foreach(f ${PROLOG_FILES})
   get_filename_component(name ${f} NAME)
+  list(APPEND VFS_PATHS ${f})
+  list(APPEND VFS_NAMES pico/prolog/${name})
+endforeach()
+list(APPEND VFS_PATHS ${ROOT}/test/conformity/conformity.txt ${ROOT}/test/conformity/board.pl)
+list(APPEND VFS_NAMES test/conformity/conformity.txt test/conformity/board.pl)
+set(i 0)
+foreach(f ${VFS_PATHS})
+  list(GET VFS_NAMES ${i} name)
   string(APPEND PROLOG_ASM ".global prolog_file_${i}\nprolog_file_${i}:\n.incbin \"${f}\"\n.byte 0\n")
   string(APPEND PROLOG_DECLS "extern const char prolog_file_${i}[];\n")
-  string(APPEND PROLOG_TABLE "    {\"pico/prolog/${name}\", prolog_file_${i}},\n")
+  string(APPEND PROLOG_TABLE "    {\"${name}\", prolog_file_${i}},\n")
   math(EXPR i "${i} + 1")
 endforeach()
 file(CONFIGURE OUTPUT prolog_files.S CONTENT "${PROLOG_ASM}")

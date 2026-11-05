@@ -41,6 +41,7 @@ nav_link(fs, "/fs", "files").
 nav_link(stats, "/stats", "stats").
 nav_link(mail, "/mail", "mail").
 nav_link(log, "/log", "log").
+nav_link(conformity, "/conformity", "conformity").
 
 foot -->
     "<hr>\n<p>trilog ", version, " on ", board, "</p>\n</body>\n</html>\n".
