@@ -132,12 +132,14 @@ struct trilog {
   // A directive's error(_, load/1) for '$$consult'; (size_t)-1 if none.
   size_t load_error_ball;
   size_t directive_errors; // directives that raised an uncaught error
-  // Rebuilt from the '$$op' clauses whenever op_gen has moved.
+  // Rebuilt from the '$$op' clauses whenever op_gen has moved; sized by the
+  // operators, not by every atom.
   struct atom_ops {
+    int32_t atom;   // -1: empty
     int16_t pri[3]; // by OP_CLASS_*, 0 when there is none
     int8_t assoc[3];
   } *ops;
-  int32_t ops_len;
+  int32_t ops_len; // a power of two
   uint32_t op_gen, ops_gen;
   // Variables of the clause being patched that hold a caller's goal.
   int32_t *module_meta_vars;

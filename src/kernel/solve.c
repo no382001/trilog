@@ -3133,10 +3133,25 @@ static int op_type_code(int32_t tid) {
 }
 
 // Later '$$op' clauses win, as the clause order of op/3 says.
+static struct atom_ops *ops_slot(trilog_t *T, int32_t atom) {
+  uint32_t mask = (uint32_t)T->ops_len - 1;
+  for (uint32_t i = ((uint32_t)atom * 2654435761u) & mask;; i = (i + 1) & mask)
+    if (T->ops[i].atom == atom || T->ops[i].atom < 0)
+      return &T->ops[i];
+}
+
 static void ops_rebuild(trilog_t *T, pred_bucket_t *b) {
-  T->ops = mem_grow_n(T, T->ops, (size_t)T->atom_count, sizeof *T->ops);
-  T->ops_len = T->atom_count;
+  int32_t need = 16;
+  while (b && need < 2 * b->count)
+    need *= 2;
+  if (need != T->ops_len) {
+    mem_free(T, T->ops);
+    T->ops = mem_grow_n(T, NULL, (size_t)need, sizeof *T->ops);
+    T->ops_len = need;
+  }
   memset(T->ops, 0, (size_t)T->ops_len * sizeof *T->ops);
+  for (int32_t i = 0; i < T->ops_len; i++)
+    T->ops[i].atom = -1;
   for (int32_t i = 0; b && i < b->count; i++) {
     tterm_t *head = T->db[b->indices[i]].head;
     tterm_t *pri_t = head->as.str.args[0];
@@ -3145,12 +3160,13 @@ static void ops_rebuild(trilog_t *T, pred_bucket_t *b) {
     if (name_t->tag != T_ATOM || pri_t->tag != T_INT || type_t->tag != T_ATOM)
       continue;
     int code = op_type_code(type_t->as.atom_id);
-    if (code < 0 || name_t->as.atom_id >= T->ops_len)
+    if (code < 0)
       continue;
     int class = code <= 2   ? OP_CLASS_INFIX
                 : code <= 4 ? OP_CLASS_PREFIX
                             : OP_CLASS_POSTFIX;
-    struct atom_ops *o = &T->ops[name_t->as.atom_id];
+    struct atom_ops *o = ops_slot(T, name_t->as.atom_id);
+    o->atom = name_t->as.atom_id;
     o->pri[class] = (int16_t)pri_t->as.ival;
     o->assoc[class] = (int8_t)code;
   }
@@ -3161,10 +3177,10 @@ static int op_lookup(trilog_t *T, int32_t name_atom_id, int want, int *pri,
                      int *assoc_code) {
   if (T->ops_gen != T->op_gen)
     ops_rebuild(T, pred_bucket_find(T, atom_op_pred, 3));
-  if (name_atom_id < 0 || name_atom_id >= T->ops_len)
+  if (name_atom_id < 0)
     return 0;
-  const struct atom_ops *o = &T->ops[name_atom_id];
-  if (o->pri[want] == 0)
+  const struct atom_ops *o = ops_slot(T, name_atom_id);
+  if (o->atom < 0 || o->pri[want] == 0)
     return 0;
   *pri = o->pri[want];
   *assoc_code = o->assoc[want];
