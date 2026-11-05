@@ -510,6 +510,52 @@ static void test_growth(void) {
   trilog_free(t);
 }
 
+typedef struct {
+  size_t live;
+} sized;
+
+static void *sized_realloc(void *ud, void *p, size_t n) {
+  sized *z = ud;
+  size_t *b = p ? (size_t *)p - 1 : NULL;
+  size_t old = b ? *b : 0;
+  size_t *nb = realloc(b, sizeof *nb + n);
+  if (!nb)
+    return NULL;
+  z->live = z->live - old + n;
+  *nb = n;
+  return nb + 1;
+}
+
+static void sized_free(void *ud, void *p) {
+  sized *z = ud;
+  if (!p)
+    return;
+  size_t *b = (size_t *)p - 1;
+  z->live -= *b;
+  free(b);
+}
+
+static void test_clause_slots(void) {
+  sized z = {0};
+  trilog_t *t = trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl",
+                                              .realloc = sized_realloc,
+                                              .free = sized_free,
+                                              .alloc_ud = &z});
+  CHECK(t != NULL);
+  if (!t)
+    return;
+  CHECK(trilog_load_string(t, ":- dynamic(s/1).\n"
+                              "churn(0) :- !.\n"
+                              "churn(N) :- assertz(s(N)), retract(s(N)), "
+                              "N1 is N - 1, churn(N1).\n") == TRILOG_TRUE);
+  collected c = {0};
+  CHECK(trilog_query(t, "churn(100)", collect, &c) == TRILOG_TRUE);
+  size_t before = z.live;
+  CHECK(trilog_query(t, "churn(5000)", collect, &c) == TRILOG_TRUE);
+  CHECK(z.live < before + 32768);
+  trilog_free(t);
+}
+
 static void test_usage(trilog_t *t) {
   trilog_usage_t u;
   trilog_usage(t, &u);
@@ -589,6 +635,7 @@ int main(void) {
   test_create_free();
   test_bad_boot();
   test_growth();
+  test_clause_slots();
 
   trilog_usage_t u;
   trilog_usage(t, &u);

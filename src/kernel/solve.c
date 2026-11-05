@@ -360,9 +360,17 @@ static void db_reserve(trilog_t *T, int32_t cap) {
   T->db_cap = cap;
 }
 
+static void db_compact(trilog_t *T);
+
+// Dead slots are reused before the table grows: growing copies all of it.
 static void db_ensure_cap(trilog_t *T) {
   if (T->db_count < T->db_cap)
     return;
+  if (T->db_dead > 0) {
+    db_compact(T);
+    if (T->db_count < T->db_cap)
+      return;
+  }
   db_reserve(T, T->db_cap ? T->db_cap * 2 : 8);
 }
 
