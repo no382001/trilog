@@ -108,6 +108,66 @@ catch_frame_t *catch_stack_array(trilog_t *T) { return T->catch_stack; }
 size_t catch_stack_size(trilog_t *T) { return T->catch_sp; }
 void catch_stack_set_size(trilog_t *T, size_t n) { T->catch_sp = n; }
 
+// Allocates nothing: it runs right after the heap failed to grow.
+void fatal_trace_fill(trilog_t *T) {
+  char *out = T->fatal_trace;
+  size_t cap = sizeof T->fatal_trace, n = 0;
+  out[0] = '\0';
+  size_t hs = heap_size(T);
+  size_t cn = T->query_cn ? *T->query_cn : (size_t)-1;
+  T->query_cn = NULL;
+  for (int k = 0; k < 6 && cn < hs && n < cap; k++) {
+    size_t c = heap_deref(T, cn);
+    if (c >= hs || T->heap[c].tag != TAG_STR)
+      break;
+    size_t f = T->heap[c].as.ptr;
+    bool conj = T->heap[f].as.func.atom_id == atom_comma &&
+                T->heap[f].as.func.arity == 2;
+    size_t g = heap_deref(T, conj ? f + 1 : c);
+    if (g >= hs)
+      break;
+    int32_t id = -1, arity = 0;
+    if (T->heap[g].tag == TAG_ATOM)
+      id = T->heap[g].as.atom_id;
+    else if (T->heap[g].tag == TAG_STR) {
+      id = T->heap[T->heap[g].as.ptr].as.func.atom_id;
+      arity = T->heap[T->heap[g].as.ptr].as.func.arity;
+    }
+    if (id >= 0 && id != atom_true)
+      n += fmt(out + n, cap - n, "%s%s/%d", n ? ", " : "goals ",
+               atom_name(T, id), (int)arity);
+    if (!conj)
+      break;
+    cn = f + 2;
+  }
+  int32_t prev_id = -1, prev_arity = -1, run = 0;
+  bool first = true;
+  for (size_t k = 0; k <= T->sp; k++) {
+    int32_t id = -1, arity = 0;
+    if (k < T->sp) {
+      int32_t c = T->stack[T->sp - 1 - k].clause_idx;
+      const tterm_t *h = c >= 0 && c < T->db_count ? T->db[c].head : NULL;
+      if (!h || (h->tag != T_STR && h->tag != T_ATOM))
+        continue;
+      id = h->tag == T_STR ? h->as.str.atom_id : h->as.atom_id;
+      arity = h->tag == T_STR ? h->as.str.arity : 0;
+      if (id == prev_id && arity == prev_arity) {
+        run++;
+        continue;
+      }
+    }
+    if (prev_id >= 0 && n < cap) {
+      n += fmt(out + n, cap - n, run > 1 ? "%s%s/%d x%d" : "%s%s/%d",
+               first ? (n ? "; in " : "in ") : " < ", atom_name(T, prev_id),
+               (int)prev_arity, run);
+      first = false;
+    }
+    prev_id = id;
+    prev_arity = arity;
+    run = 1;
+  }
+}
+
 static size_t catch_stack_push(trilog_t *T, catch_frame_t f) {
   if (T->catch_sp >= T->catch_cap) {
     size_t cap = T->catch_cap ? T->catch_cap * 2 : 16;
@@ -2568,7 +2628,9 @@ query_result_t run_query(trilog_t *T, tterm_t **goals, int32_t ngoals,
   T->query_heap_base = T->query_depth == 1 ? 0 : heap_mark(T);
   T->query_catch_base = T->query_depth == 1 ? 0 : T->catch_sp;
   T->uncaught_ball = (size_t)-1;
+  size_t *saved_cn = T->query_cn;
   query_result_t r = run_query_body(T, goals, ngoals, nvars, on_solution, ud);
+  T->query_cn = saved_cn;
   T->query_depth--;
   T->sp = T->query_sp_base;
   T->query_sp_base = saved_base;
@@ -2636,6 +2698,7 @@ static query_result_t run_query_body(trilog_t *T, tterm_t **goals,
   for (int32_t i = 0; i < ngoals; i++)
     qgoals[i] = heap_copy_goal(T, goals[i], rename, cut_barrier);
   size_t cn = build_conj_tail(T, qgoals, ngoals, heap_new_atom(T, atom_true));
+  T->query_cn = &cn;
 
   size_t first, rest;
   int32_t clause_idx = 0;

@@ -390,6 +390,8 @@ trilog_term_t trilog_binding_value(trilog_t *t, int i) {
 
 trilog_term_t trilog_error_term(trilog_t *t) { return t->error; }
 
+const char *trilog_fatal_trace(trilog_t *t) { return t->fatal_trace; }
+
 static size_t resolve(trilog_t *t, trilog_term_t term) {
   if (term.ref >= heap_size(t))
     return (size_t)-1;

@@ -103,6 +103,7 @@ typedef struct {
 catch_frame_t *catch_stack_array(trilog_t *T);
 size_t catch_stack_size(trilog_t *T);
 void catch_stack_set_size(trilog_t *T, size_t n);
+void fatal_trace_fill(trilog_t *T);
 
 void db_add(trilog_t *T, tterm_t *head, tterm_t **body, int32_t nbody,
             int32_t nvars, int mark_static);

@@ -101,6 +101,8 @@ struct trilog {
   const char *P;
   jmp_buf err_jmp;
   char err_msg[256];
+  char fatal_trace[256];
+  size_t *query_cn;   // into run_query_body's C frame; NULL outside a query
   int32_t *var_names; // atom ids
   int32_t var_count;
   size_t var_names_cap;

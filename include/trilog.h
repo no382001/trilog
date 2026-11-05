@@ -107,6 +107,11 @@ trilog_term_t trilog_binding_value(trilog_t *t, int i);
 // or an invalid handle when the error was not an exception.
 trilog_term_t trilog_error_term(trilog_t *t);
 
+// What the last query that ran out of memory or was aborted was doing, as
+// "goals a/1, b/2; in c/1 x3 < d/0": its next goals, then the predicates
+// that had choice points, innermost first. "" before any such query.
+const char *trilog_fatal_trace(trilog_t *t);
+
 trilog_type_t trilog_term_type(trilog_t *t, trilog_term_t term);
 bool trilog_get_int(trilog_t *t, trilog_term_t term, int64_t *out);
 bool trilog_get_float(trilog_t *t, trilog_term_t term, double *out);
