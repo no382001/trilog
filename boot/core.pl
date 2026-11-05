@@ -592,21 +592,57 @@ setof(Template, Goal, Set) :-
 '$resolve_stream'(S, _) :- atom(S), !, throw(error(existence_error(stream, S), _)).
 '$resolve_stream'(S, _) :- throw(error(domain_error(stream_or_alias, S), _)).
 
+% The current output, as the stream's name and as the target the writing
+% built-ins take.
+:- dynamic('$output'/2).
+'$output'(user_output, 0).
+
 %!  current_output(?Stream) is det.
-%   The current output is always user_output.
+%!  set_output(+Stream) is det.
+%   Closing the current output makes user_output current again.
 current_output(S) :-
     (   ( var(S) ; S = '$stream'(_) ; atom(S), '$stream_alias'(S, _) )
-    ->  S = user_output
+    ->  '$output'(C, _),
+        S = C
     ;   throw(error(domain_error(stream, S), current_output/1))
     ).
 
+set_output(S) :-
+    '$with_context'(('$resolve_stream'(S, N), '$output_stream'(S, N)), set_output/1),
+    '$set_output'(S, N).
+
+'$output_stream'(_, N) :- integer(N), !.
+'$output_stream'(S, N) :-
+    (   '$stream_info'(N, _, Mode, _, _, _)
+    ->  ( Mode == read -> throw(error(permission_error(output, stream, S), _)) ; true )
+    ;   throw(error(existence_error(stream, S), _))
+    ).
+
+'$set_output'(S0, N) :-
+    '$std_name'(N, S1),
+    ( atom(S1), '$stream_alias'(S1, _) -> S = S1 ; '$alias_stream'(S0, S) ),
+    ( '$$retract'('$output'(_, _)) -> true ; true ),
+    '$$assertz'('$output'(S, N)).
+
+% The current output's target, checked to be a text stream unless it is a
+% standard one.
+'$out_text'(PI, N) :-
+    '$output'(_, N),
+    ( integer(N) -> true ; '$with_context'('$want_type'(N, text, output), PI) ).
+
 %!  put_char(+Char), put_char(+Stream, +Char) is det.
 %!  put_code(+Code), put_code(+Stream, +Code) is det.
-put_char(C) :- '$with_context'('$check_char'(C), put_char/1), '$$write_raw'(0, C, 2).
+put_char(C) :-
+    '$out_text'(put_char/1, N),
+    '$with_context'('$check_char'(C), put_char/1),
+    '$$write_raw'(N, C, 2).
 put_char(S, C) :-
     '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output), '$check_char'(C)), put_char/2),
     '$put'(N, C, S, put_char/2).
-put_code(C) :- '$with_context'('$code_char'(C, Ch), put_code/1), '$$write_raw'(0, Ch, 2).
+put_code(C) :-
+    '$out_text'(put_code/1, N),
+    '$with_context'('$code_char'(C, Ch), put_code/1),
+    '$$write_raw'(N, Ch, 2).
 put_code(S, C) :-
     '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output), '$code_char'(C, Ch)), put_code/2),
     '$put'(N, Ch, S, put_code/2).
@@ -619,7 +655,7 @@ put_code(S, C) :-
 '$code_char'(C, Ch) :- '$char_code'(Ch, C).
 
 %!  flush_output, flush_output(+Stream) is det.
-flush_output :- '$$flush'(0).
+flush_output :- '$output'(_, N), '$$flush'(N).
 flush_output(S) :-
     '$with_context'('$resolve_stream'(S, N), flush_output/1),
     ( '$$flush'(N) -> true ; throw(error(existence_error(stream, S), flush_output/1)) ).
@@ -689,7 +725,8 @@ close(S0) :-
     '$$close'(S),
     (   '$$retract'('$user_alias'(_, S)) -> true ; true ),
     (   '$$retract'('$stream_info'(S, _, _, _, _, _)) -> true ; true ),
-    (   '$$retract'('$stream_past'(S)) -> true ; true ).
+    (   '$$retract'('$stream_past'(S)) -> true ; true ),
+    (   '$output'(_, S) -> '$set_output'(user_output, 0) ; true ).
 
 %!  stream_property(?Stream, ?Property) is nondet.
 stream_property(S, P) :-
@@ -783,14 +820,14 @@ close(S, Opts) :-
 
 %!  write(@Term), write(+Stream, @Term) is det.
 %   TODO: no operator-aware output.
-write(T) :- '$$write_raw'(0, T, 2).
+write(T) :- '$out_text'(write/1, N), '$$write_raw'(N, T, 2).
 write(S, T) :-
     '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output)), write/2),
     ( '$$write_raw'(N, T, 2) -> true ; throw(error(existence_error(stream, S), write/2)) ).
 
 %!  writeq(@Term) is det.
 %!  writeq(+Stream, @Term) is det.
-writeq(T) :- '$$write_raw'(0, T, 3).
+writeq(T) :- '$out_text'(writeq/1, N), '$$write_raw'(N, T, 3).
 writeq(S, T) :-
     '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output)), writeq/2),
     ( '$$write_raw'(N, T, 3) -> true ; throw(error(existence_error(stream, S), writeq/2)) ).
@@ -800,8 +837,9 @@ writeq(S, T) :-
 %   Options: quoted(Bool), ignore_ops(Bool), numbervars(Bool).
 %   TODO: ignore_ops(false) is accepted but not honored.
 write_term(T, Opts) :-
+    '$out_text'(write_term/2, N),
     '$with_context'('$write_options'(Opts, Q, VNs), write_term/2),
-    '$write_term'(0, T, Q, VNs).
+    '$write_term'(N, T, Q, VNs).
 write_term(S, T, Opts) :-
     '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output), '$write_options'(Opts, Q, VNs)), write_term/3),
     ( '$write_term'(N, T, Q, VNs) -> true ; throw(error(existence_error(stream, S), write_term/3)) ).
@@ -913,7 +951,7 @@ get_byte(B) :- '$with_context'(('$current_input'(S), '$get_byte'(S, 0, B)), get_
 get_byte(S, B) :- '$with_context'('$get_byte'(S, 0, B), get_byte/2).
 peek_byte(B) :- '$with_context'(('$current_input'(S), '$get_byte'(S, 1, B)), peek_byte/1).
 peek_byte(S, B) :- '$with_context'('$get_byte'(S, 1, B), peek_byte/2).
-put_byte(B) :- '$with_context'('$put_byte'(user_output, B), put_byte/1).
+put_byte(B) :- '$output'(S, _), '$with_context'('$put_byte'(S, B), put_byte/1).
 put_byte(S, B) :- '$with_context'('$put_byte'(S, B), put_byte/2).
 
 '$get_byte'(S0, Peek, B) :-
