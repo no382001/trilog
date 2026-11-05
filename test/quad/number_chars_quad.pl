@@ -302,3 +302,18 @@
 ?- number_chars(-0.0,[-|L]).
    L = "0.0", unexpected.
    false.
+
+?- X = -0.0.
+   X = 0.0.
+
+?- X is 0.0 * -1.
+   X = 0.0.
+
+?- X is -(0.0).
+   X = 0.0.
+
+?- number_chars(X, "-0.0").
+   X = 0.0.
+
+?- X is -0.0, number_chars(X, Cs).
+   X = 0.0, Cs = "0.0".

@@ -42,6 +42,8 @@ tterm_t *tt_int(trilog_t *T, int64_t v) {
 }
 
 tterm_t *tt_flt(trilog_t *T, double v) {
+  if (v == 0.0) // -0.0 too: 13211-1 has no negative zero
+    v = 0.0;
   tterm_t *t = tt_new(T, T_FLT);
   t->as.fval = v;
   return t;

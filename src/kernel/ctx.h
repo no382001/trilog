@@ -262,6 +262,8 @@ static inline size_t heap_new_int(trilog_t *T, int64_t v) {
 }
 
 static inline size_t heap_new_flt(trilog_t *T, double v) {
+  if (v == 0.0) // -0.0 too: 13211-1 has no negative zero
+    v = 0.0;
   size_t i = heap_alloc(T, 1);
   T->heap[i].tag = TAG_FLT;
   T->heap[i].as.fval = v;
