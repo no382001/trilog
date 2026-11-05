@@ -19,7 +19,7 @@ missing requirements:
 - pico 2: building a 100-deep term and round-tripping it through term_to_atom runs out of memory; the prolog heap doubles to 8192 cells between GC points, then asks for 16384; trilog_config_t's heap_grow_percent and gc_grow_percent can now lower that, but pico/ does not set them yet
 - fix main-specific test expectations: 32-bit max_integer, last/2 arg order, sub_atom/5 single answer, answer printing (unhandled exception, X = Y)
 - a build without glibc: drop getenv, assert, ctype and errno from the engine, leaving stdio (default I/O), setjmp and libm
-- debug flag, and trace?
+- debug flag
 
 guidelines:
 - as much logic in prolog as possible
@@ -28,4 +28,4 @@ guidelines:
 - malloc/realloc usage minimized, ideally the memory we can use is up to the user embedding the interpreter
 
 good to have:
-- tracing?
+- trace: variables print as _G123, not the query's names; built-ins and library predicates are one step

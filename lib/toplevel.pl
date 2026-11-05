@@ -1,12 +1,24 @@
 :- '$builtin_file'.
 
-:- module(toplevel, [toplevel/0]).
+:- module(toplevel, [toplevel/0,
+                     trace/0,
+                     notrace/0]).
 
 :- use_module(library(editline)).
 
 :- dynamic(answered/0).
 :- dynamic(show_all/0).
 :- dynamic(pending/1).
+:- dynamic(tracing/0).
+
+%!  trace is det.
+%!  notrace is det.
+%   Queries after trace/0 run through library(trace), which shows each port
+%   and, at a terminal, waits for a key; notrace/0 stops that.
+trace :-
+    use_module(library(trace)),
+    ( tracing -> true ; assertz(tracing) ).
+notrace :- retractall(tracing).
 
 %!  toplevel is det.
 %   Reads and runs queries until end of input or halt/0,1.
@@ -85,13 +97,19 @@ run_query(query(Goal, VNs)) :-
 % choice point is seen as done.
 answers(Goal, VNs) :-
     (   '$$choice_mark'(M0),
-        call(user:Goal),
+        run(Goal),
         '$$choice_mark'(M1),
         show(VNs, M0, M1)
     ->  true
     ;   answered
     ->  write('.'), nl
     ;   write('   false.'), nl
+    ).
+
+run(Goal) :-
+    (   tracing, Goal \== notrace
+    ->  trace_goal(user:Goal)
+    ;   call(user:Goal)
     ).
 
 % Succeeds to stop at this answer, fails to look for the next one.
@@ -101,6 +119,11 @@ show(VNs, M0, M1) :-
     (   M1 == M0
     ->  write('.'), nl
     ;   stop
+    ->  true
+    ;   tracing
+    ->  nl,
+        fail
+    ;   fail
     ).
 
 % An answer as the toplevel shows it: "X = f(_A), Y = X", or "true". Each
@@ -215,6 +238,7 @@ stop :-
         nl, write(';  ... .'), nl
     ).
 
+uncaught(trace_aborted) :- !, write('% aborted'), nl.
 uncaught(E) :-
     flush_output,
     write(user_error, 'uncaught exception: '),

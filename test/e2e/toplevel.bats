@@ -253,3 +253,11 @@ load common
     [ "$got" = "$expected" ] || { echo "query: $q"; echo "-e:   $expected"; echo "REPL: $got"; false; }
   done
 }
+
+@test "trace shows the ports of the next queries, notrace stops it" {
+  run bash -c "printf 'assertz(tp(1)).\ntrace.\ntp(1).\nnotrace.\ntp(1).\n' | '$TRILOG' -f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Call: (1) tp(1)"* ]]
+  [[ "$output" == *"Exit: (1) tp(1)"* ]]
+  [ "$(printf '%s\n' "$output" | grep -c 'Call:')" -eq 1 ]
+}
