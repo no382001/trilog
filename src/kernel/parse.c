@@ -385,6 +385,10 @@ static bool negative_number_follows(trilog_t *T) {
 static int peek_op(trilog_t *T, size_t *len_out, op_t *out,
                    int (*find)(trilog_t *, const char *, op_t *)) {
   skip_ws(T);
+  if (*T->P == '|' && find == find_infix) {
+    *len_out = 1;
+    return find(T, "|", out);
+  }
   if (*T->P == '\0' || *T->P == ')' || *T->P == ']' || *T->P == '|' ||
       at_clause_end(T))
     return 0;

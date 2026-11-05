@@ -17,3 +17,7 @@ peek(C), [C] --> [C].
 one_of, [b] --> [a].
 one_of --> [c].
 one_of, [d] --> [e].
+
+:- op(1105, xfy, '|').
+digit --> [0] | [1] | [2].
+:- op(0, xfy, '|').

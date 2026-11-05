@@ -76,3 +76,13 @@
 
 ?- findall(In-R, ( member(In, [[a], [c], [e]]), phrase(one_of, In, R) ), Ps).
    Ps = [[a]-[b],[c]-[],[e]-[d]].
+
+% | separates alternatives like ;.
+?- findall(D, phrase(digit, [D]), Ds).
+   Ds = [0,1,2].
+
+?- phrase(digit, [3]).
+   false.
+
+?- findall(L, phrase('|'([x], [y]), L), Ls).
+   Ls = [[x],[y]].

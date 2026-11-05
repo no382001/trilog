@@ -813,6 +813,8 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
                    (size_t)(assoc == ASSOC_XFY ? pri : pri - 1) | OPERAND);
         if (id == atom_comma)
           print_text(T, ",");
+        else if (id == atom_bar)
+          print_text(T, "|");
         else
           print_push(T, P_NAME, (size_t)id, 0);
         if (bracket) {
