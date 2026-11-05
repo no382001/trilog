@@ -460,6 +460,9 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
       query_base + mem_grow_by(T, new_top - query_base, T->gc_grow_percent);
   size_t floor = T->gc_fixed ? T->gc_fixed : query_base + GC_MIN_CELLS;
   size_t room = heap_capacity(T) / 4 * 3;
+  // Freeing almost nothing under 3/4 would start the next collection at once.
+  if (old_top - new_top < room / 8)
+    room = heap_capacity(T) / 8 * 7;
   if (T->gc_fixed && !GC_SHRINK && next > room)
     next = room;
   T->gc_threshold = next > floor ? next : floor;
