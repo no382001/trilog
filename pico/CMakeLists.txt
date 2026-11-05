@@ -20,7 +20,7 @@ add_custom_target(libtrilog
           "IMAGE_LOAD=consult('pico/prolog/main.pl'), consult('test/conformity/board.pl')" "IMAGE_DEPS=pico/prolog/*.pl test/conformity/board.pl"
           EMBED_USERS=pico/src/main.c
           CC=arm-none-eabi-gcc AR=arm-none-eabi-gcc-ar
-          "CFLAGS=-Wall -Wextra -std=c11 -O2 -mcpu=cortex-m0plus -mthumb -DGC_MIN_CELLS=2048 -DARENA_CHUNK_SIZE=4096 -DGC_SHRINK=0"
+          "CFLAGS=-Wall -Wextra -std=c11 -O2 -mcpu=cortex-m0plus -mthumb -DGC_MIN_CELLS=2048 -DARENA_CHUNK_SIZE=4096 -DGC_SHRINK=0 -DATOM_SLOTS_16"
           "HIDE_INTERNALS=arm-none-eabi-objcopy --wildcard --keep-global-symbol=trilog_* --keep-global-symbol=embedded_files"
   BYPRODUCTS ${LIBTRILOG}
   VERBATIM

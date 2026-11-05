@@ -32,6 +32,16 @@ typedef struct {
   size_t len, cap;
 } bag_t;
 
+// ATOM_SLOTS_16 halves the atom hash for builds that never hold more than
+// 32767 atoms.
+#ifdef ATOM_SLOTS_16
+typedef int16_t atom_slot_t;
+#define ATOM_SLOT_MAX INT16_MAX
+#else
+typedef int32_t atom_slot_t;
+#define ATOM_SLOT_MAX INT32_MAX
+#endif
+
 struct trilog {
   void *(*alloc_realloc)(void *ud, void *p, size_t n);
   void (*alloc_free)(void *ud, void *p);
@@ -58,7 +68,7 @@ struct trilog {
   size_t trail_cap, trail_top;
   char **atoms;
   int32_t atom_count, atom_cap;
-  int32_t *atom_slots; // open addressing over atom ids, -1 is empty
+  atom_slot_t *atom_slots; // open addressing over atom ids, -1 is empty
   uint32_t atom_slots_cap;
 
   trilog_io_t hooks;

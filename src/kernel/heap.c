@@ -80,14 +80,14 @@ static uint32_t atom_slot(trilog_t *T, const char *name) {
 
 static void atom_slots_grow(trilog_t *T) {
   uint32_t cap = T->atom_slots_cap ? T->atom_slots_cap * 2 : 256;
-  int32_t *slots = mem_grow_n(T, NULL, cap, sizeof(int32_t));
+  atom_slot_t *slots = mem_grow_n(T, NULL, cap, sizeof *slots);
   for (uint32_t i = 0; i < cap; i++)
     slots[i] = -1;
   mem_free(T, T->atom_slots);
   T->atom_slots = slots;
   T->atom_slots_cap = cap;
   for (int32_t id = 0; id < T->atom_count; id++)
-    T->atom_slots[atom_slot(T, T->atoms[id])] = id;
+    T->atom_slots[atom_slot(T, T->atoms[id])] = (atom_slot_t)id;
 }
 
 static int32_t atom_add(trilog_t *T, const char *name, bool copy) {
@@ -96,12 +96,14 @@ static int32_t atom_add(trilog_t *T, const char *name, bool copy) {
   uint32_t slot = atom_slot(T, name);
   if (T->atom_slots[slot] >= 0)
     return T->atom_slots[slot];
+  if (T->atom_count >= ATOM_SLOT_MAX)
+    mem_fail(T);
   if (T->atom_count >= T->atom_cap) {
     T->atoms = mem_grow_n(T, T->atoms, (size_t)T->atom_cap * 2, sizeof(char *));
     T->atom_cap *= 2;
   }
   T->atoms[T->atom_count] = copy ? arena_strdup(T, name) : (char *)name;
-  T->atom_slots[slot] = T->atom_count;
+  T->atom_slots[slot] = (atom_slot_t)T->atom_count;
   return T->atom_count++;
 }
 
