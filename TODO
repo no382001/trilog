@@ -1,6 +1,10 @@
-regressions:
+do it:
+- on second thought the ci diagram looks digusting, get rid of it
 - use cstdint everywhere
-- clang-tidy? 
+- clang-tidy?
+- rethink the categories in TODO
+
+regressions:
 
 must have:
 - syntax conformity (make conformity): 361/366
