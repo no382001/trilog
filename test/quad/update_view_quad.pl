@@ -24,5 +24,5 @@
 ?- retractall(g(_)), forall(between(1, 3000, I), assertz(g(I))), findall(I, g(I), _Is), length(_Is, N), retractall(g(_)).
    N = 3000.
 
-?- findall(X, ( member(X, [a,b]), consult('lib/lists.pl') ), L).
-   L = [a,b].
+?- consult('test/quad/files/update_view.pl'), findall(X, ( uv(X), consult('test/quad/files/update_view.pl') ), L), findall(Y, uv(Y), M).
+   L = [a,b], M = [a,b].
