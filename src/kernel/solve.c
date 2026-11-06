@@ -1630,6 +1630,13 @@ static int read_term_text(trilog_t *T, int sid) {
       if (d < 0)
         return TEXT_CUT_OFF;
       read_put(T, &n, d);
+      // A continuation is no character: the quote opens a quoted token.
+      if (d == '\\' && read_byte(T, sid, true) == '\n') {
+        read_put(T, &n, read_byte(T, sid, false));
+        quote = '\'';
+        any = true;
+        continue;
+      }
       if (d == '\\') {
         int e = read_escape_text(T, sid, &n);
         if (e == ESCAPE_EOF)
