@@ -5,6 +5,7 @@
 
 typedef enum { T_VAR, T_ATOM, T_INT, T_FLT, T_STR } ttag_t;
 
+#pragma pack(push, 4)
 typedef struct tterm {
   ttag_t tag;
   union {
@@ -19,6 +20,10 @@ typedef struct tterm {
     } str; // T_STR
   } as;
 } tterm_t;
+#pragma pack(pop)
+
+_Static_assert(sizeof(tterm_t) == 12 + sizeof(void *),
+               "tterm_t has no padding");
 
 tterm_t *tt_var(trilog_t *T, int32_t slot);
 tterm_t *tt_atom(trilog_t *T, const char *name);

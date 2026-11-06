@@ -37,7 +37,7 @@ static trilog_status_t unwound(trilog_t *t) {
   t->wsp = 0;
   t->psp = 0;
   t->template_marks_len = 0;
-  t->template_cyclic = 0;
+  t->template_cyclic = false;
   t->sp = 0;
   t->query_sp_base = 0;
   t->query_depth = 0;

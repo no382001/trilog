@@ -19,7 +19,7 @@
 typedef enum { XFX, XFY, YFX, FX, FY, XF, YF } assoc_t;
 typedef struct {
   const char *name;
-  int pri;
+  int32_t pri;
   assoc_t assoc;
 } op_t;
 

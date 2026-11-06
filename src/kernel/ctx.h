@@ -18,7 +18,7 @@ struct chunk;
 typedef struct {
   size_t ref;
   const char *name; // NULL: fresh, printed as _A, _B, ...
-  int fresh;
+  int32_t fresh;
 } answer_var_t;
 
 typedef struct {
@@ -48,11 +48,11 @@ struct trilog {
   void *alloc_ud;
   jmp_buf fatal_jmp;
   bool halted;
-  int halt_code;
+  int32_t halt_code;
   bool aborted;
   trilog_yield_fn yield_fn;
   void *yield_ud;
-  unsigned yield_every, yield_count;
+  uint32_t yield_every, yield_count;
 
   struct chunk *arena_current;
   struct chunk *arena_temp;
@@ -75,14 +75,14 @@ struct trilog {
   bool default_io;
   size_t gc_fixed;
   bool gc_debug;
-  unsigned heap_grow_percent, gc_grow_percent;
+  uint32_t heap_grow_percent, gc_grow_percent;
   io_reader_t *streams[MAX_OPEN_STREAMS];
 
   pair_visits unify_visits, occurs_check_visits;
   size_t *occurs_marks;
   size_t occurs_len, occurs_cap;
 
-  int template_cyclic;
+  bool template_cyclic;
   size_t *template_marks;
   size_t template_marks_len, template_marks_cap;
 
@@ -94,7 +94,7 @@ struct trilog {
   size_t new_index_cap;
   size_t *trail_new_index;
   size_t trail_new_index_cap;
-  int heap_exhausted;
+  bool heap_exhausted;
   size_t gc_threshold; // 0 = uninitialized
   size_t gc_old_top, gc_old_at_major;
   size_t gc_max;
@@ -130,7 +130,7 @@ struct trilog {
     size_t *p;
     size_t cap;
   } *query_bufs;
-  int query_bufs_len;
+  int32_t query_bufs_len;
   size_t *rename_tmp, *goals_tmp; // short-lived, never nested
   size_t rename_tmp_cap, goals_tmp_cap;
   const char *consulting; // path of the file being consulted
@@ -191,17 +191,17 @@ struct trilog {
   size_t query_sp_base;
   // GC in a nested query neither moves nor frees what is below these.
   size_t query_heap_base, query_catch_base;
-  int query_depth;
+  int32_t query_depth;
   pair_visits compare_visits;
   void *file_target;
   char *capture_buf; // a slice per nesting
   size_t capture_cap, capture_pos;
   size_t capture_starts[CAPTURE_STACK_MAX];
-  int capture_sp;
+  int32_t capture_sp;
   size_t tta_pos; // in scratch
   // Bytes peeked on user_input but not read; in_eof once a peek hit the end.
   unsigned char in_ahead[4];
-  int in_ahead_len;
+  int32_t in_ahead_len;
   bool in_eof;
   char *read_buf; // the text of the term read/1 is reading
   size_t read_buf_cap;
@@ -217,13 +217,13 @@ struct trilog {
   size_t answer_vars_cap, answer_len;
   uint32_t *answer_index; // open addressing over answer_vars, 0 is empty
   size_t answer_index_cap, answer_slots;
-  int answer_fresh;
+  int32_t answer_fresh;
   bool answer_naming;
   bool answer_plain; // an unnamed variable prints as _G<n>, not a fresh _A
   // The flags set_prolog_flag/2 changes, as atoms.
   int32_t flag_double_quotes, flag_unknown, flag_char_conversion, flag_debug;
-  int print_last;    // the last char the printer wrote, 0 at the start
-  bool print_prefix; // a prefix operator was just written
+  int32_t print_last; // the last char the printer wrote, 0 at the start
+  bool print_prefix;  // a prefix operator was just written
 };
 
 static inline void wstack_push(trilog_t *T, size_t x) {

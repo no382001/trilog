@@ -595,7 +595,7 @@ static void dynamic_declare(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
   }
   T->dynamic_decls[T->dynamic_count++] = (dyn_decl_t){pred_id, pred_arity};
   unmark_consulted(T, pred_id, pred_arity);
-  b->dynamic = 1;
+  b->dynamic = true;
 }
 
 bool image_load(trilog_t *T, const image_t *img) {
@@ -623,7 +623,7 @@ static void dynamic_undeclare(trilog_t *T, int32_t pred_id,
     if (T->dynamic_decls[i].pred_id == pred_id &&
         T->dynamic_decls[i].pred_arity == pred_arity) {
       T->dynamic_decls[i] = T->dynamic_decls[--T->dynamic_count];
-      pred_bucket_find(T, pred_id, pred_arity)->dynamic = 0;
+      pred_bucket_find(T, pred_id, pred_arity)->dynamic = false;
       return;
     }
 }

@@ -270,7 +270,7 @@ size_t gc_max_live(trilog_t *T) {
 
 int gc_heap_exhausted(trilog_t *T) {
   int e = T->heap_exhausted;
-  T->heap_exhausted = 0;
+  T->heap_exhausted = false;
   return e;
 }
 
@@ -345,7 +345,7 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
   if (old_top < gc_get_threshold(T))
     return;
   if (setjmp(T->gc_oom)) {
-    T->heap_exhausted = 1;
+    T->heap_exhausted = true;
     return;
   }
 
@@ -410,7 +410,7 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
   size_t new_top = compact_heap(T, heap_base, old_top, trail, old_trail_top,
                                 frames, nframes, catches, ncatches);
   if (new_top > gc_max_live(T))
-    T->heap_exhausted = 1;
+    T->heap_exhausted = true;
   size_t new_trail_top = compact_trail(T, heap_base, old_trail_top);
 
   *cn = moved(T, heap_base, *cn);

@@ -994,7 +994,7 @@ static tterm_t *heap_to_template_rec(trilog_t *T, size_t r, int32_t *nseen) {
       size_t f = T->heap[r].as.ptr;
       int32_t arity = T->heap[f].as.func.arity;
       if (arity < 0 || T->template_cyclic) {
-        T->template_cyclic = 1;
+        T->template_cyclic = true;
         t = tt_atom(T, "[]");
         break;
       }
@@ -1087,7 +1087,7 @@ int heap_terms_to_templates(trilog_t *T, size_t *terms, int32_t n,
                             tterm_t **out, int32_t *nvars_out) {
   size_t hmark = heap_mark(T), tmark = trail_mark(T);
   int32_t nseen = 0;
-  T->template_cyclic = 0;
+  T->template_cyclic = false;
   for (int32_t i = 0; i < n; i++)
     out[i] = heap_to_template_rec(T, terms[i], &nseen);
   trail_release(T, tmark);

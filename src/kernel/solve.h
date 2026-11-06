@@ -63,7 +63,7 @@ typedef struct pred_bucket {
   int32_t pred_id, pred_arity;
   int32_t *indices;
   int32_t count, cap;
-  int dynamic;
+  bool dynamic;
   int32_t foreign;
   struct pred_bucket *next;
 } pred_bucket_t;

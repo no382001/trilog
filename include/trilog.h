@@ -58,10 +58,10 @@ typedef struct {
   const trilog_io_t *io;
   size_t gc_threshold;
   // A full heap grows to this percent of its size; 0 means 200.
-  unsigned heap_grow_percent;
+  uint32_t heap_grow_percent;
   // After a collection, the next one and the heap's size are set to this
   // percent of the live cells; 0 means 200.
-  unsigned gc_grow_percent;
+  uint32_t gc_grow_percent;
   bool gc_debug; // one line per collection on the error stream
 } trilog_config_t;
 
