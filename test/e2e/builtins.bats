@@ -597,15 +597,15 @@ load common
   [[ "$output" == *"r(representation_error(max_float),representation_error(max_float))"* ]]
 }
 
-@test "character code 0 raises representation_error(character_code), since atoms cannot hold NUL (regression)" {
+@test "character code 0 is a character, so atoms can hold it (regression)" {
   # regression: char_code(N, 0) raised type_error(character, '').
   run "$TRILOG" -e "
-    catch(char_code(_, 0), error(E1, _), true),
-    catch(atom_codes(_, [0'a, 0]), error(E2, _), true),
-    write(r(E1, E2)), nl.
+    char_code(C, 0), atom_length(C, N1),
+    atom_codes(A, [0'a, 0]), atom_length(A, N2),
+    write(r(N1, N2)), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"r(representation_error(character_code),representation_error(character_code))"* ]]
+  [[ "$output" == *"r(1,2)"* ]]
 }
 
 @test "findall/3 whose goal throws leaves no solutions behind, also when nested (regression)" {

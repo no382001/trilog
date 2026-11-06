@@ -222,12 +222,6 @@ static size_t make_domain_error(trilog_t *T, const char *domain,
       T, heap_new_struct(T, atom_intern(T, "domain_error"), 2, args));
 }
 static size_t make_syntax_error(trilog_t *T) {
-  if (T->parse_repr) {
-    T->parse_repr = false;
-    size_t what[1] = {heap_new_atom(T, atom_intern(T, "character_code"))};
-    return make_error(
-        T, heap_new_struct(T, atom_intern(T, "representation_error"), 1, what));
-  }
   size_t args[1] = {heap_new_atom(T, atom_intern(T, T->err_msg))};
   return make_error(
       T, heap_new_struct(T, atom_intern(T, "syntax_error"), 1, args));
@@ -1236,7 +1230,7 @@ static char *codes_text(trilog_t *T, size_t list, size_t max_len,
       return 0;
     mem_reserve(T, &T->scratch, &T->scratch_cap, n + 5);
     int64_t code = T->heap[h].as.ival;
-    if (code >= 0x80 && code <= 0x10FFFF)
+    if (code == 0 || (code >= 0x80 && code <= 0x10FFFF))
       n += (size_t)utf8_encode((int)code, (char *)T->scratch + n);
     else
       ((char *)T->scratch)[n++] = (char)code;

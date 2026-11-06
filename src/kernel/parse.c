@@ -93,14 +93,7 @@ static int find_prefix(trilog_t *T, const char *name, op_t *out) {
 // ---- input cursor and error handling ----
 
 static void perr(trilog_t *T, const char *msg) {
-  T->parse_repr = false;
   fmt(T->err_msg, sizeof(T->err_msg), "%s near \"%.20s\"", msg, T->P);
-  longjmp(T->err_jmp, 1);
-}
-
-static void perr_repr(trilog_t *T, const char *msg) {
-  fmt(T->err_msg, sizeof(T->err_msg), "%s near \"%.20s\"", msg, T->P);
-  T->parse_repr = true;
   longjmp(T->err_jmp, 1);
 }
 
@@ -236,9 +229,7 @@ static const char *read_quoted(trilog_t *T, char quote) {
     }
     T->P++;
     int c = read_escape(T);
-    if (c == 0)
-      perr_repr(T, "\\0\\ cannot be stored in quoted text");
-    if (c > 0)
+    if (c >= 0)
       n = put_code(T, n, c);
   }
   tok_put(T, n, '\0');

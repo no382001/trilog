@@ -1,4 +1,5 @@
 #include "io.h"
+#include "chars.h"
 #include "ctx.h"
 #include "mem.h"
 #include "platform.h"
@@ -32,8 +33,7 @@ static void capture_append(trilog_t *T, const char *str) {
   T->capture_pos += len;
 }
 
-static bool write_all(trilog_t *T, void *handle, const char *str) {
-  size_t n = strlen(str);
+static bool write_bytes(trilog_t *T, void *handle, const char *str, size_t n) {
   while (n > 0) {
     long k = T->hooks.write(T->hooks.userdata, handle, str, n);
     if (k <= 0)
@@ -42,6 +42,24 @@ static bool write_all(trilog_t *T, void *handle, const char *str) {
     n -= (size_t)k;
   }
   return true;
+}
+
+// Code 0, kept as C0 80 inside, leaves as one NUL byte.
+static bool write_all(trilog_t *T, void *handle, const char *str) {
+  static const char nul = '\0';
+  for (;;) {
+    const char *p = str;
+    while (*p && !((unsigned char)p[0] == NUL_LEAD &&
+                   (unsigned char)p[1] == NUL_TRAIL))
+      p++;
+    if (!write_bytes(T, handle, str, (size_t)(p - str)))
+      return false;
+    if (!*p)
+      return true;
+    if (!write_bytes(T, handle, &nul, 1))
+      return false;
+    str = p + 2;
+  }
 }
 
 static void io_write(trilog_t *T, void *handle, const char *str) {

@@ -285,9 +285,16 @@ size_t heap_rebake_cuts(trilog_t *T, size_t r, size_t cut_barrier) {
   }
 }
 
+static bool is_nul(const char *p) {
+  return (unsigned char)p[0] == NUL_LEAD && (unsigned char)p[1] == NUL_TRAIL;
+}
+
 static int atom_needs_quote(const char *s) {
   if (!s[0] || !strcmp(s, "."))
     return 1;
+  for (const char *p = s; *p; p++)
+    if (is_nul(p))
+      return 1;
   if (!strcmp(s, "[]") || !strcmp(s, "{}") || !strcmp(s, "!") ||
       !strcmp(s, ";"))
     return 0;
@@ -463,8 +470,14 @@ static void print_atom(trilog_t *T, const char *name, int quoted,
   }
   glue(T, emit, '\'');
   emit(T, "'");
-  for (const char *p = name; *p; p++)
-    print_quoted_char(T, emit, (unsigned char)*p, '\'');
+  for (const char *p = name; *p; p++) {
+    if (is_nul(p)) {
+      print_quoted_char(T, emit, 0, '\'');
+      p++;
+    } else {
+      print_quoted_char(T, emit, (unsigned char)*p, '\'');
+    }
+  }
   emit(T, "'");
   T->print_last = '\'';
 }
@@ -502,7 +515,9 @@ static int try_print_char_string(trilog_t *T, size_t r, emit_fn emit) {
   for (cell = r;;) {
     size_t cf = T->heap[cell].as.ptr;
     const char *name = atom_name(T, T->heap[heap_deref(T, cf + 1)].as.atom_id);
-    if (name[1] != '\0')
+    if (is_nul(name))
+      print_quoted_char(T, emit, 0, '"');
+    else if (name[1] != '\0')
       emit(T, name);
     else
       print_quoted_char(T, emit, (unsigned char)name[0], '"');

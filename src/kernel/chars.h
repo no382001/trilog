@@ -31,10 +31,18 @@ static inline int utf8_len(int lead) {
                                         : 1;
 }
 
+// Text keeps code 0 as C0 80, so it is never a C string's end.
+#define NUL_LEAD 0xC0
+#define NUL_TRAIL 0x80
+
 // The character at s, as a code, and the bytes it takes. A byte that does not
 // start a well-formed sequence is one character, its own code.
 static inline int utf8_decode(const char *s, int *code) {
   const unsigned char *u = (const unsigned char *)s;
+  if (u[0] == NUL_LEAD && u[1] == NUL_TRAIL) {
+    *code = 0;
+    return 2;
+  }
   int n = utf8_len(u[0]);
   int c = n == 2 ? u[0] & 0x1F : n == 3 ? u[0] & 0x0F : u[0] & 0x07;
   for (int i = 1; i < n; i++) {
@@ -55,6 +63,11 @@ static inline int utf8_decode(const char *s, int *code) {
 
 // Writes c's UTF-8 bytes to out, which has room for 4; returns how many.
 static inline int utf8_encode(int c, char *out) {
+  if (c == 0) {
+    out[0] = (char)NUL_LEAD;
+    out[1] = (char)NUL_TRAIL;
+    return 2;
+  }
   if (c < 0x80) {
     out[0] = (char)c;
     return 1;

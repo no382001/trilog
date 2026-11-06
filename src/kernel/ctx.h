@@ -220,7 +220,6 @@ struct trilog {
   int answer_fresh;
   bool answer_naming;
   bool answer_plain; // an unnamed variable prints as _G<n>, not a fresh _A
-  bool parse_repr;   // the last parse error is a representation_error
   // The flags set_prolog_flag/2 changes, as atoms.
   int32_t flag_double_quotes, flag_unknown, flag_char_conversion, flag_debug;
   int print_last;    // the last char the printer wrote, 0 at the start
