@@ -21,16 +21,19 @@ conformity(Setup, AnswerFile) :-
     ),
     halt.
 
-goals(S, Outcome) :- goals(S, true([]), Outcome).
+goals(S, Outcome) :- goals(S, none, Outcome).
 
 % A goal that fails or throws does not end the entry: earlier ones set up ops.
+% Text left incomplete after a goal ran waits for more without changing the
+% answer the goal gave.
 
 goals(S, Last, Outcome) :-
     catch(read_term(S, G, [variable_names(Names)]), error(E, _), true),
     (   nonvar(E)
-    ->  read_error(E, Outcome)
+    ->  read_error(E, O0),
+        ( O0 == waits, Last \== none -> Outcome = Last ; Outcome = O0 )
     ;   G == end_of_file
-    ->  Outcome = Last
+    ->  ( Last == none -> Outcome = true([]) ; Outcome = Last )
     ;   catch(( call(G) -> R = true(Names) ; R = false ), Ball, R = thrown(Ball)),
         (   R = thrown(error(Formal, _)) -> O = error(Formal)
         ;   R = thrown(Other) -> O = error(Other)
