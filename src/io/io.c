@@ -5,6 +5,8 @@
 #include <string.h>
 
 bool io_cwd(trilog_t *T, char *buf, size_t cap) {
+  if (T->hooks.cwd)
+    return T->hooks.cwd(T->hooks.userdata, buf, cap);
   return T->default_io && platform_cwd(buf, cap);
 }
 

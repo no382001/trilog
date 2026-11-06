@@ -419,3 +419,7 @@ bind_and_succeed(X) :- X = 42.
 
 ?- findall(X, member(X, [a, b, c]), L).
    L = "abc".
+
+% lists.pl was loaded by its absolute path; a relative one names the same file
+?- consult('lib/lists.pl'), findall(X, member(X, [a, b]), L).
+   L = "ab".

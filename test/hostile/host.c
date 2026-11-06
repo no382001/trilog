@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 typedef struct {
   size_t size;
@@ -50,6 +51,11 @@ static void hostile_close(void *ud, void *h) {
   fclose(h);
 }
 
+static bool hostile_cwd(void *ud, char *buf, size_t cap) {
+  (void)ud;
+  return getcwd(buf, cap) != NULL;
+}
+
 static void hostile_flush(void *ud, void *h) {
   (void)ud;
   fflush(h);
@@ -59,7 +65,8 @@ static trilog_io_t io = {.open = hostile_open,
                          .read = hostile_read,
                          .write = hostile_write,
                          .close = hostile_close,
-                         .flush = hostile_flush};
+                         .flush = hostile_flush,
+                         .cwd = hostile_cwd};
 
 void host_config(trilog_config_t *c) {
   io.in = stdin;

@@ -41,6 +41,9 @@ typedef struct {
   long (*write)(void *ud, void *handle, const char *buf, size_t n);
   void (*close)(void *ud, void *handle);
   void (*flush)(void *ud, void *handle); // optional
+  // Optional: writes the working directory, against which relative paths are
+  // made absolute so a file has one name. False if there is none.
+  bool (*cwd)(void *ud, char *buf, size_t cap);
   void *in, *out, *err;
   void *userdata;
 } trilog_io_t;
