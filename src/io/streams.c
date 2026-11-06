@@ -9,7 +9,7 @@ int stream_open(trilog_t *T, const char *path, const char *mode) {
   while (i < MAX_OPEN_STREAMS && T->streams[i])
     i++;
   if (i == MAX_OPEN_STREAMS)
-    return -1;
+    return -2;
   io_reader_t *r = mem_grow_n(T, NULL, 1, sizeof *r);
   void *h = io_file_open(T, path, mode);
   if (!h) {
@@ -35,10 +35,30 @@ void *stream_handle(trilog_t *T, int id) {
   return T->streams[id]->handle;
 }
 
+void *stream_text_output(trilog_t *T, int id) {
+  if (!stream_handle(T, id) || !T->streams[id]->output ||
+      T->streams[id]->binary)
+    return NULL;
+  return T->streams[id]->handle;
+}
+
+void stream_set_binary(trilog_t *T, int id) {
+  if (stream_handle(T, id))
+    T->streams[id]->binary = true;
+}
+
 char *stream_read_line(trilog_t *T, int id, char *buf, int size) {
   if (!stream_handle(T, id))
     return NULL;
   return io_reader_line(T, T->streams[id], buf, size);
+}
+
+int stream_peek_at(trilog_t *T, int id, int i) {
+  if (!stream_handle(T, id))
+    return -2;
+  if (T->streams[id]->output)
+    return -3;
+  return io_reader_peek_at(T, T->streams[id], i);
 }
 
 int stream_byte(trilog_t *T, int id, bool peek) {

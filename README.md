@@ -37,6 +37,7 @@ The release build has the Prolog core and libraries built in, so it runs without
 | `make test` | the system tests in `test/e2e/` and the C API tests |
 | `make quad` | the Prolog tests in `test/quad/` |
 | `make conformity` | the ISO conformity tests in `test/conformity/` |
+| `make check` | every suite, as CI does; fails on a failure not in `test/known_failures.txt` |
 | `make format` | `clang-format` on every C source |
 
 ## Embedding

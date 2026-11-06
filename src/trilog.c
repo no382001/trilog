@@ -1,11 +1,13 @@
 #include "trilog.h"
 #include "arena.h"
+#include "atoms.h"
 #include "ctx.h"
 #include "fmt.h"
 #include "heap.h"
 #include "image.h"
 #include "io.h"
 #include "mem.h"
+#include "module.h"
 #include "parse.h"
 #include "platform.h"
 #include "solve.h"
@@ -53,7 +55,8 @@ static trilog_status_t unwound(trilog_t *t) {
   t->load_error_ball = (size_t)-1;
   t->foreign_current = NULL;
   t->foreign_error = (size_t)-1;
-  t->in_peeked = -2;
+  t->in_ahead_len = 0;
+  t->in_eof = false;
   t->error_pi_name = -1;
   t->in_query = false;
   t->in_callback = false;
@@ -93,12 +96,17 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   t->pending_error_ball = (size_t)-1;
   t->uncaught_ball = (size_t)-1;
   t->foreign_error = (size_t)-1;
-  t->in_peeked = -2;
+  t->in_ahead_len = 0;
+  t->in_eof = false;
   t->consulting_atom = -1;
   t->module_id = -1;
   t->load_error_ball = (size_t)-1;
   t->op_gen = 1;
   t->error_pi_name = -1;
+  t->flag_double_quotes = atom_chars_kw;
+  t->flag_unknown = atom_error;
+  t->flag_char_conversion = atom_off;
+  t->flag_debug = atom_off;
   if (!io_set(t, c.io)) {
     c.free(c.alloc_ud, t);
     return NULL;
@@ -115,8 +123,10 @@ trilog_t *trilog_new(const trilog_config_t *config) {
   } else {
     platform_register(t);
     ops_seed(t);
-    booted = consult_file(
-        t, c.boot_path ? c.boot_path : "embedded:boot/core.pl", NULL);
+    booted =
+        consult_file(t, c.boot_path ? c.boot_path : "embedded:boot/core.pl",
+                     NULL) &&
+        t->directive_errors == 0;
   }
 #ifdef TRILOG_IMAGE_DUMP
   image_dump_register(t);
@@ -379,6 +389,8 @@ trilog_term_t trilog_binding_value(trilog_t *t, int i) {
 }
 
 trilog_term_t trilog_error_term(trilog_t *t) { return t->error; }
+
+const char *trilog_fatal_trace(trilog_t *t) { return t->fatal_trace; }
 
 static size_t resolve(trilog_t *t, trilog_term_t term) {
   if (term.ref >= heap_size(t))

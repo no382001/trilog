@@ -44,7 +44,8 @@ enum {
   PRINT_QUOTED = 1,
   PRINT_NUMBERVARS = 2,
   PRINT_IGNORE_OPS = 4,
-  PRINT_ANSWER = 8
+  PRINT_ANSWER = 8,
+  PRINT_DOUBLE_QUOTES = 16 // a list of one-character atoms prints as "abc"
 };
 void print_term_via(trilog_t *T, size_t r, int flags, emit_fn emit);
 

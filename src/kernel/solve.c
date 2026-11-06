@@ -108,6 +108,66 @@ catch_frame_t *catch_stack_array(trilog_t *T) { return T->catch_stack; }
 size_t catch_stack_size(trilog_t *T) { return T->catch_sp; }
 void catch_stack_set_size(trilog_t *T, size_t n) { T->catch_sp = n; }
 
+// Allocates nothing: it runs right after the heap failed to grow.
+void fatal_trace_fill(trilog_t *T) {
+  char *out = T->fatal_trace;
+  size_t cap = sizeof T->fatal_trace, n = 0;
+  out[0] = '\0';
+  size_t hs = heap_size(T);
+  size_t cn = T->query_cn ? *T->query_cn : (size_t)-1;
+  T->query_cn = NULL;
+  for (int k = 0; k < 6 && cn < hs && n < cap; k++) {
+    size_t c = heap_deref(T, cn);
+    if (c >= hs || T->heap[c].tag != TAG_STR)
+      break;
+    size_t f = T->heap[c].as.ptr;
+    bool conj = T->heap[f].as.func.atom_id == atom_comma &&
+                T->heap[f].as.func.arity == 2;
+    size_t g = heap_deref(T, conj ? f + 1 : c);
+    if (g >= hs)
+      break;
+    int32_t id = -1, arity = 0;
+    if (T->heap[g].tag == TAG_ATOM)
+      id = T->heap[g].as.atom_id;
+    else if (T->heap[g].tag == TAG_STR) {
+      id = T->heap[T->heap[g].as.ptr].as.func.atom_id;
+      arity = T->heap[T->heap[g].as.ptr].as.func.arity;
+    }
+    if (id >= 0 && id != atom_true)
+      n += fmt(out + n, cap - n, "%s%s/%d", n ? ", " : "goals ",
+               atom_name(T, id), (int)arity);
+    if (!conj)
+      break;
+    cn = f + 2;
+  }
+  int32_t prev_id = -1, prev_arity = -1, run = 0;
+  bool first = true;
+  for (size_t k = 0; k <= T->sp; k++) {
+    int32_t id = -1, arity = 0;
+    if (k < T->sp) {
+      int32_t c = T->stack[T->sp - 1 - k].clause_idx;
+      const tterm_t *h = c >= 0 && c < T->db_count ? T->db[c].head : NULL;
+      if (!h || (h->tag != T_STR && h->tag != T_ATOM))
+        continue;
+      id = h->tag == T_STR ? h->as.str.atom_id : h->as.atom_id;
+      arity = h->tag == T_STR ? h->as.str.arity : 0;
+      if (id == prev_id && arity == prev_arity) {
+        run++;
+        continue;
+      }
+    }
+    if (prev_id >= 0 && n < cap) {
+      n += fmt(out + n, cap - n, run > 1 ? "%s%s/%d x%d" : "%s%s/%d",
+               first ? (n ? "; in " : "in ") : " < ", atom_name(T, prev_id),
+               (int)prev_arity, run);
+      first = false;
+    }
+    prev_id = id;
+    prev_arity = arity;
+    run = 1;
+  }
+}
+
 static size_t catch_stack_push(trilog_t *T, catch_frame_t f) {
   if (T->catch_sp >= T->catch_cap) {
     size_t cap = T->catch_cap ? T->catch_cap * 2 : 16;
@@ -162,6 +222,12 @@ static size_t make_domain_error(trilog_t *T, const char *domain,
       T, heap_new_struct(T, atom_intern(T, "domain_error"), 2, args));
 }
 static size_t make_syntax_error(trilog_t *T) {
+  if (T->parse_repr) {
+    T->parse_repr = false;
+    size_t what[1] = {heap_new_atom(T, atom_intern(T, "character_code"))};
+    return make_error(
+        T, heap_new_struct(T, atom_intern(T, "representation_error"), 1, what));
+  }
   size_t args[1] = {heap_new_atom(T, atom_intern(T, T->err_msg))};
   return make_error(
       T, heap_new_struct(T, atom_intern(T, "syntax_error"), 1, args));
@@ -281,11 +347,18 @@ static int32_t bucket_seek(const pred_bucket_t *b, int32_t from_idx) {
 }
 
 // Position in b of the first clause from pos on that matches arg, or -1.
+#define ALIVE UINT32_MAX
+
+static bool clause_alive(const clause_t *c) { return c->died == ALIVE; }
+
+// The logical update view: a call sees the clauses there when it began.
 static int32_t bucket_match(trilog_t *T, const pred_bucket_t *b, int32_t pos,
-                            arg_key_t arg) {
-  for (; pos < b->count; pos++)
-    if (!first_arg_conflicts(arg, &T->db[b->indices[pos]]))
+                            arg_key_t arg, uint32_t gen) {
+  for (; pos < b->count; pos++) {
+    const clause_t *c = &T->db[b->indices[pos]];
+    if (c->born <= gen && gen < c->died && !first_arg_conflicts(arg, c))
       return pos;
+  }
   return -1;
 }
 
@@ -294,9 +367,21 @@ static void db_reserve(trilog_t *T, int32_t cap) {
   T->db_cap = cap;
 }
 
+static void db_compact(trilog_t *T);
+static void db_reclaim(trilog_t *T);
+
+// Dead slots are reused before the table grows: growing copies all of it.
 static void db_ensure_cap(trilog_t *T) {
   if (T->db_count < T->db_cap)
     return;
+  db_reclaim(T);
+  if (T->db_count < T->db_cap)
+    return;
+  if (T->db_dead > 0) {
+    db_compact(T);
+    if (T->db_count < T->db_cap)
+      return;
+  }
   db_reserve(T, T->db_cap ? T->db_cap * 2 : 8);
 }
 
@@ -351,6 +436,8 @@ void db_add(trilog_t *T, tterm_t *head, tterm_t **body, int32_t nbody,
                           .nbody = nbody,
                           .nvars = nvars,
                           .source = mark_static ? T->consulting_atom : -1,
+                          .born = ++T->db_gen,
+                          .died = ALIVE,
                           .arg = arg_key_of(key)};
   pred_bucket_add_index(T, key.pred_id, key.pred_arity, idx);
 }
@@ -376,6 +463,8 @@ static void db_add_front(trilog_t *T, tterm_t *head, tterm_t **body,
                         .nbody = nbody,
                         .nvars = nvars,
                         .source = -1,
+                        .born = ++T->db_gen,
+                        .died = ALIVE,
                         .arg = arg_key_of(key)};
   db_fixup_choice_points_insert_at(T, 0);
   pred_index_fixup_insert_at(T, 0);
@@ -385,26 +474,34 @@ static void db_add_front(trilog_t *T, tterm_t *head, tterm_t **body,
 
 // slides live clauses down over dead slots, remapping every stored db index:
 // bucket entries, and choicepoints' resume positions (a lower bound, so it
-// maps to the number of live slots before it).
+// maps to the number of live slots before it). It allocates nothing, as it
+// runs when memory is short; indices only shrink, so a bucket stays sorted
+// while its entries are rewritten.
 static void db_compact(trilog_t *T) {
-  int32_t *newpos =
-      mem_grow_n(T, NULL, (size_t)T->db_count + 1, sizeof(int32_t));
+  for (size_t f = 0; f < T->sp; f++) {
+    int32_t old = T->stack[f].clause_idx, live = 0;
+    if (old == FRAME_GOALS)
+      continue;
+    for (int32_t i = 0; i < old; i++)
+      live += T->db[i].head != NULL;
+    T->stack[f].clause_idx = live;
+  }
   int32_t live = 0;
   for (int32_t i = 0; i < T->db_count; i++) {
-    newpos[i] = live;
-    if (T->db[i].head)
-      T->db[live++] = T->db[i];
+    if (!T->db[i].head)
+      continue;
+    if (live != i) {
+      idx_key_t k = clause_key(&T->db[i]);
+      pred_bucket_t *b = pred_bucket_find(T, k.pred_id, k.pred_arity);
+      int32_t pos = b ? bucket_seek(b, i) : -1;
+      if (pos >= 0 && pos < b->count && b->indices[pos] == i)
+        b->indices[pos] = live;
+      T->db[live] = T->db[i];
+    }
+    live++;
   }
-  newpos[T->db_count] = live;
-  for (int i = 0; i < PRED_HASH_SIZE; i++)
-    for (pred_bucket_t *b = T->pred_hash[i]; b; b = b->next)
-      for (int32_t j = 0; j < b->count; j++)
-        b->indices[j] = newpos[b->indices[j]];
-  for (size_t i = 0; i < T->sp; i++)
-    T->stack[i].clause_idx = newpos[T->stack[i].clause_idx];
   T->db_count = live;
   T->db_dead = 0;
-  mem_free(T, newpos);
 }
 
 // unlinks the clause from its bucket and leaves db[idx] as a dead slot, so no
@@ -426,22 +523,70 @@ static void db_maybe_compact(trilog_t *T) {
     db_compact(T);
 }
 
-static void db_remove_at(trilog_t *T, int32_t idx) {
-  db_kill(T, idx);
+// Whether a choice point's call of the clause's predicate can still try it;
+// a frame's next clause is one of the predicate it iterates.
+static bool frames_see(trilog_t *T, int32_t idx) {
+  const clause_t *c = &T->db[idx];
+  idx_key_t key = clause_key(c);
+  for (size_t i = 0; i < T->sp; i++) {
+    const frame_t *f = &T->stack[i];
+    if (f->clause_idx == FRAME_GOALS || f->gen < c->born || f->gen >= c->died)
+      continue;
+    idx_key_t fk = clause_key(&T->db[f->clause_idx]);
+    if (fk.pred_id == key.pred_id && fk.pred_arity == key.pred_arity)
+      return true;
+  }
+  return false;
+}
+
+// Frees the retracted clauses no choice point can see any more.
+static void db_reclaim(trilog_t *T) {
+  if (T->db_pending == 0)
+    return;
+  for (int32_t i = 0; i < T->db_count && T->db_pending > 0; i++)
+    if (T->db[i].head && !clause_alive(&T->db[i]) && !frames_see(T, i)) {
+      db_kill(T, i);
+      T->db_pending--;
+    }
   db_maybe_compact(T);
+}
+
+static void clause_dies(trilog_t *T, int32_t idx) {
+  T->db[idx].died = ++T->db_gen;
+  if (clause_key(&T->db[idx]).pred_id == atom_op_pred)
+    T->op_gen++;
+}
+
+// A clause a choice point may still try stays until db_reclaim frees it.
+static void db_remove_at(trilog_t *T, int32_t idx) {
+  clause_dies(T, idx);
+  if (!frames_see(T, idx)) {
+    db_kill(T, idx);
+    db_maybe_compact(T);
+  } else {
+    T->db_pending++;
+  }
+}
+
+static bool bucket_has_alive(trilog_t *T, int32_t pred_id, int32_t arity) {
+  pred_bucket_t *b = pred_bucket_find(T, pred_id, arity);
+  for (int32_t i = 0; b && i < b->count; i++)
+    if (clause_alive(&T->db[b->indices[i]]))
+      return true;
+  return false;
 }
 
 void db_unload(trilog_t *T, int32_t source) {
   for (int32_t i = 0; i < T->db_count; i++) {
-    if (!T->db[i].head || T->db[i].source != source)
+    if (!T->db[i].head || !clause_alive(&T->db[i]) || T->db[i].source != source)
       continue;
     idx_key_t key = clause_key(&T->db[i]);
-    db_kill(T, i);
-    pred_bucket_t *b = pred_bucket_find(T, key.pred_id, key.pred_arity);
-    if (!b || b->count == 0)
+    clause_dies(T, i);
+    T->db_pending++;
+    if (!bucket_has_alive(T, key.pred_id, key.pred_arity))
       unmark_consulted(T, key.pred_id, key.pred_arity);
   }
-  db_maybe_compact(T);
+  db_reclaim(T);
 }
 
 static void dynamic_declare(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
@@ -504,6 +649,8 @@ int db_is_dynamic(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
 bool db_module_known(trilog_t *T, int32_t module) {
   pred_bucket_t *b = pred_bucket_find(T, atom_known_module, 1);
   for (int32_t i = 0; b && i < b->count; i++) {
+    if (!clause_alive(&T->db[b->indices[i]]))
+      continue;
     tterm_t *a = T->db[b->indices[i]].head->as.str.args[0];
     if (a->tag == T_ATOM && a->as.atom_id == module)
       return true;
@@ -521,6 +668,8 @@ bool db_has_dcg(trilog_t *T, int32_t pred_id, int32_t arity) {
     return true;
   pred_bucket_t *b = pred_bucket_find(T, atom_dcg_arrow, 2);
   for (int32_t i = 0; b && i < b->count; i++) {
+    if (!clause_alive(&T->db[b->indices[i]]))
+      continue;
     tterm_t *nt = T->db[b->indices[i]].head->as.str.args[0];
     if (nt->tag == T_STR && nt->as.str.atom_id == atom_comma &&
         nt->as.str.arity == 2)
@@ -538,6 +687,8 @@ bool db_has_dcg(trilog_t *T, int32_t pred_id, int32_t arity) {
 tterm_t *db_meta_specs(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
   pred_bucket_t *b = pred_bucket_find(T, atom_meta_spec, 3);
   for (int32_t i = 0; b && i < b->count; i++) {
+    if (!clause_alive(&T->db[b->indices[i]]))
+      continue;
     tterm_t **a = T->db[b->indices[i]].head->as.str.args;
     if (a[0]->tag == T_ATOM && a[0]->as.atom_id == pred_id &&
         a[1]->tag == T_INT && a[1]->as.ival == pred_arity)
@@ -840,25 +991,12 @@ static size_t eval_arith(trilog_t *T, size_t r, int *ok) {
         }
         return heap_new_int(T, res);
       }
-      // "/" is polymorphic: int/int truncates, any float divides exactly.
+      // "/" always divides as floats: 7/2 is 3.5, as in Scryer; // truncates.
       if (id == atom_slash) {
-        if (mixed) {
-          double fb = arith_dbl(T, b);
-          if (fb == 0.0) {
-            T->pending_error_ball = make_evaluation_error(T, atom_zero_divisor);
-            *ok = 0;
-            return 0;
-          }
-          return heap_new_flt(T, arith_dbl(T, a) / fb);
-        }
-        if (T->heap[b].as.ival == 0) {
-          T->pending_error_ball = make_evaluation_error(T, atom_zero_divisor);
-          *ok = 0;
-          return 0;
-        }
-        if (T->heap[a].as.ival == INT64_MIN && T->heap[b].as.ival == -1)
-          return arith_int_overflow(T, ok);
-        return heap_new_int(T, T->heap[a].as.ival / T->heap[b].as.ival);
+        double fb = arith_dbl(T, b);
+        if (fb == 0.0)
+          return arith_eval_error(T, atom_zero_divisor, ok);
+        return arith_float(T, arith_dbl(T, a) / fb, ok);
       }
       if (id == atom_starstar)
         return arith_pow_float(T, arith_dbl(T, a), arith_dbl(T, b), ok);
@@ -1057,10 +1195,12 @@ static char *read_whole_line(trilog_t *T, int sid) {
 }
 
 static size_t codes_from_cstr(trilog_t *T, const char *s) {
+  size_t base = T->wsp;
+  for (int code; *s; wstack_push(T, (size_t)code))
+    s += utf8_decode(s, &code);
   size_t acc = heap_new_atom(T, atom_nil);
-  size_t n = strlen(s);
-  for (size_t i = n; i-- > 0;) {
-    size_t args[2] = {heap_new_int(T, (unsigned char)s[i]), acc};
+  while (T->wsp > base) {
+    size_t args[2] = {heap_new_int(T, (int64_t)T->wstack[--T->wsp]), acc};
     acc = heap_new_struct(T, atom_dot, 2, args);
   }
   return acc;
@@ -1094,8 +1234,12 @@ static char *codes_text(trilog_t *T, size_t list, size_t max_len,
       return 0;
     if (n >= max_len)
       return 0;
-    mem_reserve(T, &T->scratch, &T->scratch_cap, n + 2);
-    ((char *)T->scratch)[n++] = (char)T->heap[h].as.ival;
+    mem_reserve(T, &T->scratch, &T->scratch_cap, n + 5);
+    int64_t code = T->heap[h].as.ival;
+    if (code >= 0x80 && code <= 0x10FFFF)
+      n += (size_t)utf8_encode((int)code, (char *)T->scratch + n);
+    else
+      ((char *)T->scratch)[n++] = (char)code;
     d = heap_deref(T, f + 2);
   }
   mem_reserve(T, &T->scratch, &T->scratch_cap, n + 1);
@@ -1231,6 +1375,18 @@ static int resolve_write_target(trilog_t *T, size_t target, int *kind_out,
   return 1;
 }
 
+static void write_target(trilog_t *T, int kind, void *h, size_t term,
+                         int flags) {
+  if (kind == OUT_STDOUT)
+    print_term_via(T, term, flags, io_write_str);
+  else if (kind == OUT_STDERR)
+    print_term_via(T, term, flags, io_write_err);
+  else {
+    T->file_target = h;
+    print_term_via(T, term, flags, emit_to_file);
+  }
+}
+
 static void tta_emit(trilog_t *T, const char *str) {
   size_t len = strlen(str);
   mem_reserve(T, &T->scratch, &T->scratch_cap, T->tta_pos + len + 1);
@@ -1303,12 +1459,13 @@ static int call_foreign(trilog_t *T, const foreign_t *f, size_t goal,
       break;
     case 'f':
       if (c.tag != TAG_INT && c.tag != TAG_FLT) {
-        *ball = make_type_error(T, "number", a);
+        *ball = make_type_error(
+            T, "number", a); // FIXME why not a float err? it was tagged as such
         return -1;
       }
       in[i].f = c.tag == TAG_INT ? (double)c.as.ival : c.as.fval;
       break;
-    default:
+    default: // FIXME case 'a' this is parsed before but still
       if (c.tag != TAG_ATOM) {
         *ball = make_type_error(T, "atom", a);
         return -1;
@@ -1468,7 +1625,7 @@ static int read_term_text(trilog_t *T, int sid) {
         return TEXT_CUT_OFF;
       continue;
     }
-    if (c == '\'' && prev == '0' && !ascii_alnum(prev2) && prev2 != '_') {
+    if (c == '\'' && prev == '0' && !name_char(prev2)) {
       int d = read_byte(T, sid, false);
       if (d < 0)
         return TEXT_CUT_OFF;
@@ -1644,6 +1801,65 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
                                               : h);
     return 1;
   }
+  // '$$write_vars'(+Target, @Term, +Flags, +VNs): '$$write_raw' with VNs's
+  // names for its unbound variables; the first name for a variable wins.
+  if (arity == 4 && id == atom_write_vars) {
+    answer_names_reset(T);
+    for (size_t l = heap_deref(T, f + 4); T->heap[l].tag == TAG_STR;) {
+      size_t lf = T->heap[l].as.ptr;
+      size_t e = heap_deref(T, lf + 1);
+      l = heap_deref(T, lf + 2);
+      if (T->heap[e].tag != TAG_STR)
+        continue;
+      size_t ef = T->heap[e].as.ptr;
+      size_t n = heap_deref(T, ef + 1), v = heap_deref(T, ef + 2);
+      if (T->heap[n].tag == TAG_ATOM && T->heap[v].tag == TAG_REF &&
+          !answer_name(T, v))
+        answer_name_claim(T, v, atom_name(T, T->heap[n].as.atom_id));
+    }
+    T->answer_naming = true;
+    T->answer_plain = true;
+    size_t args[3] = {f + 1, f + 2, f + 3};
+    size_t raw = heap_new_struct(T, atom_write_raw, 3, args);
+    int r = dispatch_builtin_(T, raw, ok);
+    T->answer_naming = false;
+    T->answer_plain = false;
+    return r;
+  }
+  // '$$write_text'(+Stream, @Term, +Flags): '$$write_raw' to a standard or
+  // an open text output stream; fails on anything else.
+  // this is much faster!
+  if (arity == 3 && id == atom_write_text) {
+    size_t s = heap_deref(T, f + 1);
+    int flags = (int)T->heap[heap_deref(T, f + 3)].as.ival;
+    int sid;
+    void *h = NULL;
+    int kind =
+        T->heap[s].tag == TAG_ATOM
+            ? (T->heap[s].as.atom_id == atom_user_output  ? OUT_STDOUT
+               : T->heap[s].as.atom_id == atom_user_error ? OUT_STDERR
+                                                          : -1)
+        : T->heap[s].tag == TAG_INT ? (T->heap[s].as.ival == 0   ? OUT_STDOUT
+                                       : T->heap[s].as.ival == 1 ? OUT_STDERR
+                                                                 : -1)
+        : resolve_stream_id(T, s, &sid) && (h = stream_text_output(T, sid))
+            ? OUT_FILE
+            : -1;
+    if (kind < 0) {
+      *ok = 0;
+      return 1;
+    }
+    write_target(T, kind, h, f + 2, flags);
+    *ok = 1;
+    return 1;
+  }
+  if (arity == 1 && id == atom_stream_binary) {
+    int sid;
+    *ok = resolve_stream_id(T, f + 1, &sid);
+    if (*ok)
+      stream_set_binary(T, sid);
+    return 1;
+  }
   if (arity == 3 && id == atom_write_raw) {
     size_t target = heap_deref(T, f + 1);
     int flags = (int)T->heap[heap_deref(T, f + 3)].as.ival;
@@ -1653,14 +1869,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       *ok = 0;
       return 1;
     }
-    if (kind == OUT_STDOUT)
-      print_term_via(T, f + 2, flags, io_write_str);
-    else if (kind == OUT_STDERR)
-      print_term_via(T, f + 2, flags, io_write_err);
-    else {
-      T->file_target = h;
-      print_term_via(T, f + 2, flags, emit_to_file);
-    }
+    write_target(T, kind, h, f + 2, flags);
     *ok = 1;
     return 1;
   }
@@ -1682,6 +1891,8 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     }
     int stream_id =
         stream_open(T, atom_name(T, T->heap[path_d].as.atom_id), fmode);
+    if (stream_id == -2)
+      T->pending_error_ball = make_resource_error(T, "streams");
     if (stream_id < 0) {
       *ok = 0;
       return 1;
@@ -1713,6 +1924,35 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       c = stream_byte(T, sid, peek);
     else
       c = -2;
+    *ok = unify(T, f + 3, heap_new_int(T, c));
+    return 1;
+  }
+  // '$$get_char'(+Stream, +Peek, -Code): '$$get_byte' for one UTF-8
+  // character; a byte that does not start one is its own code.
+  if (arity == 3 && id == atom_get_char) {
+    size_t sd = heap_deref(T, f + 1);
+    bool peek = T->heap[heap_deref(T, f + 2)].as.ival != 0;
+    int sid = -1;
+    if ((T->heap[sd].tag != TAG_ATOM ||
+         T->heap[sd].as.atom_id != atom_user_input) &&
+        !resolve_stream_id(T, f + 1, &sid)) {
+      *ok = unify(T, f + 3, heap_new_int(T, -2));
+      return 1;
+    }
+    char b[5] = {0};
+    int c = sid < 0 ? io_peek_at(T, 0) : stream_peek_at(T, sid, 0);
+    if (c >= 0) {
+      b[0] = (char)c;
+      for (int i = 1; i < utf8_len(c); i++) {
+        int d = sid < 0 ? io_peek_at(T, i) : stream_peek_at(T, sid, i);
+        if (d < 0)
+          break;
+        b[i] = (char)d;
+      }
+      int len = utf8_decode(b, &c);
+      for (int i = 0; !peek && i < len; i++)
+        (void)(sid < 0 ? io_read_char(T) : stream_byte(T, sid, false));
+    }
     *ok = unify(T, f + 3, heap_new_int(T, c));
     return 1;
   }
@@ -1896,13 +2136,12 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
         {heap_new_atom(T, atom_flag_max_arity),
          heap_new_atom(T, atom_intern(T, "unbounded"))},
         {heap_new_atom(T, atom_flag_double_quotes),
-         heap_new_atom(T, atom_chars_kw)},
-        {heap_new_atom(T, atom_intern(T, "unknown")),
-         heap_new_atom(T, atom_error)},
-        {heap_new_atom(T, atom_intern(T, "char_conversion")),
-         heap_new_atom(T, atom_intern(T, "off"))},
-        {heap_new_atom(T, atom_intern(T, "debug")),
-         heap_new_atom(T, atom_intern(T, "off"))},
+         heap_new_atom(T, T->flag_double_quotes)},
+        {heap_new_atom(T, atom_flag_unknown),
+         heap_new_atom(T, T->flag_unknown)},
+        {heap_new_atom(T, atom_flag_char_conversion),
+         heap_new_atom(T, T->flag_char_conversion)},
+        {heap_new_atom(T, atom_flag_debug), heap_new_atom(T, T->flag_debug)},
     };
     size_t list = heap_new_atom(T, atom_nil);
     for (size_t i = sizeof flags / sizeof *flags; i-- > 0;) {
@@ -1911,6 +2150,23 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
       list = heap_new_struct(T, atom_dot, 2, cell);
     }
     *ok = unify(T, f + 1, list);
+    return 1;
+  }
+  // '$$set_flag'(+Flag, +Value): set_prolog_flag/2 has checked both.
+  if (arity == 2 && id == atom_set_flag) {
+    int32_t flag = T->heap[heap_deref(T, f + 1)].as.atom_id;
+    int32_t value = T->heap[heap_deref(T, f + 2)].as.atom_id;
+    *ok = 1;
+    if (flag == atom_flag_double_quotes)
+      T->flag_double_quotes = value;
+    else if (flag == atom_flag_unknown)
+      T->flag_unknown = value;
+    else if (flag == atom_flag_char_conversion)
+      T->flag_char_conversion = value;
+    else if (flag == atom_flag_debug)
+      T->flag_debug = value;
+    else
+      *ok = 0;
     return 1;
   }
   // with_output_to/2's C half. capture_buf is a stack arena: each nested
@@ -1924,19 +2180,24 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     *ok = 1;
     return 1;
   }
-  if (arity == 1 && id == atom_capture_stop) {
+  // '$$capture_stop'(?Text) or '$$capture_stop'(+Kind, ?Text): the text as
+  // an atom, or as codes, which interns nothing.
+  if ((arity == 1 || arity == 2) && id == atom_capture_stop) {
     if (T->capture_sp <= 0) {
       *ok = 0;
       return 1;
     }
     T->capture_sp--;
     size_t start = T->capture_starts[T->capture_sp];
-    size_t result = heap_new_atom(
-        T, atom_intern(T, T->capture_buf ? T->capture_buf + start : ""));
+    const char *text = T->capture_buf ? T->capture_buf + start : "";
+    bool codes = arity == 2 && T->heap[heap_deref(T, f + 1)].tag == TAG_ATOM &&
+                 T->heap[heap_deref(T, f + 1)].as.atom_id == atom_kw_codes;
+    size_t result = codes ? codes_from_cstr(T, text)
+                          : heap_new_atom(T, atom_intern(T, text));
     if (T->capture_buf)
       T->capture_buf[start] = '\0';
     T->capture_pos = start;
-    *ok = unify(T, f + 1, result);
+    *ok = unify(T, f + arity, result);
     return 1;
   }
   if (arity == 1 && id == atom_bag_open) {
@@ -2034,7 +2295,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     size_t list = heap_new_atom(T, atom_nil);
     for (int i = 0; i < PRED_HASH_SIZE; i++)
       for (pred_bucket_t *b = T->pred_hash[i]; b; b = b->next) {
-        if (b->count == 0)
+        if (!bucket_has_alive(T, b->pred_id, b->pred_arity))
           continue;
         int32_t source = T->db[b->indices[0]].source;
         size_t pi[2] = {heap_new_atom(T, b->pred_id),
@@ -2066,7 +2327,7 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     arg_key_t want_arg = arg_key_of(want);
     for (int32_t bi = bucket ? bucket->count - 1 : -1; bi >= 0; bi--) {
       clause_t *c = &T->db[bucket->indices[bi]];
-      if (first_arg_conflicts(want_arg, c))
+      if (!clause_alive(c) || first_arg_conflicts(want_arg, c))
         continue;
       size_t h2, b2;
       fresh_copy_clause(T, c, &h2, &b2);
@@ -2182,16 +2443,25 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
 
   if (arity == 1 &&
       (id == atom_var || id == atom_kw_atom || id == atom_integer ||
-       id == atom_kw_float || id == atom_compound)) {
+       id == atom_kw_float || id == atom_compound || id == atom_nonvar ||
+       id == atom_number || id == atom_atomic || id == atom_callable)) {
     tag_t t = T->heap[heap_deref(T, f + 1)].tag;
     if (id == atom_var)
       *ok = t == TAG_REF;
+    else if (id == atom_nonvar)
+      *ok = t != TAG_REF;
     else if (id == atom_kw_atom)
       *ok = t == TAG_ATOM;
     else if (id == atom_integer)
       *ok = t == TAG_INT;
     else if (id == atom_kw_float)
       *ok = t == TAG_FLT;
+    else if (id == atom_number)
+      *ok = t == TAG_INT || t == TAG_FLT;
+    else if (id == atom_atomic)
+      *ok = t == TAG_ATOM || t == TAG_INT || t == TAG_FLT;
+    else if (id == atom_callable)
+      *ok = t == TAG_ATOM || t == TAG_STR;
     else
       *ok = t == TAG_STR; // compound
     return 1;
@@ -2486,14 +2756,50 @@ query_result_t run_query(trilog_t *T, tterm_t **goals, int32_t ngoals,
   T->query_heap_base = T->query_depth == 1 ? 0 : heap_mark(T);
   T->query_catch_base = T->query_depth == 1 ? 0 : T->catch_sp;
   T->uncaught_ball = (size_t)-1;
+  size_t *saved_cn = T->query_cn;
   query_result_t r = run_query_body(T, goals, ngoals, nvars, on_solution, ud);
+  T->query_cn = saved_cn;
   T->query_depth--;
   T->sp = T->query_sp_base;
+  db_reclaim(T);
   T->query_sp_base = saved_base;
   T->query_heap_base = saved_heap_base;
   T->query_catch_base = saved_catch_base;
   T->solution_rename = saved_rename;
   return r;
+}
+
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(atom_comma < atom_call && atom_semicolon < atom_call &&
+                   atom_arrow < atom_call && atom_cut < atom_call &&
+                   atom_catch < atom_call && atom_throw < atom_call &&
+                   atom_uncatch < atom_call,
+               "run_query_body skips control constructs above atom_call");
+#endif
+
+// A body call/1 can run: no number among its ',', ';' and '->' parts. A
+// variable is fine; it is called as call(V).
+static bool body_callable(trilog_t *T, size_t g) {
+  size_t wbase = T->wsp;
+  wstack_push(T, g);
+  while (T->wsp > wbase) {
+    size_t r = heap_deref(T, T->wstack[--T->wsp]);
+    tag_t t = T->heap[r].tag;
+    if (t == TAG_INT || t == TAG_FLT) {
+      T->wsp = wbase;
+      return false;
+    }
+    if (t != TAG_STR)
+      continue;
+    size_t f = T->heap[r].as.ptr;
+    int32_t id = T->heap[f].as.func.atom_id;
+    if (T->heap[f].as.func.arity == 2 &&
+        (id == atom_comma || id == atom_semicolon || id == atom_arrow)) {
+      wstack_push(T, f + 1);
+      wstack_push(T, f + 2);
+    }
+  }
+  return true;
 }
 
 static query_result_t run_query_body(trilog_t *T, tterm_t **goals,
@@ -2521,10 +2827,12 @@ static query_result_t run_query_body(trilog_t *T, tterm_t **goals,
   for (int32_t i = 0; i < ngoals; i++)
     qgoals[i] = heap_copy_goal(T, goals[i], rename, cut_barrier);
   size_t cn = build_conj_tail(T, qgoals, ngoals, heap_new_atom(T, atom_true));
+  T->query_cn = &cn;
 
   size_t first, rest;
   int32_t clause_idx = 0;
   int32_t next_match = -1; // the db index after clause_idx that matches, or -1
+  uint32_t call_gen = 0;
   idx_key_t caller_key = {.kind = IDX_ANY};
   size_t active_catch = (size_t)-1;
   int predicate_known = 0;
@@ -2535,16 +2843,17 @@ A:
     if (!T->yield_fn(T, T->sp, T->yield_ud))
       engine_abort(T);
   }
-  gc_maybe_run(T, &cn, T->stack, T->sp, rename, nvars, &active_catch);
+  if (T->heap_top >= T->gc_threshold)
+    gc_maybe_run(T, &cn, T->stack, T->sp, rename, nvars, &active_catch);
   if (gc_heap_exhausted(T)) {
     if (do_throw(T, make_resource_error(T, "memory"), &cn, &active_catch))
       goto A;
     return QUERY_ERROR;
   }
+  // check cn == true before decompose, or a mid-clause true goal
+  // wrongly ends the query.
+  size_t cnd = heap_deref(T, cn);
   {
-    // check cn == true before decompose, or a mid-clause true goal
-    // wrongly ends the query.
-    size_t cnd = heap_deref(T, cn);
     if (T->heap[cnd].tag == TAG_ATOM && T->heap[cnd].as.atom_id == atom_true) {
       any_found = 1;
       T->solution_rename = rename;
@@ -2553,9 +2862,9 @@ A:
       goto C;
     }
   }
-  decompose(T, cn, &first, &rest);
+  decompose(T, cnd, &first, &rest);
   {
-    size_t fd = heap_deref(T, first);
+    size_t fd = first;
     if (T->heap[fd].tag == TAG_ATOM && T->heap[fd].as.atom_id == atom_true) {
       cn = rest;
       goto A;
@@ -2564,53 +2873,101 @@ A:
       size_t cf = T->heap[fd].as.ptr;
       int32_t fd_arity = T->heap[cf].as.func.arity;
       int32_t fd_id = T->heap[cf].as.func.atom_id;
-      if (fd_arity == 2 && fd_id == atom_comma) {
-        size_t inner_first = heap_deref(T, cf + 1);
-        size_t inner_rest = heap_deref(T, cf + 2);
-        size_t new_rest = build_conj_tail(T, &inner_rest, 1, rest);
-        cn = build_conj_tail(T, &inner_first, 1, new_rest);
-        goto A;
-      }
-      if (fd_arity == 1 && fd_id == atom_call) {
-        size_t goal = heap_rebake_cuts(T, heap_deref(T, cf + 1), T->sp);
-        cn = build_conj_tail(T, &goal, 1, rest);
-        goto A;
-      }
-      if (fd_arity == 1 && fd_id == atom_cut) {
-        T->sp = (size_t)T->heap[heap_deref(T, cf + 1)].as.ival;
-        cn = rest;
-        goto A;
-      }
-      if (fd_arity == 3 && fd_id == atom_catch) {
-        size_t goal = heap_rebake_cuts(T, heap_deref(T, cf + 1), T->sp);
-        size_t catcher = heap_deref(T, cf + 2);
-        size_t recovery = heap_deref(T, cf + 3);
-        size_t idx = catch_stack_push(
-            T, (catch_frame_t){.heap_mark = heap_mark(T),
-                               .trail_mark = trail_mark(T),
-                               .sp_at_entry = T->sp,
-                               .catcher = catcher,
-                               .recovery = recovery,
-                               .continuation = rest,
-                               .outer_active_catch = active_catch});
-        active_catch = idx;
-        size_t uncatch_arg[1] = {heap_new_int(T, (int64_t)idx)};
-        size_t uncatch_term = heap_new_struct(T, atom_uncatch, 1, uncatch_arg);
-        size_t after_goal = build_conj_tail(T, &uncatch_term, 1, rest);
-        cn = build_conj_tail(T, &goal, 1, after_goal);
-        goto A;
-      }
-      if (fd_arity == 1 && fd_id == atom_uncatch) {
-        size_t idx = (size_t)T->heap[heap_deref(T, cf + 1)].as.ival;
-        active_catch = T->catch_stack[idx].outer_active_catch;
-        cn = rest;
-        goto A;
-      }
-      if (fd_arity == 1 && fd_id == atom_throw) {
-        size_t ball = heap_deref(T, cf + 1);
-        if (do_throw(T, ball, &cn, &active_catch))
+      // Control constructs have the lowest atom ids, so other goals skip them.
+      if (fd_id <= atom_call) {
+        if (fd_arity == 2 && fd_id == atom_comma) {
+          size_t inner_first = heap_deref(T, cf + 1);
+          size_t inner_rest = heap_deref(T, cf + 2);
+          size_t new_rest = build_conj_tail(T, &inner_rest, 1, rest);
+          cn = build_conj_tail(T, &inner_first, 1, new_rest);
           goto A;
-        return QUERY_ERROR;
+        }
+        // ;/2 and ->/2 run natively; the frame keeps the other branch's goals,
+        // so backtracking into it copies no clause. An unbound left side falls
+        // through to boot/core.pl's clauses.
+        if (fd_arity == 2 && fd_id == atom_semicolon &&
+            T->heap[heap_deref(T, cf + 1)].tag != TAG_REF) {
+          size_t lhs = heap_deref(T, cf + 1);
+          size_t rhs = heap_deref(T, cf + 2);
+          size_t sp0 = T->sp;
+          size_t lf = T->heap[lhs].tag == TAG_STR ? T->heap[lhs].as.ptr : 0;
+          int ite = lf && T->heap[lf].as.func.arity == 2 &&
+                    T->heap[lf].as.func.atom_id == atom_arrow;
+          size_t other = build_conj_tail(T, &rhs, 1, rest);
+          stack_push(T, (frame_t){.goals = other,
+                                  .clause_idx = FRAME_GOALS,
+                                  .heap_mark = heap_mark(T),
+                                  .trail_mark = trail_mark(T),
+                                  .cut_barrier = sp0,
+                                  .active_catch = active_catch});
+          if (ite) {
+            size_t barrier_arg[1] = {heap_new_int(T, (int64_t)sp0)};
+            size_t goals[3] = {heap_rebake_cuts(T, lf + 1, T->sp),
+                               heap_new_struct(T, atom_cut, 1, barrier_arg),
+                               heap_deref(T, lf + 2)};
+            cn = build_conj_tail(T, goals, 3, rest);
+          } else {
+            cn = build_conj_tail(T, &lhs, 1, rest);
+          }
+          goto A;
+        }
+        if (fd_arity == 2 && fd_id == atom_arrow) {
+          size_t barrier_arg[1] = {heap_new_int(T, (int64_t)T->sp)};
+          size_t goals[3] = {heap_rebake_cuts(T, cf + 1, T->sp),
+                             heap_new_struct(T, atom_cut, 1, barrier_arg),
+                             heap_deref(T, cf + 2)};
+          cn = build_conj_tail(T, goals, 3, rest);
+          goto A;
+        }
+        if (fd_arity == 1 && fd_id == atom_call) {
+          size_t g = heap_deref(T, cf + 1);
+          if (!body_callable(T, g)) {
+            if (do_throw(T, make_type_error(T, "callable", g), &cn,
+                         &active_catch))
+              goto A;
+            return QUERY_ERROR;
+          }
+          size_t goal = heap_rebake_cuts(T, g, T->sp);
+          cn = build_conj_tail(T, &goal, 1, rest);
+          goto A;
+        }
+        if (fd_arity == 1 && fd_id == atom_cut) {
+          T->sp = (size_t)T->heap[heap_deref(T, cf + 1)].as.ival;
+          cn = rest;
+          goto A;
+        }
+        if (fd_arity == 3 && fd_id == atom_catch) {
+          size_t goal = heap_rebake_cuts(T, heap_deref(T, cf + 1), T->sp);
+          size_t catcher = heap_deref(T, cf + 2);
+          size_t recovery = heap_deref(T, cf + 3);
+          size_t idx = catch_stack_push(
+              T, (catch_frame_t){.heap_mark = heap_mark(T),
+                                 .trail_mark = trail_mark(T),
+                                 .sp_at_entry = T->sp,
+                                 .catcher = catcher,
+                                 .recovery = recovery,
+                                 .continuation = rest,
+                                 .outer_active_catch = active_catch});
+          active_catch = idx;
+          size_t uncatch_arg[1] = {heap_new_int(T, (int64_t)idx)};
+          size_t uncatch_term =
+              heap_new_struct(T, atom_uncatch, 1, uncatch_arg);
+          size_t after_goal = build_conj_tail(T, &uncatch_term, 1, rest);
+          cn = build_conj_tail(T, &goal, 1, after_goal);
+          goto A;
+        }
+        if (fd_arity == 1 && fd_id == atom_uncatch) {
+          size_t idx = (size_t)T->heap[heap_deref(T, cf + 1)].as.ival;
+          active_catch = T->catch_stack[idx].outer_active_catch;
+          cn = rest;
+          goto A;
+        }
+        if (fd_arity == 1 && fd_id == atom_throw) {
+          size_t ball = heap_deref(T, cf + 1);
+          if (do_throw(T, ball, &cn, &active_catch))
+            goto A;
+          return QUERY_ERROR;
+        }
       }
       // $$-prefixed: raw, unprotected primitives; boot/core.pl's public
       // assertz/asserta/retract check staticity first, then delegate here.
@@ -2664,7 +3021,8 @@ A:
         int found = 0;
         for (int32_t bi = 0; bucket && bi < bucket->count; bi++) {
           int32_t ci = bucket->indices[bi];
-          if (first_arg_conflicts(want_arg, &T->db[ci]))
+          if (!clause_alive(&T->db[ci]) ||
+              first_arg_conflicts(want_arg, &T->db[ci]))
             continue;
           trail_release(T, rtmark);
           heap_release(T, rmark);
@@ -2724,14 +3082,9 @@ A:
         goto A;
       return QUERY_ERROR;
     }
-    if (dbk && dbk->dynamic) {
-      size_t args[1] = {first};
-      size_t dyn_goal = heap_new_struct(T, atom_dyn_call, 1, args);
-      cn = build_conj_tail(T, &dyn_goal, 1, rest);
-      goto A;
-    }
   }
   clause_idx = 0;
+  call_gen = T->db_gen;
   tmark = trail_mark(T);
   hmark = heap_mark(T);
   cut_barrier = T->sp;
@@ -2743,7 +3096,8 @@ B: {
       pred_bucket_find(T, caller_key.pred_id, caller_key.pred_arity);
   predicate_known = bk && bk->count > 0;
   arg_key_t arg = arg_key_of(caller_key);
-  int32_t pos = bk ? bucket_match(T, bk, bucket_seek(bk, clause_idx), arg) : -1;
+  int32_t pos =
+      bk ? bucket_match(T, bk, bucket_seek(bk, clause_idx), arg, call_gen) : -1;
   if (pos < 0) {
     if (clause_idx > 0)
       goto C; // resuming a call that already matched: out of clauses is a
@@ -2758,6 +3112,15 @@ B: {
       // heap_new_atom(-1) and later corrupt the heap.
       size_t first_d = heap_deref(T, first);
       size_t ball;
+      if (caller_key.pred_id != -1 && T->flag_unknown != atom_error) {
+        if (T->flag_unknown == atom_warning) {
+          char msg[256];
+          fmt(msg, sizeof msg, "%% Warning: unknown procedure %s/%d\n",
+              atom_name(T, caller_key.pred_id), (int)caller_key.pred_arity);
+          io_write_err(T, msg);
+        }
+        goto C;
+      }
       if (caller_key.pred_id != -1)
         ball = make_existence_error(T, "procedure", caller_key.pred_id,
                                     caller_key.pred_arity);
@@ -2772,7 +3135,7 @@ B: {
     goto C;
   }
   clause_idx = bk->indices[pos];
-  int32_t after = bucket_match(T, bk, pos + 1, arg);
+  int32_t after = bucket_match(T, bk, pos + 1, arg, call_gen);
   next_match = after < 0 ? -1 : bk->indices[after];
 }
   {
@@ -2799,7 +3162,8 @@ B: {
                               .heap_mark = hmark,
                               .trail_mark = tmark,
                               .cut_barrier = cut_barrier,
-                              .active_catch = active_catch});
+                              .active_catch = active_catch,
+                              .gen = call_gen});
     cn = newcn;
     goto A;
   }
@@ -2815,6 +3179,12 @@ C:
     tmark = f.trail_mark;
     cut_barrier = f.cut_barrier;
     active_catch = f.active_catch;
+    call_gen = f.gen;
+    if (clause_idx == FRAME_GOALS) {
+      trail_release(T, tmark);
+      heap_release(T, hmark);
+      goto A;
+    }
     decompose(T, cn, &first, &rest);
     // release before keying, or a stale binding from the last clause
     // tried wrongly indexes out every other clause.
@@ -2840,11 +3210,31 @@ static int op_type_code(int32_t tid) {
 }
 
 // Later '$$op' clauses win, as the clause order of op/3 says.
+static struct atom_ops *ops_slot(trilog_t *T, int32_t atom) {
+  uint32_t mask = (uint32_t)T->ops_len - 1;
+  for (uint32_t i = ((uint32_t)atom * 2654435761u) & mask;; i = (i + 1) & mask)
+    if (T->ops[i].atom == atom || T->ops[i].atom < 0)
+      return &T->ops[i];
+}
+
 static void ops_rebuild(trilog_t *T, pred_bucket_t *b) {
-  T->ops = mem_grow_n(T, T->ops, (size_t)T->atom_count, sizeof *T->ops);
-  T->ops_len = T->atom_count;
+  int32_t live = 0;
+  for (int32_t i = 0; b && i < b->count; i++)
+    live += clause_alive(&T->db[b->indices[i]]);
+  int32_t need = 16;
+  while (need < 2 * live)
+    need *= 2;
+  if (need != T->ops_len) {
+    mem_free(T, T->ops);
+    T->ops = mem_grow_n(T, NULL, (size_t)need, sizeof *T->ops);
+    T->ops_len = need;
+  }
   memset(T->ops, 0, (size_t)T->ops_len * sizeof *T->ops);
+  for (int32_t i = 0; i < T->ops_len; i++)
+    T->ops[i].atom = -1;
   for (int32_t i = 0; b && i < b->count; i++) {
+    if (!clause_alive(&T->db[b->indices[i]]))
+      continue;
     tterm_t *head = T->db[b->indices[i]].head;
     tterm_t *pri_t = head->as.str.args[0];
     tterm_t *type_t = head->as.str.args[1];
@@ -2852,12 +3242,13 @@ static void ops_rebuild(trilog_t *T, pred_bucket_t *b) {
     if (name_t->tag != T_ATOM || pri_t->tag != T_INT || type_t->tag != T_ATOM)
       continue;
     int code = op_type_code(type_t->as.atom_id);
-    if (code < 0 || name_t->as.atom_id >= T->ops_len)
+    if (code < 0)
       continue;
     int class = code <= 2   ? OP_CLASS_INFIX
                 : code <= 4 ? OP_CLASS_PREFIX
                             : OP_CLASS_POSTFIX;
-    struct atom_ops *o = &T->ops[name_t->as.atom_id];
+    struct atom_ops *o = ops_slot(T, name_t->as.atom_id);
+    o->atom = name_t->as.atom_id;
     o->pri[class] = (int16_t)pri_t->as.ival;
     o->assoc[class] = (int8_t)code;
   }
@@ -2868,10 +3259,10 @@ static int op_lookup(trilog_t *T, int32_t name_atom_id, int want, int *pri,
                      int *assoc_code) {
   if (T->ops_gen != T->op_gen)
     ops_rebuild(T, pred_bucket_find(T, atom_op_pred, 3));
-  if (name_atom_id < 0 || name_atom_id >= T->ops_len)
+  if (name_atom_id < 0)
     return 0;
-  const struct atom_ops *o = &T->ops[name_atom_id];
-  if (o->pri[want] == 0)
+  const struct atom_ops *o = ops_slot(T, name_atom_id);
+  if (o->atom < 0 || o->pri[want] == 0)
     return 0;
   *pri = o->pri[want];
   *assoc_code = o->assoc[want];

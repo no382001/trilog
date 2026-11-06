@@ -3,6 +3,9 @@
 # make term opens a terminal with line editing.
 BUILD ?= build
 PORT ?=
+# Library text to bake in, such as EMBED_FILES=lib/charsio.pl; none by
+# default, as loaded text puts its clauses in the board's scarce RAM.
+export EMBED_FILES ?=
 
 .PHONY: sync restart get-ip term build clean
 

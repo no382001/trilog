@@ -7,6 +7,7 @@
 #include "heap.h"
 #include "io.h"
 #include "mem.h"
+#include "platform.h"
 #include "solve.h"
 #include <math.h>
 #include <stdlib.h>
@@ -41,6 +42,8 @@ tterm_t *tt_int(trilog_t *T, int64_t v) {
 }
 
 tterm_t *tt_flt(trilog_t *T, double v) {
+  if (v == 0.0) // -0.0 too: 13211-1 has no negative zero
+    v = 0.0;
   tterm_t *t = tt_new(T, T_FLT);
   t->as.fval = v;
   return t;
@@ -225,6 +228,14 @@ size_t heap_copy_goal(trilog_t *T, tterm_t *t, size_t *rename,
       r = heap_new_struct(T, t->as.str.atom_id, 2, NULL);
       size_t f = T->heap[r].as.ptr;
       fill_hole(T, hole, r, &root);
+      // A condition's cuts are local to it: the if-then-else bakes them when
+      // it runs.
+      if (t->as.str.atom_id == atom_arrow) {
+        fill_hole(T, f + 1, heap_copy(T, t->as.str.args[0], rename, 0), &root);
+        hole = f + 2;
+        t = t->as.str.args[1];
+        continue;
+      }
       push_template_args(T, t, f);
       hole = f + 1;
       t = t->as.str.args[0];
@@ -253,6 +264,12 @@ size_t heap_rebake_cuts(trilog_t *T, size_t r, size_t cut_barrier) {
         out = heap_new_struct(T, id, 2, NULL);
         size_t nf = T->heap[out].as.ptr;
         fill_hole(T, hole, out, &root);
+        if (id == atom_arrow) {
+          fill_hole(T, nf + 1, f + 1, &root);
+          hole = nf + 2;
+          r = f + 2;
+          continue;
+        }
         wstack_push(T, f + 2);
         wstack_push(T, nf + 2);
         hole = nf + 1;
@@ -274,9 +291,9 @@ static int atom_needs_quote(const char *s) {
   if (!strcmp(s, "[]") || !strcmp(s, "{}") || !strcmp(s, "!") ||
       !strcmp(s, ";"))
     return 0;
-  if (ascii_lower((unsigned char)s[0])) {
+  if (name_start((unsigned char)s[0])) {
     for (const char *p = s + 1; *p; p++)
-      if (!ascii_alnum((unsigned char)*p) && *p != '_')
+      if (!name_char((unsigned char)*p))
         return 1;
     return 0;
   }
@@ -288,7 +305,7 @@ static int atom_needs_quote(const char *s) {
   return 0;
 }
 
-static bool word_char(int c) { return ascii_alnum(c) || c == '_'; }
+static bool word_char(int c) { return name_char(c); }
 
 // Two tokens that would read back as one get a space between them, as does a
 // prefix operator and a following (, which would otherwise make it a functor.
@@ -310,16 +327,110 @@ static void token(trilog_t *T, emit_fn emit, const char *s) {
   T->print_last = (unsigned char)s[strlen(s) - 1];
 }
 
-// A float needs a fraction to read back: 2.0 and 1.0e-8, not 2 and 1e-8.
+// The fewest digits that read back as v like Scryer: plain
+// for 1.0e-5 =< |v| < 1.0e16, else d.ddde<exp>; always with a fraction.
 void float_text(char *buf, size_t cap, double v) {
-  size_t n = fmt(buf, cap, "%g", v);
-  if (n + 2 >= cap || strpbrk(buf, ".nN"))
+  char raw[48];
+  size_t n = trilog_format_float(raw, sizeof raw, v);
+  raw[n < sizeof raw ? n : sizeof raw - 1] = '\0';
+  const char *p = raw;
+  bool neg = *p == '-';
+  if (neg || *p == '+')
+    p++;
+  if (!ascii_digit(*p) && *p != '.') {
+    fmt(buf, cap, "%s", raw);
     return;
-  char *e = strpbrk(buf, "eE");
-  size_t at = e ? (size_t)(e - buf) : n;
-  memmove(buf + at + 2, buf + at, n - at + 1);
-  buf[at] = '.';
-  buf[at + 1] = '0';
+  }
+  char d[40]; // v is 0.d * 10^x
+  int nd = 0, x = 0;
+  bool point = false;
+  for (; ascii_digit(*p) || *p == '.'; p++) {
+    if (*p == '.') {
+      point = true;
+    } else if (nd == 0 && *p == '0') {
+      x -= point;
+    } else {
+      if (nd < (int)sizeof d)
+        d[nd++] = *p;
+      x += !point;
+    }
+  }
+  if (*p == 'e' || *p == 'E') {
+    int64_t e;
+    parse_int(p + 1, NULL, &e);
+    x += (int)e;
+  }
+  while (nd > 0 && d[nd - 1] == '0')
+    nd--;
+  if (nd == 0) {
+    fmt(buf, cap, neg ? "-0.0" : "0.0");
+    return;
+  }
+  char r[41];
+  int rn = nd, rx = x;
+  memcpy(r, d, (size_t)nd);
+  for (int k = 1; k < nd; k++) {
+    char t[48];
+    int kx = x;
+    memcpy(t + 2, d, (size_t)k);
+    if (d[k] >= '5') {
+      int i = k - 1;
+      while (i >= 0 && t[2 + i] == '9')
+        t[2 + i--] = '0';
+      if (i < 0) {
+        t[2] = '1';
+        kx++;
+      } else {
+        t[2 + i]++;
+      }
+    }
+    t[0] = '0';
+    t[1] = '.';
+    fmt(t + 2 + k, sizeof t - 2 - (size_t)k, "e%d", kx);
+    double back = trilog_parse_float(t, NULL);
+    if (back == (neg ? -v : v)) {
+      memcpy(r, t + 2, (size_t)k);
+      rn = k;
+      rx = kx;
+      break;
+    }
+  }
+  while (rn > 1 && r[rn - 1] == '0')
+    rn--;
+  char o[64];
+  size_t on = 0;
+  if (neg)
+    o[on++] = '-';
+  int e = rx - 1;
+  if (e >= -5 && e < 16) {
+    if (e < 0) {
+      o[on++] = '0';
+      o[on++] = '.';
+      for (int i = 0; i < -e - 1; i++)
+        o[on++] = '0';
+      for (int i = 0; i < rn; i++)
+        o[on++] = r[i];
+    } else {
+      for (int i = 0; i <= e; i++)
+        o[on++] = i < rn ? r[i] : '0';
+      o[on++] = '.';
+      if (rn > e + 1)
+        for (int i = e + 1; i < rn; i++)
+          o[on++] = r[i];
+      else
+        o[on++] = '0';
+    }
+    o[on] = '\0';
+  } else {
+    o[on++] = r[0];
+    o[on++] = '.';
+    for (int i = 1; i < rn; i++)
+      o[on++] = r[i];
+    if (rn == 1)
+      o[on++] = '0';
+    fmt(o + on, sizeof o - on, "e%d", e);
+  }
+  fmt(buf, cap, "%s", o);
 }
 
 static void print_quoted_char(trilog_t *T, emit_fn emit, int c, int quote) {
@@ -372,7 +483,8 @@ static int try_print_char_string(trilog_t *T, size_t r, emit_fn emit) {
     if (T->heap[head].tag != TAG_ATOM)
       return 0;
     const char *name = atom_name(T, T->heap[head].as.atom_id);
-    if (name[0] == '\0' || name[1] != '\0')
+    int code;
+    if (name[0] == '\0' || name[utf8_decode(name, &code)] != '\0')
       return 0;
     size_t tail = heap_deref(T, cf + 2);
     if (T->heap[tail].tag == TAG_ATOM && T->heap[tail].as.atom_id == atom_nil)
@@ -389,8 +501,11 @@ static int try_print_char_string(trilog_t *T, size_t r, emit_fn emit) {
   emit(T, "\"");
   for (cell = r;;) {
     size_t cf = T->heap[cell].as.ptr;
-    char c = atom_name(T, T->heap[heap_deref(T, cf + 1)].as.atom_id)[0];
-    print_quoted_char(T, emit, (unsigned char)c, '"');
+    const char *name = atom_name(T, T->heap[heap_deref(T, cf + 1)].as.atom_id);
+    if (name[1] != '\0')
+      emit(T, name);
+    else
+      print_quoted_char(T, emit, (unsigned char)name[0], '"');
     size_t tail = heap_deref(T, cf + 2);
     if (T->heap[tail].tag == TAG_ATOM && T->heap[tail].as.atom_id == atom_nil)
       break;
@@ -527,6 +642,11 @@ static void print_answer_var(trilog_t *T, size_t r, emit_fn emit) {
     token(T, emit, a->name);
     return;
   }
+  if (T->answer_plain) {
+    fmt(buf, sizeof buf, "_G%zu", r);
+    token(T, emit, buf);
+    return;
+  }
   if (!a) {
     for (;; T->answer_fresh++) {
       fresh_name(T->answer_fresh, buf, sizeof buf);
@@ -602,7 +722,7 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
   size_t wbase = T->wsp, mbase = T->template_marks_len;
   T->print_last = 0;
   T->print_prefix = false;
-  print_push(T, P_TERM, r, flags & PRINT_ANSWER ? 699 : 1200);
+  print_push(T, P_TERM, r, flags & PRINT_ANSWER ? 699 | OPERAND : 1200);
   char buf[64];
   while (T->wsp > wbase) {
     size_t prio = T->wstack[--T->wsp];
@@ -679,7 +799,10 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
         break;
       }
       if (is_cons(T, r) && !(flags & PRINT_IGNORE_OPS)) {
-        if ((flags & PRINT_ANSWER) && try_print_char_string(T, r, emit))
+        if (((flags & PRINT_DOUBLE_QUOTES) ||
+             ((flags & PRINT_ANSWER) &&
+              T->flag_double_quotes == atom_chars_kw)) &&
+            try_print_char_string(T, r, emit))
           break;
         token(T, emit, "[");
         print_enter(T, f);
@@ -712,6 +835,8 @@ static void print_term_ex(trilog_t *T, size_t r, int flags, emit_fn emit) {
                    (size_t)(assoc == ASSOC_XFY ? pri : pri - 1) | OPERAND);
         if (id == atom_comma)
           print_text(T, ",");
+        else if (id == atom_bar)
+          print_text(T, "|");
         else
           print_push(T, P_NAME, (size_t)id, 0);
         if (bracket) {

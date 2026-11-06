@@ -423,7 +423,7 @@ static void test_io(trilog_t *t) {
                               "leak(N) :- open('mem/v.pl', read, _), "
                               "N1 is N - 1, leak(N1).") == TRILOG_TRUE);
   CHECK(trilog_query(t, "leak(16)", collect, &e) == TRILOG_TRUE);
-  CHECK(trilog_query(t, "leak(1)", collect, &e) == TRILOG_FALSE);
+  CHECK(trilog_query(t, "leak(1)", collect, &e) == TRILOG_ERROR);
   trilog_close_streams(t);
   CHECK(trilog_query(t, "leak(1)", collect, &e) == TRILOG_TRUE);
   trilog_close_streams(t);
@@ -456,6 +456,10 @@ static long keep_last_line(void *ud, void *handle, const char *buf, size_t n) {
     }
   }
   return (long)n;
+}
+
+static void test_bad_boot(void) {
+  CHECK(!trilog_new(&(trilog_config_t){.boot_path = "test/api/bad_boot.pl"}));
 }
 
 static void test_growth(void) {
@@ -503,6 +507,90 @@ static void test_growth(void) {
   size_t threshold = number_after(gc.line, "threshold=");
   CHECK(live > 20000);
   CHECK(threshold == live * 150 / 100);
+  trilog_free(t);
+}
+
+typedef struct {
+  size_t live;
+} sized;
+
+static void *sized_realloc(void *ud, void *p, size_t n) {
+  sized *z = ud;
+  size_t *b = p ? (size_t *)p - 1 : NULL;
+  size_t old = b ? *b : 0;
+  size_t *nb = realloc(b, sizeof *nb + n);
+  if (!nb)
+    return NULL;
+  z->live = z->live - old + n;
+  *nb = n;
+  return nb + 1;
+}
+
+static void sized_free(void *ud, void *p) {
+  sized *z = ud;
+  if (!p)
+    return;
+  size_t *b = (size_t *)p - 1;
+  z->live -= *b;
+  free(b);
+}
+
+static void test_clause_slots(void) {
+  sized z = {0};
+  trilog_t *t = trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl",
+                                              .realloc = sized_realloc,
+                                              .free = sized_free,
+                                              .alloc_ud = &z});
+  CHECK(t != NULL);
+  if (!t)
+    return;
+  CHECK(trilog_load_string(t, ":- dynamic(s/1).\n"
+                              "churn(0) :- !.\n"
+                              "churn(N) :- assertz(s(N)), retract(s(N)), "
+                              "N1 is N - 1, churn(N1).\n") == TRILOG_TRUE);
+  collected c = {0};
+  CHECK(trilog_query(t, "churn(100)", collect, &c) == TRILOG_TRUE);
+  size_t before = z.live;
+  CHECK(trilog_query(t, "churn(5000)", collect, &c) == TRILOG_TRUE);
+  CHECK(z.live < before + 32768);
+  CHECK(trilog_query(t, "once((member(_, [a,b]), churn(5000)))", collect, &c) ==
+        TRILOG_TRUE);
+  CHECK(z.live < before + 32768);
+  trilog_free(t);
+}
+
+static void test_capture_atoms(trilog_t *t) {
+  collected c = {0};
+  const char *q = "with_output_to(chars(_), write(f(_))), "
+                  "with_output_to(codes(_), write(g(_)))";
+  CHECK(trilog_query(t, q, collect, &c) == TRILOG_TRUE);
+  CHECK(trilog_query(t, "atom_chars('_G0123456789', _)", collect, &c) ==
+        TRILOG_TRUE);
+  trilog_usage_t u0, u1;
+  trilog_usage(t, &u0);
+  for (int i = 0; i < 50; i++)
+    CHECK(trilog_query(t, q, collect, &c) == TRILOG_TRUE);
+  trilog_usage(t, &u1);
+  CHECK(u1.atoms == u0.atoms);
+}
+
+static void test_lazy_dynamic(void) {
+  trilog_t *t = trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl"});
+  CHECK(t != NULL);
+  if (!t)
+    return;
+  collected c = {0};
+  CHECK(trilog_load_string(
+            t, ":- dynamic(g/1).\n"
+               "fill(0) :- !.\n"
+               "fill(N) :- assertz(g(N)), N1 is N - 1, fill(N1).\n") ==
+        TRILOG_TRUE);
+  CHECK(trilog_query(t, "fill(3000)", collect, &c) == TRILOG_TRUE);
+  trilog_usage_t u0, u1;
+  trilog_usage(t, &u0);
+  CHECK(trilog_query(t, "forall(g(_), true)", collect, &c) == TRILOG_TRUE);
+  trilog_usage(t, &u1);
+  CHECK(u1.heap_peak_cells < u0.heap_peak_cells + 2000);
   trilog_free(t);
 }
 
@@ -581,9 +669,13 @@ int main(void) {
   test_yield(t);
   test_io(t);
   test_usage(t);
+  test_capture_atoms(t);
   test_two_interpreters();
   test_create_free();
+  test_bad_boot();
   test_growth();
+  test_clause_slots();
+  test_lazy_dynamic();
 
   trilog_usage_t u;
   trilog_usage(t, &u);

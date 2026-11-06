@@ -8,9 +8,12 @@
 extern "C" {
 #endif
 
-// Float text as %g writes it and strtod reads it. trilog_format_float returns
-// the full length, like snprintf; trilog_parse_float sets *end to s when there
-// is no number.
+// Float text as printf writes it with TRILOG_FLOAT_FORMAT and strtod reads it;
+// trilog writes a float with the fewest of those digits that read back exactly,
+// so a format with fewer digits, like %g, prints fewer. trilog_format_float
+// returns the full length, like snprintf; trilog_parse_float sets *end to s
+// when there is no number.
+#define TRILOG_FLOAT_FORMAT "%#.17g"
 size_t trilog_format_float(char *buf, size_t cap, double v);
 double trilog_parse_float(const char *s, const char **end);
 

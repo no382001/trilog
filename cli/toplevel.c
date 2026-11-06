@@ -1,6 +1,5 @@
 #include "toplevel.h"
 #include "terminal.h"
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -72,6 +71,12 @@ static bool toplevel_solution(trilog_t *t, void *ud, bool has_more) {
   return false;
 }
 
+int toplevel_typed_ahead(void) {
+  int c = typed_ahead;
+  typed_ahead = EOF;
+  return c;
+}
+
 trilog_status_t toplevel_query(trilog_t *t, const char *goal,
                                bool interactive) {
   toplevel_state st = {.interactive = interactive};
@@ -95,38 +100,63 @@ trilog_status_t toplevel_query(trilog_t *t, const char *goal,
   return s;
 }
 
-// One line, one query TODO: no support yet for a query spanning multiple lines.
-trilog_status_t toplevel_repl(trilog_t *t) {
-  bool interactive = terminal_stdin_is_tty();
-  if (interactive)
-    printf("trilog %s\n", trilog_version());
-  static char line[TOPLEVEL_LINE_MAX];
-  trilog_status_t s = TRILOG_TRUE;
-  for (;;) {
-    if (interactive) {
-      fputs("?- ", stdout);
-      fflush(stdout);
-    }
-    size_t n = 0;
-    if (typed_ahead != EOF) {
-      line[n++] = (char)typed_ahead;
-      putchar(typed_ahead);
-      typed_ahead = EOF;
-    }
-    if (!terminal_read_line(line + n, sizeof line - n))
-      break;
+static bool tl_tty(trilog_t *t, void *ud, const trilog_value_t *in,
+                   trilog_value_t *out) {
+  (void)t, (void)ud, (void)in, (void)out;
+  return terminal_stdin_is_tty();
+}
 
-    int blank = 1;
-    for (char *p = line; *p; p++)
-      if (!isspace((unsigned char)*p)) {
-        blank = 0;
-        break;
-      }
-    if (blank)
-      continue;
-    s = toplevel_query(t, line, interactive);
-    if (s == TRILOG_HALT)
-      break;
-  }
+static bool tl_key(trilog_t *t, void *ud, const trilog_value_t *in,
+                   trilog_value_t *out) {
+  (void)t, (void)ud, (void)in;
+  fflush(stdout);
+  out[0].i = terminal_read_key();
+  return true;
+}
+
+static bool tl_raw(trilog_t *t, void *ud, const trilog_value_t *in,
+                   trilog_value_t *out) {
+  (void)t, (void)ud, (void)out;
+  return terminal_raw(in[0].i != 0);
+}
+
+static bool tl_history_file(trilog_t *t, void *ud, const trilog_value_t *in,
+                            trilog_value_t *out) {
+  (void)t, (void)ud, (void)in;
+  static char path[4096];
+  if (!terminal_history_path(path, sizeof path))
+    return false;
+  out[0].a = path;
+  return true;
+}
+
+static bool tl_read_line(trilog_t *t, void *ud, const trilog_value_t *in,
+                         trilog_value_t *out) {
+  (void)t, (void)ud, (void)in;
+  static char line[TOPLEVEL_LINE_MAX];
+  if (!terminal_read_line(line, sizeof line))
+    return false;
+  out[0].a = line;
+  return true;
+}
+
+static bool stop_after_first(trilog_t *t, void *ud, bool has_more) {
+  (void)t, (void)ud, (void)has_more;
+  return false;
+}
+
+trilog_status_t toplevel_repl(trilog_t *t) {
+  if (terminal_stdin_is_tty())
+    printf("trilog %s\n", trilog_version());
+  trilog_register(t, "$tl_tty", "", tl_tty, NULL);
+  trilog_register(t, "$tl_key", ">i", tl_key, NULL);
+  trilog_register(t, "$tl_read_line", ">a", tl_read_line, NULL);
+  trilog_register(t, "$tl_raw", "i", tl_raw, NULL);
+  trilog_register(t, "$tl_history_file", ">a", tl_history_file, NULL);
+  trilog_status_t s = trilog_query(t, "use_module(library(toplevel)), toplevel",
+                                   stop_after_first, NULL);
+  if (s == TRILOG_ERROR &&
+      trilog_term_type(t, trilog_error_term(t)) != TRILOG_INVALID)
+    toplevel_print_uncaught(t);
   return s;
 }

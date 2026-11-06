@@ -79,7 +79,17 @@ judge(A, Out, true(Names)) :-
     ->  atom_chars(Text, Out),
         bindings_match(Exp, Names)
     ;   atom_chars(A, Out)
+    ->  true
+    ;   same_float(A, Out)
     ).
+
+% Float text that reads back as the same float is the same answer: the table
+% writes 1.0e+100 where Scryer and trilog write 1.0e100.
+same_float(A, Out) :-
+    catch(( atom_chars(A, Cs), number_chars(X, Cs), number_chars(Y, Out) ),
+          _, fail),
+    float(X),
+    X == Y.
 
 error_answer('repr. err.', representation_error(_)) :- !.
 error_answer('rep._e.', representation_error(_)) :- !.

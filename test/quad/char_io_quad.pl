@@ -49,7 +49,7 @@
    error(instantiation_error).
 
 ?- get_char(foo, C).
-   error(domain_error(stream_or_alias, foo)).
+   error(existence_error(stream, foo)).
 
 ?- get_char(user_output, C).
    error(permission_error(input, stream, user_output)).

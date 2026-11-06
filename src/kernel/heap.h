@@ -14,6 +14,7 @@ typedef enum {
   TAG_FUNCTOR
 } tag_t;
 
+#pragma pack(push, 4)
 typedef struct {
   tag_t tag;
   union {
@@ -28,20 +29,14 @@ typedef struct {
     } func; // FUNCTOR
   } as;
 } cell_t;
+#pragma pack(pop)
+
+_Static_assert(sizeof(cell_t) == 12, "cell_t is 12 bytes");
 
 void heap_init(trilog_t *T);
 
-size_t heap_alloc(trilog_t *T, size_t n);
-
-size_t heap_new_var(trilog_t *T);
-size_t heap_new_atom(trilog_t *T, int32_t atom_id);
-size_t heap_new_int(trilog_t *T, int64_t v);
-size_t heap_new_flt(trilog_t *T, double v);
-// NULL arg_idx: unbound arguments.
-size_t heap_new_struct(trilog_t *T, int32_t functor_id, int32_t arity,
-                       size_t *arg_idx);
-
-size_t heap_deref(trilog_t *T, size_t r);
+// Grows the heap so n more cells fit; heap_alloc's slow path.
+void heap_grow(trilog_t *T, size_t n);
 
 size_t heap_mark(trilog_t *T);
 void heap_release(trilog_t *T, size_t mark);

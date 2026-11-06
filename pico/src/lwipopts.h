@@ -7,9 +7,9 @@
 #define MEM_ALIGNMENT 4
 #define MEM_SIZE 4000
 #define MEMP_NUM_TCP_SEG 16
-#define MEMP_NUM_TCP_PCB 10
+#define MEMP_NUM_TCP_PCB 4
 #define MEMP_NUM_ARP_QUEUE 10
-#define PBUF_POOL_SIZE 8
+#define PBUF_POOL_SIZE 4
 #define LWIP_ARP 1
 #define LWIP_ETHERNET 1
 #define LWIP_ICMP 1

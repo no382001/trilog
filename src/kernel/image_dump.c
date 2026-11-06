@@ -7,6 +7,13 @@
 #include <stdarg.h>
 #include <string.h>
 
+// A node already written, found by its contents: a leaf's tag and value, or
+// a compound's functor, arity and argument nodes. Equal terms share a node.
+typedef struct {
+  uint64_t hash;
+  int32_t id, key, len; // len 0: empty
+} shared_t;
+
 typedef struct {
   trilog_t *T;
   void *out;
@@ -14,6 +21,10 @@ typedef struct {
   bool ok;
   char root[4096];
   size_t root_len;
+  shared_t *shared;
+  size_t shared_cap, shared_count;
+  int64_t *keys;
+  size_t keys_len, keys_cap;
 } dump_t;
 
 static void put(dump_t *d, const char *s) {
@@ -53,9 +64,65 @@ static void put_string(dump_t *d, const char *s) {
   put(d, "\"");
 }
 
+static uint64_t key_hash(const int64_t *k, int32_t len) {
+  uint64_t h = 14695981039346656037ULL;
+  for (int32_t i = 0; i < len; i++)
+    h = (h ^ (uint64_t)k[i]) * 1099511628211ULL;
+  return h;
+}
+
+static shared_t *shared_slot(dump_t *d, const int64_t *k, int32_t len,
+                             uint64_t h) {
+  size_t mask = d->shared_cap - 1;
+  for (size_t i = h & mask;; i = (i + 1) & mask) {
+    shared_t *s = &d->shared[i];
+    if (s->len == 0 ||
+        (s->hash == h && s->len == len &&
+         !memcmp(d->keys + s->key, k, (size_t)len * sizeof *k)))
+      return s;
+  }
+}
+
+static void shared_grow(dump_t *d) {
+  shared_t *old = d->shared;
+  size_t old_cap = d->shared_cap;
+  d->shared_cap = old_cap ? old_cap * 2 : 1024;
+  d->shared = mem_grow_n(d->T, NULL, d->shared_cap, sizeof *d->shared);
+  memset(d->shared, 0, d->shared_cap * sizeof *d->shared);
+  for (size_t i = 0; i < old_cap; i++)
+    if (old[i].len)
+      *shared_slot(d, d->keys + old[i].key, old[i].len, old[i].hash) = old[i];
+  mem_free(d->T, old);
+}
+
+// The node with these contents, or -1; a miss records id as the node.
+static int32_t share(dump_t *d, const int64_t *k, int32_t len, int32_t id) {
+  if ((d->shared_count + 1) * 4 > d->shared_cap * 3)
+    shared_grow(d);
+  uint64_t h = key_hash(k, len);
+  shared_t *s = shared_slot(d, k, len, h);
+  if (s->len)
+    return s->id;
+  if (d->keys_len + (size_t)len > d->keys_cap) {
+    d->keys_cap = (d->keys_len + (size_t)len) * 2;
+    d->keys = mem_grow_n(d->T, d->keys, d->keys_cap, sizeof *d->keys);
+  }
+  memcpy(d->keys + d->keys_len, k, (size_t)len * sizeof *k);
+  *s = (shared_t){h, id, (int32_t)d->keys_len, len};
+  d->keys_len += (size_t)len;
+  d->shared_count++;
+  return -1;
+}
+
 static int32_t emit(dump_t *d, const tterm_t *t) {
   if (t->tag != T_STR) {
-    int32_t id = d->nodes++;
+    int64_t k[2] = {t->tag, t->tag == T_VAR    ? t->as.slot
+                            : t->tag == T_ATOM ? t->as.atom_id
+                                               : t->as.ival};
+    int32_t id = share(d, k, 2, d->nodes);
+    if (id >= 0)
+      return id;
+    id = d->nodes++;
     if (t->tag == T_VAR)
       putf(d, "static const tterm_t n%d = {.tag = T_VAR, .as.slot = %d};\n", id,
            t->as.slot);
@@ -72,7 +139,19 @@ static int32_t emit(dump_t *d, const tterm_t *t) {
   int32_t *args = mem_grow_n(d->T, NULL, (size_t)arity + 1, sizeof(int32_t));
   for (int32_t i = 0; i < arity; i++)
     args[i] = emit(d, t->as.str.args[i]);
-  int32_t id = d->nodes++;
+  int64_t *k = mem_grow_n(d->T, NULL, (size_t)arity + 3, sizeof *k);
+  k[0] = T_STR;
+  k[1] = t->as.str.atom_id;
+  k[2] = arity;
+  for (int32_t i = 0; i < arity; i++)
+    k[3 + i] = args[i];
+  int32_t id = share(d, k, arity + 3, d->nodes);
+  mem_free(d->T, k);
+  if (id >= 0) {
+    mem_free(d->T, args);
+    return id;
+  }
+  id = d->nodes++;
   if (arity > 0) {
     putf(d, "static tterm_t *const n%da[] = {", id);
     for (int32_t i = 0; i < arity; i++)
@@ -102,7 +181,7 @@ static void dump(dump_t *d) {
   int32_t live = 0;
   for (int32_t i = 0; i < T->db_count; i++) {
     const clause_t *c = &T->db[i];
-    if (!c->head)
+    if (!c->head || c->died != UINT32_MAX)
       continue;
     heads[i] = emit(d, c->head);
     live++;
@@ -120,7 +199,7 @@ static void dump(dump_t *d) {
   put(d, "\nstatic const image_clause_t clauses[] = {\n");
   for (int32_t i = 0; i < T->db_count; i++) {
     const clause_t *c = &T->db[i];
-    if (!c->head)
+    if (!c->head || c->died != UINT32_MAX)
       continue;
     putf(d, "    {(tterm_t *)&n%d, ", heads[i]);
     if (c->nbody > 0)
@@ -156,6 +235,8 @@ static bool dump_image(trilog_t *t, void *ud, const trilog_value_t *in,
     return trilog_error(t, "existence_error(source_sink, %s)", in[0].a);
   dump(&d);
   io_file_close(t, d.out);
+  mem_free(t, d.shared);
+  mem_free(t, d.keys);
   return d.ok;
 }
 

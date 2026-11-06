@@ -1,24 +1,50 @@
 :- module(pages, [home/1,
                   stats/1,
                   mailbox/2,
-                  title//0,
+                  head/2,
+                  foot//0,
                   version//0,
                   board//0
                  ]).
+
 
 :- use_module(library(dcgs)).
 :- use_module(library(between)).
 :- use_module(text).
 
 home(Out) :-
-    text:emit(Out, title),
     text:emit(Out, "<ul>\n"),
     forall(home_link(Href, Text), text:emit(Out, link(Href, Text))),
     text:emit(Out, "</ul>\n").
 
-title -->
-    "<h1>trilog ", version, "</h1>\n",
-    "<p>running on ", board, "</p>\n".
+% !!! Each piece is emitted alone: one list for the whole head does not fit the heap.
+% its too much for the pico apparently :(
+head(Out, Page) :-
+    text:emit(Out, "<!doctype html>\n<html>\n<head>\n<meta charset=\"UTF-8\" />\n"),
+    text:emit(Out, "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n"),
+    text:emit(Out, ("<title>trilog", page_title(Page), "</title>\n")),
+    text:emit(Out, "<style>body{max-width:100ex}</style>\n</head>\n<body>\n"),
+    text:emit(Out, "<p><b>trilog</b> [ "),
+    forall(nav_link(P, H, T), text:emit(Out, nav_item(P, H, T, Page))),
+    text:emit(Out, " ]</p>\n").
+
+page_title(home) --> !.
+page_title(Page) --> { nav_link(Page, _, Text) }, !, " ~", Text.
+page_title(_) --> [].
+
+nav_item(P, H, T, Current) -->
+    (   { P == home } -> [] ; ", " ),
+    (   { P == Current } -> T ; "<a href=\"", H, "\">", T, "</a>" ).
+
+nav_link(home, "/", "home").
+nav_link(fs, "/fs", "files").
+nav_link(stats, "/stats", "stats").
+nav_link(mail, "/mail", "mail").
+nav_link(log, "/log", "log").
+nav_link(conformity, "/conformity", "conformity").
+
+foot -->
+    "<hr>\n<p>trilog ", version, " on ", board, "</p>\n</body>\n</html>\n".
 
 version --> { trilog_version(V) }, V.
 
@@ -46,7 +72,6 @@ home_link("/log", "request log").
 link(Href, Text) --> "<li><a href=\"", Href, "\">", Text, "</a>\n".
 
 stats(Out) :-
-    text:emit(Out, title),
     text:emit(Out, "<pre>\n"),
     forall(chart_line(Line), text:emit(Out, Line)),
     text:emit(Out, "</pre>\n"),
@@ -122,7 +147,6 @@ stat_row(Name, N, Unit) -->
     "</td></tr>\n".
 
 mailbox(Conn, Out) :-
-    text:emit(Out, title),
     mail_ids(First, Last),
     (   Last < First
     ->  text:emit(Out, "<p>no mail\n")

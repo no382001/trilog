@@ -9,6 +9,7 @@ dcg_constr([]).
 dcg_constr([_|_]).
 dcg_constr((_, _)).
 dcg_constr((_ ; _)).
+dcg_constr('|'(_, _)).
 dcg_constr((_ -> _)).
 dcg_constr({_}).
 dcg_constr(!).
@@ -45,6 +46,7 @@ dcg_cbody((A ; B), S0, S, (AT ; BT)) :-
     !,
     dcg_body(A, S0, S, AT),
     dcg_body(B, S0, S, BT).
+dcg_cbody('|'(A, B), S0, S, Goal) :- !, dcg_cbody((A ; B), S0, S, Goal).
 dcg_cbody((A -> B), S0, S, (AT -> BT)) :-
     !,
     dcg_body(A, S0, S1, AT),

@@ -15,10 +15,10 @@
    X = 12.
 
 ?- X is 15 / 3.
-   X = 5.
+   X = 5.0.
 
 ?- X is 7 / 2.
-   X = 3.
+   X = 3.5.
 
 ?- X is 17 mod 5.
    X = 2.
@@ -50,7 +50,7 @@
    X = 26.
 
 ?- X is 20 / 4 * 2.
-   X = 10.
+   X = 10.0.
 
 % --- is/2 with variables ---
 
@@ -333,7 +333,8 @@ bpair3(1, x).
 bpair3(2, y).
 
 ?- bagof(B, bpair3(A, B), L).
-   L = "xy".
+   A = 1, L = "x"
+;  A = 2, L = "y".
 
 % --- nl/0 ---
 
@@ -869,7 +870,7 @@ cp_mine(2).
 ?- current_predicate(append/3).
    false.
 
-?- current_predicate('$dyn_call'/1).
+?- current_predicate('$with_context'/2).
    false.
 
 ?- current_predicate(no_such_pred/0).
@@ -886,3 +887,10 @@ cp_mine(2).
 
 ?- catch(current_predicate(f/a), error(E, _), true).
    E = type_error(predicate_indicator,f/a).
+
+% atom_chars/2 and number_chars/2 from characters leave no choice point
+?- '$$choice_mark'(_M0), atom_chars(_, [a,b]), '$$choice_mark'(_M1), _M0 == _M1.
+   true.
+
+?- '$$choice_mark'(_M0), number_chars(_, ['1','2']), '$$choice_mark'(_M1), _M0 == _M1.
+   true.
