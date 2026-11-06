@@ -620,8 +620,7 @@ start:
       goto start;
     }
     op_t pre, dummy;
-    if (find_prefix(T, name, &pre) && pre.pri <= prec && prefix_applies(T) &&
-        !(lower && find_infix(T, name, &dummy))) {
+    if (find_prefix(T, name, &pre) && pre.pri <= prec && prefix_applies(T)) {
       prec = pre.assoc == FY ? pre.pri : pre.pri - 1;
       frame_push(T, K_PREFIX, PTR(name), (size_t)pre.pri, (size_t)prec);
       goto start;

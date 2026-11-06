@@ -4,8 +4,6 @@ between_quad	between(1, c, 0)
 builtins_quad	X is "hello"
 builtins_quad	current_prolog_flag(max_integer, V)
 builtins_quad	current_prolog_flag(min_integer, V)
-conformity	#163 op(9,fy,p),op(9,xfy,p). ⏎ write_canonical(1 p p p 2).
-conformity	#164 op(7,fy,p),op(9,yfx,p). ⏎ write_canonical(1 p p p 2).
 conformity	#300 writeq("\0\").
 core_quad	X = Y, X == Y
 core_quad	catch(throw(foo), bar, true)
