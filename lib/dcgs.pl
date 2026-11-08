@@ -3,6 +3,7 @@
 :- meta_predicate([phrase('//', ?), phrase('//', ?, ?)]).
 
 :- op(1200, xfx, '-->').
+:- op(1105, xfy, '|').
 :- dynamic('$dcg_compiled'/2).
 
 dcg_constr([]).

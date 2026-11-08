@@ -86,3 +86,10 @@
 
 ?- findall(L, phrase('|'([x], [y]), L), Ls).
    Ls = [[x],[y]].
+
+% library(dcgs) makes | an operator, as in Scryer.
+?- current_op(P, T, '|').
+   P = 1105, T = xfy.
+
+?- findall(L, phrase(([x] | [y]), L), Ls).
+   Ls = [[x],[y]].
