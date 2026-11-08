@@ -1012,7 +1012,10 @@ bool consult_string(trilog_t *T, const char *text) {
 
 static bool consult_source(trilog_t *T, const char *text, const char *path) {
   T->P = text;
+  const size_t wbase = T->wsp, pbase = T->psp;
   if (setjmp(T->err_jmp)) {
+    T->wsp = wbase;
+    T->psp = pbase;
     io_write_err(T, "parse error in ");
     io_write_err(T, path);
     io_write_err(T, ": ");
@@ -1042,7 +1045,10 @@ bool parse_query(trilog_t *T, const char *src, tterm_t ***goals_out,
                  const char ***varnames_out) {
   T->P = src;
   T->psp = 0;
+  const size_t wbase = T->wsp;
   if (setjmp(T->err_jmp)) {
+    T->wsp = wbase;
+    T->psp = 0;
     io_write_err(T, "parse error: ");
     io_write_err(T, T->err_msg);
     io_write_err(T, "\n");
@@ -1074,7 +1080,10 @@ static number_text_t parse_number_text_(trilog_t *T, const char *text,
                                         tterm_t **out) {
   T->P = text;
   volatile bool negative = false;
+  const size_t wbase = T->wsp, pbase = T->psp;
   if (setjmp(T->err_jmp)) {
+    T->wsp = wbase;
+    T->psp = pbase;
     if (!strncmp(T->err_msg, FLOAT_OVERFLOW, strlen(FLOAT_OVERFLOW)))
       return NUMBER_TEXT_FLOAT_OVERFLOW;
     return strncmp(T->err_msg, INTEGER_OVERFLOW, strlen(INTEGER_OVERFLOW))
@@ -1134,8 +1143,12 @@ static bool parse_term_from_string_(trilog_t *T, const char *src,
                                     tterm_t **term_out, int32_t *nvars_out,
                                     const char ***varnames_out) {
   T->P = src;
-  if (setjmp(T->err_jmp))
+  const size_t wbase = T->wsp, pbase = T->psp;
+  if (setjmp(T->err_jmp)) {
+    T->wsp = wbase;
+    T->psp = pbase;
     return false;
+  }
   vartab_reset(T);
   tterm_t *t = parse_expr(T, 1200);
   skip_ws(T);

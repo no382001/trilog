@@ -574,6 +574,53 @@ static void test_capture_atoms(trilog_t *t) {
   CHECK(u1.atoms == u0.atoms);
 }
 
+static void test_parse_error_stacks(void) {
+  sized z = {0};
+  trilog_t *t = trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl",
+                                              .realloc = sized_realloc,
+                                              .free = sized_free,
+                                              .alloc_ud = &z});
+  CHECK(t != NULL);
+  if (!t)
+    return;
+  CHECK(trilog_load_string(
+            t, "bad(0) :- !.\n"
+               "bad(N) :- catch(atom_to_term('f(g(', _, _), _, true), "
+               "N1 is N - 1, bad(N1).\n") == TRILOG_TRUE);
+  collected c = {0};
+  CHECK(trilog_query(t, "bad(2000)", collect, &c) == TRILOG_TRUE);
+  size_t before = z.live;
+  CHECK(trilog_query(t, "bad(5000)", collect, &c) == TRILOG_TRUE);
+  CHECK(z.live < before + 32768);
+  trilog_free(t);
+}
+
+// #34: catch/3 frames piled up in backtracking loops, where no GC ran.
+static void test_catch_stack(void) {
+  sized z = {0};
+  trilog_t *t = trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl",
+                                              .realloc = sized_realloc,
+                                              .free = sized_free,
+                                              .alloc_ud = &z});
+  CHECK(t != NULL);
+  if (!t)
+    return;
+  CHECK(trilog_load_string(
+            t,
+            ":- consult('lib/between.pl').\n"
+            "ab([]).\n"
+            "ab([X|Xs]) :- ( X = a ; X = b ), ab(Xs).\n"
+            "run(Max) :- forall(( between(0, Max, N), length(L, N), ab(L) ), "
+            "catch(number_chars(_, L), error(syntax_error(_), _), true)).\n") ==
+        TRILOG_TRUE);
+  collected c = {0};
+  CHECK(trilog_query(t, "run(10)", collect, &c) == TRILOG_TRUE);
+  size_t before = z.live;
+  CHECK(trilog_query(t, "run(14)", collect, &c) == TRILOG_TRUE);
+  CHECK(z.live < before + 32768);
+  trilog_free(t);
+}
+
 static void test_lazy_dynamic(void) {
   trilog_t *t = trilog_new(&(trilog_config_t){.boot_path = "boot/core.pl"});
   CHECK(t != NULL);
@@ -676,6 +723,8 @@ int main(void) {
   test_growth();
   test_clause_slots();
   test_lazy_dynamic();
+  test_parse_error_stacks();
+  test_catch_stack();
 
   trilog_usage_t u;
   trilog_usage(t, &u);

@@ -2734,6 +2734,7 @@ static int do_throw(trilog_t *T, size_t ball, size_t *cn_out,
     size_t ball_copy = fresh_copy_term(T, ball_template, nballvars);
     if (unify(T, entry.catcher, ball_copy)) {
       pending_free(T);
+      T->catch_sp = idx;
       *active_catch_ptr = entry.outer_active_catch;
       *cn_out = build_conj_tail(T, &entry.recovery, 1, entry.continuation);
       return 1;
@@ -2756,12 +2757,14 @@ query_result_t run_query(trilog_t *T, tterm_t **goals, int32_t ngoals,
   T->query_depth++;
   T->query_heap_base = T->query_depth == 1 ? 0 : heap_mark(T);
   T->query_catch_base = T->query_depth == 1 ? 0 : T->catch_sp;
+  size_t saved_catch_sp = T->catch_sp;
   T->uncaught_ball = (size_t)-1;
   size_t *saved_cn = T->query_cn;
   query_result_t r = run_query_body(T, goals, ngoals, nvars, on_solution, ud);
   T->query_cn = saved_cn;
   T->query_depth--;
   T->sp = T->query_sp_base;
+  T->catch_sp = saved_catch_sp;
   db_reclaim(T);
   T->query_sp_base = saved_base;
   T->query_heap_base = saved_heap_base;
@@ -2900,7 +2903,8 @@ A:
                                   .heap_mark = heap_mark(T),
                                   .trail_mark = trail_mark(T),
                                   .cut_barrier = sp0,
-                                  .active_catch = active_catch});
+                                  .active_catch = active_catch,
+                                  .catch_sp = T->catch_sp});
           if (ite) {
             size_t barrier_arg[1] = {heap_new_int(T, (int64_t)sp0)};
             size_t goals[3] = {heap_rebake_cuts(T, lf + 1, T->sp),
@@ -2960,6 +2964,10 @@ A:
         if (fd_arity == 1 && fd_id == atom_uncatch) {
           size_t idx = (size_t)T->heap[heap_deref(T, cf + 1)].as.ival;
           active_catch = T->catch_stack[idx].outer_active_catch;
+          // A goal that left no choice point cannot come back to its catch.
+          if (idx + 1 == T->catch_sp &&
+              T->sp == T->catch_stack[idx].sp_at_entry)
+            T->catch_sp = idx;
           cn = rest;
           goto A;
         }
@@ -3164,6 +3172,7 @@ B: {
                               .trail_mark = tmark,
                               .cut_barrier = cut_barrier,
                               .active_catch = active_catch,
+                              .catch_sp = T->catch_sp,
                               .gen = call_gen});
     cn = newcn;
     goto A;
@@ -3180,6 +3189,7 @@ C:
     tmark = f.trail_mark;
     cut_barrier = f.cut_barrier;
     active_catch = f.active_catch;
+    T->catch_sp = f.catch_sp;
     call_gen = f.gen;
     if (clause_idx == FRAME_GOALS) {
       trail_release(T, tmark);

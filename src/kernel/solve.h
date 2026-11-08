@@ -43,7 +43,8 @@ typedef struct {
   size_t trail_mark;
   size_t cut_barrier;
   size_t active_catch;
-  uint32_t gen; // the generation the call was made in
+  size_t catch_sp; // catch frames above it are dead once it is retried
+  uint32_t gen;    // the generation the call was made in
 } frame_t;
 
 // A frame's clause_idx when backtracking runs its goals instead of retrying a

@@ -608,6 +608,16 @@ load common
   [[ "$output" == *"r(1,2)"* ]]
 }
 
+@test "a backtracking loop of catches around number_chars/2 runs in bounded memory (#34, regression)" {
+  cat > "$BATS_TEST_TMPDIR/ab.pl" <<'PLEOF'
+ab([]).
+ab([X|Xs]) :- ( X = a ; X = b ), ab(Xs).
+PLEOF
+  run bash -c "ulimit -v 24576; '$TRILOG' '$BATS_TEST_TMPDIR/ab.pl' -e 'forall(( between(0, 15, N), length(L, N), ab(L) ), catch(number_chars(_, L), error(syntax_error(_), _), true)), write(done), nl, halt.'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"done"* ]]
+}
+
 @test "findall/3 whose goal throws leaves no solutions behind, also when nested (regression)" {
   # regression: solutions were stored as facts, and a throwing goal left them in the database.
   run "$TRILOG" -e "
