@@ -106,6 +106,12 @@ load common
   [[ "$output" == *"|...]"* ]]
 }
 
+@test "--> is a standard operator even with only the core loaded" {
+  run "$TRILOG" -n -f -e "X = (a-->b), write_canonical(X), nl."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"-->(a,b)"* ]]
+}
+
 @test "op/3 defines a custom infix operator, most recently asserted priority wins" {
   cat > /tmp/mi_op_test.pl <<'PLEOF'
 :- op(700, xfx, ===>).
