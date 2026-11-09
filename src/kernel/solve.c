@@ -2838,6 +2838,9 @@ static query_result_t run_query_body(trilog_t *T, tterm_t **goals,
   int32_t next_match = -1; // the db index after clause_idx that matches, or -1
   uint32_t call_gen = 0;
   idx_key_t caller_key = {.kind = IDX_ANY};
+  pred_bucket_t *call_bk = NULL;
+  arg_key_t call_arg = {.kind = IDX_ANY};
+  int32_t call_pos = -1, next_pos = -1;
   size_t active_catch = (size_t)-1;
   int predicate_known = 0;
 
@@ -3075,12 +3078,12 @@ A:
       goto C;
     }
   }
+  caller_key = key_of_goal(T, first);
+  call_bk = pred_bucket_find(T, caller_key.pred_id, caller_key.pred_arity);
   {
-    idx_key_t dk = key_of_goal(T, first);
-    pred_bucket_t *dbk = pred_bucket_find(T, dk.pred_id, dk.pred_arity);
-    if (dbk && dbk->foreign) {
+    if (call_bk && call_bk->foreign) {
       size_t ball;
-      int r = call_foreign(T, &T->foreign[dbk->foreign - 1], first, &ball);
+      int r = call_foreign(T, &T->foreign[call_bk->foreign - 1], first, &ball);
       if (r > 0) {
         cn = rest;
         goto A;
@@ -3097,16 +3100,21 @@ A:
   tmark = trail_mark(T);
   hmark = heap_mark(T);
   cut_barrier = T->sp;
-  caller_key = key_of_goal(T, first);
-  predicate_known = 0;
+  call_arg = arg_key_of(caller_key);
+  call_pos = call_bk ? bucket_match(T, call_bk, 0, call_arg, call_gen) : -1;
+  goto B_at;
 
-B: {
-  pred_bucket_t *bk =
-      pred_bucket_find(T, caller_key.pred_id, caller_key.pred_arity);
+B:
+  call_bk = pred_bucket_find(T, caller_key.pred_id, caller_key.pred_arity);
+  call_arg = arg_key_of(caller_key);
+  call_pos = call_bk
+                 ? bucket_match(T, call_bk, bucket_seek(call_bk, clause_idx),
+                                call_arg, call_gen)
+                 : -1;
+B_at: {
+  pred_bucket_t *bk = call_bk;
+  int32_t pos = call_pos;
   predicate_known = bk && bk->count > 0;
-  arg_key_t arg = arg_key_of(caller_key);
-  int32_t pos =
-      bk ? bucket_match(T, bk, bucket_seek(bk, clause_idx), arg, call_gen) : -1;
   if (pos < 0) {
     if (clause_idx > 0)
       goto C; // resuming a call that already matched: out of clauses is a
@@ -3144,8 +3152,8 @@ B: {
     goto C;
   }
   clause_idx = bk->indices[pos];
-  int32_t after = bucket_match(T, bk, pos + 1, arg, call_gen);
-  next_match = after < 0 ? -1 : bk->indices[after];
+  next_pos = bucket_match(T, bk, pos + 1, call_arg, call_gen);
+  next_match = next_pos < 0 ? -1 : bk->indices[next_pos];
 }
   {
     clause_t *c = &T->db[clause_idx];
@@ -3156,8 +3164,8 @@ B: {
     if (!unify_template(T, c->head, first, r2)) {
       if (next_match < 0)
         goto C;
-      clause_idx = next_match;
-      goto B;
+      call_pos = next_pos;
+      goto B_at;
     }
 
     size_t *bodies = tmp_goals(T, c->nbody);
