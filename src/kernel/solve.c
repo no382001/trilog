@@ -1693,6 +1693,60 @@ static int dispatch_builtin(trilog_t *T, size_t goal, int *ok) {
   return r;
 }
 
+static int arith_compare(trilog_t *T, size_t f, int32_t id, int *ok) {
+  int aok = 1;
+  size_t av = eval_arith(T, f + 1, &aok);
+  size_t bv = aok ? eval_arith(T, f + 2, &aok) : 0;
+  if (!aok) {
+    *ok = 0;
+    return 1;
+  }
+  // exact int64 compare unless a float forces double comparison.
+  int cmp;
+  if (T->heap[av].tag == TAG_FLT || T->heap[bv].tag == TAG_FLT) {
+    double a = arith_dbl(T, av), b = arith_dbl(T, bv);
+    cmp = a < b ? -1 : a > b ? 1 : 0;
+  } else {
+    int64_t a = T->heap[av].as.ival, b = T->heap[bv].as.ival;
+    cmp = a < b ? -1 : a > b ? 1 : 0;
+  }
+  if (id == atom_lt)
+    *ok = cmp < 0;
+  else if (id == atom_gt)
+    *ok = cmp > 0;
+  else if (id == atom_arith_le)
+    *ok = cmp <= 0;
+  else if (id == atom_arith_ge)
+    *ok = cmp >= 0;
+  else if (id == atom_arith_eq)
+    *ok = cmp == 0;
+  else
+    *ok = cmp != 0;
+  return 1;
+}
+
+static int order_compare(trilog_t *T, size_t f, int32_t id, int *ok) {
+  int c = term_compare(T, f + 1, f + 2);
+  if (id == atom_term_eq)
+    *ok = c == 0;
+  else if (id == atom_term_ne)
+    *ok = c != 0;
+  else if (id == atom_term_lt)
+    *ok = c < 0;
+  else if (id == atom_term_gt)
+    *ok = c > 0;
+  else if (id == atom_term_le)
+    *ok = c <= 0;
+  else
+    *ok = c >= 0;
+  return 1;
+}
+
+static __attribute__((noinline)) int dispatch_builtin_rest(trilog_t *T,
+                                                           size_t f,
+                                                           int32_t arity,
+                                                           int32_t id, int *ok);
+
 static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
   size_t g = heap_deref(T, goal);
   size_t f = 0;
@@ -1708,16 +1762,64 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
   } else {
     return 0;
   }
-
-  if (arity == 0 && (id == atom_fail || id == atom_false)) {
-    *ok = 0;
-    return 1;
+  switch (id) {
+  case atom_fail:
+  case atom_false:
+    if (arity == 0) {
+      *ok = 0;
+      return 1;
+    }
+    break;
+  case atom_bang:
+    if (arity == 0) {
+      *ok = 1;
+      return 1;
+    }
+    break;
+  case atom_is:
+    if (arity == 2) {
+      int aok = 1;
+      size_t v = eval_arith(T, f + 2, &aok);
+      *ok = aok && unify(T, f + 1, v);
+      return 1;
+    }
+    break;
+  case atom_unify_op:
+    if (arity == 2) {
+      *ok = unify(T, f + 1, f + 2);
+      return 1;
+    }
+    break;
+  case atom_unify_oc:
+    if (arity == 2) {
+      *ok = unify_with_occurs_check(T, f + 1, f + 2);
+      return 1;
+    }
+    break;
+  case atom_lt:
+  case atom_gt:
+  case atom_arith_le:
+  case atom_arith_ge:
+  case atom_arith_eq:
+  case atom_arith_ne:
+    if (arity == 2)
+      return arith_compare(T, f, id, ok);
+    break;
+  case atom_term_eq:
+  case atom_term_ne:
+  case atom_term_lt:
+  case atom_term_gt:
+  case atom_term_le:
+  case atom_term_ge:
+    if (arity == 2)
+      return order_compare(T, f, id, ok);
+    break;
   }
-  if (arity == 0 && id == atom_bang) {
-    *ok = 1;
-    return 1;
-  }
+  return dispatch_builtin_rest(T, f, arity, id, ok);
+}
 
+static int dispatch_builtin_rest(trilog_t *T, size_t f, int32_t arity,
+                                 int32_t id, int *ok) {
   if (arity == 1 && id == atom_halt) {
     size_t d = heap_deref(T, f + 1);
     if (T->heap[d].tag != TAG_INT) {
@@ -1727,71 +1829,6 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
     engine_halt(T, (int)T->heap[d].as.ival);
   }
 
-  if (arity == 2 && id == atom_is) {
-    int aok = 1;
-    size_t v = eval_arith(T, f + 2, &aok);
-    *ok = aok && unify(T, f + 1, v);
-    return 1;
-  }
-  if (arity == 2 && id == atom_unify_op) {
-    *ok = unify(T, f + 1, f + 2);
-    return 1;
-  }
-  if (arity == 2 && id == atom_unify_oc) {
-    *ok = unify_with_occurs_check(T, f + 1, f + 2);
-    return 1;
-  }
-  if (arity == 2 &&
-      (id == atom_lt || id == atom_gt || id == atom_arith_le ||
-       id == atom_arith_ge || id == atom_arith_eq || id == atom_arith_ne)) {
-    int aok = 1;
-    size_t av = eval_arith(T, f + 1, &aok);
-    size_t bv = aok ? eval_arith(T, f + 2, &aok) : 0;
-    if (!aok) {
-      *ok = 0;
-      return 1;
-    }
-    // exact int64 compare unless a float forces double comparison.
-    int cmp;
-    if (T->heap[av].tag == TAG_FLT || T->heap[bv].tag == TAG_FLT) {
-      double a = arith_dbl(T, av), b = arith_dbl(T, bv);
-      cmp = a < b ? -1 : a > b ? 1 : 0;
-    } else {
-      int64_t a = T->heap[av].as.ival, b = T->heap[bv].as.ival;
-      cmp = a < b ? -1 : a > b ? 1 : 0;
-    }
-    if (id == atom_lt)
-      *ok = cmp < 0;
-    else if (id == atom_gt)
-      *ok = cmp > 0;
-    else if (id == atom_arith_le)
-      *ok = cmp <= 0;
-    else if (id == atom_arith_ge)
-      *ok = cmp >= 0;
-    else if (id == atom_arith_eq)
-      *ok = cmp == 0;
-    else
-      *ok = cmp != 0;
-    return 1;
-  }
-  if (arity == 2 &&
-      (id == atom_term_eq || id == atom_term_ne || id == atom_term_lt ||
-       id == atom_term_gt || id == atom_term_le || id == atom_term_ge)) {
-    int c = term_compare(T, f + 1, f + 2);
-    if (id == atom_term_eq)
-      *ok = c == 0;
-    else if (id == atom_term_ne)
-      *ok = c != 0;
-    else if (id == atom_term_lt)
-      *ok = c < 0;
-    else if (id == atom_term_gt)
-      *ok = c > 0;
-    else if (id == atom_term_le)
-      *ok = c <= 0;
-    else
-      *ok = c >= 0;
-    return 1;
-  }
   if (arity == 1 && id == atom_flush) {
     int kind;
     void *h = NULL;
