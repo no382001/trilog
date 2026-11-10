@@ -392,6 +392,36 @@ static int was_consulted(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
   return 0;
 }
 
+static const uint32_t builtin_arities[WELL_KNOWN_ATOM_COUNT] = {
+    [atom_true] = 1u << 0,         [atom_fail] = 1u << 0,
+    [atom_false] = 1u << 0,        [atom_bang] = 1u << 0,
+    [atom_comma] = 1u << 2,        [atom_semicolon] = 1u << 2,
+    [atom_arrow] = 1u << 2,        [atom_call] = 1u << 1,
+    [atom_catch] = 1u << 3,        [atom_throw] = 1u << 1,
+    [atom_halt] = 1u << 1,         [atom_is] = 1u << 2,
+    [atom_unify_op] = 1u << 2,     [atom_unify_oc] = 1u << 2,
+    [atom_univ] = 1u << 2,         [atom_lt] = 1u << 2,
+    [atom_gt] = 1u << 2,           [atom_arith_le] = 1u << 2,
+    [atom_arith_ge] = 1u << 2,     [atom_arith_eq] = 1u << 2,
+    [atom_arith_ne] = 1u << 2,     [atom_term_eq] = 1u << 2,
+    [atom_term_ne] = 1u << 2,      [atom_term_lt] = 1u << 2,
+    [atom_term_gt] = 1u << 2,      [atom_term_le] = 1u << 2,
+    [atom_term_ge] = 1u << 2,      [atom_var] = 1u << 1,
+    [atom_nonvar] = 1u << 1,       [atom_kw_atom] = 1u << 1,
+    [atom_number] = 1u << 1,       [atom_integer] = 1u << 1,
+    [atom_kw_float] = 1u << 1,     [atom_atomic] = 1u << 1,
+    [atom_compound] = 1u << 1,     [atom_callable] = 1u << 1,
+    [atom_acyclic_term] = 1u << 1, [atom_functor] = 1u << 3,
+    [atom_arg] = 1u << 3,          [atom_copy_term] = 1u << 2,
+    [atom_dynamic] = 1u << 1,      [atom_atom_to_term] = 1u << 3,
+    [atom_term_to_atom] = 1u << 2, [atom_read_line_to_atom] = 1u << 2,
+};
+
+static bool is_builtin_pi(int32_t pred_id, int32_t pred_arity) {
+  return pred_id >= 0 && pred_id < WELL_KNOWN_ATOM_COUNT && pred_arity >= 0 &&
+         pred_arity < 32 && (builtin_arities[pred_id] >> pred_arity & 1u);
+}
+
 static void mark_consulted(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
   if (is_dynamic(T, pred_id, pred_arity) ||
       was_consulted(T, pred_id, pred_arity))
@@ -1688,6 +1718,10 @@ static int dispatch_builtin(trilog_t *T, size_t goal, int *ok) {
   T->error_pi_name = name;
   T->error_pi_arity = arity;
   int r = dispatch_builtin_(T, goal, ok);
+#ifdef TRILOG_CHECK_BUILTINS
+  if (r && name >= 0 && !is_builtin_pi(name, arity))
+    abort();
+#endif
   T->error_pi_name = saved_name;
   T->error_pi_arity = saved_arity;
   return r;
@@ -2159,7 +2193,7 @@ static int dispatch_builtin_rest(trilog_t *T, size_t f, int32_t arity,
     }
     int32_t pid = T->heap[name_d].as.atom_id,
             par = (int32_t)T->heap[arity_d].as.ival;
-    *ok = was_consulted(T, pid, par);
+    *ok = was_consulted(T, pid, par) || is_builtin_pi(pid, par);
     return 1;
   }
   if (arity == 1 && id == atom_prolog_flags) {

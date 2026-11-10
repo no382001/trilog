@@ -141,11 +141,21 @@ trilog-hostile:
 	$(CC) $(CFLAGS) $(HOSTILE_FLAGS) -no-pie -Iinclude -Icli cli/main.c cli/toplevel.c cli/terminal_posix.c test/hostile/host.c \
 	  $(HOSTILE_DEV)/libtrilog.a -lm -o $@
 
+# Dispatch aborts on a built-in missing from builtin_pis in src/kernel/solve.c.
+CHECK_BUILTINS_DEV = _build/dev-check-builtins
+.PHONY: check-builtins
+check-builtins:
+	$(MAKE) DEV=$(CHECK_BUILTINS_DEV) "CFLAGS=$(CFLAGS) -DTRILOG_CHECK_BUILTINS" $(CHECK_BUILTINS_DEV)/trilog
+	cp $(CHECK_BUILTINS_DEV)/trilog trilog-check-builtins
+	rm -rf _build/test-results-check-builtins
+	$(MAKE) TRILOG=./trilog-check-builtins RESULTS=_build/test-results-check-builtins quad-junit
+	test/regressions.py _build/test-results-check-builtins
+
 examples/embed: $(DEV)/examples/embed.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
 clean:
-	rm -rf trilog trilog-hostile _build/trilog $(API_TEST_BINS) examples/embed _build/dev-* _build/release-*
+	rm -rf trilog trilog-hostile trilog-check-builtins _build/trilog $(API_TEST_BINS) examples/embed _build/dev-* _build/release-*
 
 format:
 	clang-format -i $(SRCS) $(API_TEST_SRCS) test/api/api_freestanding_test.c test/hostile/host.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)
