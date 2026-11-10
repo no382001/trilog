@@ -2789,11 +2789,13 @@ query_result_t run_query(trilog_t *T, tterm_t **goals, int32_t ngoals,
   size_t saved_base = T->query_sp_base;
   size_t saved_heap_base = T->query_heap_base;
   size_t saved_catch_base = T->query_catch_base;
+  size_t saved_trail_base = T->query_trail_base;
   size_t *saved_rename = T->solution_rename;
   T->query_sp_base = T->sp;
   T->query_depth++;
   T->query_heap_base = T->query_depth == 1 ? 0 : heap_mark(T);
   T->query_catch_base = T->query_depth == 1 ? 0 : T->catch_sp;
+  T->query_trail_base = trail_mark(T);
   size_t saved_catch_sp = T->catch_sp;
   T->uncaught_ball = (size_t)-1;
   size_t *saved_cn = T->query_cn;
@@ -2806,6 +2808,7 @@ query_result_t run_query(trilog_t *T, tterm_t **goals, int32_t ngoals,
   T->query_sp_base = saved_base;
   T->query_heap_base = saved_heap_base;
   T->query_catch_base = saved_catch_base;
+  T->query_trail_base = saved_trail_base;
   T->solution_rename = saved_rename;
   return r;
 }

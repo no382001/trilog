@@ -191,6 +191,8 @@ struct trilog {
   size_t query_sp_base;
   // GC in a nested query neither moves nor frees what is below these.
   size_t query_heap_base, query_catch_base;
+  // GC keeps every live trail entry below this, so an outer trail mark holds.
+  size_t query_trail_base;
   int32_t query_depth;
   pair_visits compare_visits;
   void *file_target;
