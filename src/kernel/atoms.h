@@ -142,6 +142,8 @@
   X(atom_atom_to_term, "atom_to_term")                                         \
   X(atom_dollar_var, "$VAR")                                                   \
   X(atom_clause_candidates, "$$clause_candidates")                             \
+  X(atom_clause_refs, "$$clause_refs")                                         \
+  X(atom_erase_clause, "$$erase_clause")                                       \
   X(atom_bag_open, "$$bag_open")                                               \
   X(atom_predicates, "$$predicates")                                           \
   X(atom_acyclic_term, "acyclic_term")                                         \

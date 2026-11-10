@@ -2346,7 +2346,25 @@ static int dispatch_builtin_rest(trilog_t *T, size_t f, int32_t arity,
     *ok = unify(T, f + 1, list);
     return 1;
   }
-  if (arity == 2 && id == atom_clause_candidates) {
+  if (arity == 2 && id == atom_erase_clause) {
+    idx_key_t want = key_of_goal(T, f + 1);
+    size_t born_d = heap_deref(T, f + 2);
+    pred_bucket_t *bucket = pred_bucket_find(T, want.pred_id, want.pred_arity);
+    *ok = 0;
+    if (T->heap[born_d].tag != TAG_INT)
+      return 1;
+    for (int32_t bi = 0; bucket && bi < bucket->count; bi++) {
+      int32_t ci = bucket->indices[bi];
+      if (clause_alive(&T->db[ci]) &&
+          T->db[ci].born == (uint32_t)T->heap[born_d].as.ival) {
+        db_remove_at(T, ci);
+        *ok = 1;
+        break;
+      }
+    }
+    return 1;
+  }
+  if (arity == 2 && (id == atom_clause_candidates || id == atom_clause_refs)) {
     idx_key_t want = key_of_goal(T, f + 1);
     size_t list = heap_new_atom(T, atom_nil);
     // These 15 stay purely native - a stray same-name assertz must never
@@ -2371,6 +2389,10 @@ static int dispatch_builtin_rest(trilog_t *T, size_t f, int32_t arity,
       fresh_copy_clause(T, c, &h2, &b2);
       size_t pair_args[2] = {h2, b2};
       size_t pair = heap_new_struct(T, atom_minus, 2, pair_args);
+      if (id == atom_clause_refs) {
+        size_t ref_args[2] = {heap_new_int(T, (int64_t)c->born), pair};
+        pair = heap_new_struct(T, atom_minus, 2, ref_args);
+      }
       size_t cons_args[2] = {pair, list};
       list = heap_new_struct(T, atom_dot, 2, cons_args);
     }

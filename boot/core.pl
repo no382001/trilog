@@ -409,7 +409,19 @@ assert(Clause) :- '$with_context'(('$check_clause'(Clause), '$check_static'(Clau
 asserta(MC) :- nonvar(MC), MC = M:C, !, '$module_clause'(M, C, C1), asserta(C1).
 asserta(Clause) :- '$with_context'(('$check_clause'(Clause), '$check_static'(Clause)), asserta/1), '$make_dynamic'(Clause), '$$asserta'(Clause).
 retract(MC) :- nonvar(MC), MC = M:C, !, '$module_clause'(M, C, C1), retract(C1).
-retract(Clause) :- '$with_context'(('$check_head'(Clause), '$check_static'(Clause)), retract/1), '$$retract'(Clause).
+retract(Clause) :-
+    '$with_context'(('$check_head'(Clause), '$check_static'(Clause)), retract/1),
+    ( Clause = (Head :- Body) -> true ; Head = Clause, Body = true ),
+    '$$clause_refs'(Head, Refs),
+    '$retract_ref'(Refs, Head, Body).
+
+'$retract_ref'([Ref-HB|Refs], Head, Body) :-
+    (   Refs == []
+    ->  HB = Head-Body, '$$erase_clause'(Head, Ref)
+    ;   (   HB = Head-Body, '$$erase_clause'(Head, Ref)
+        ;   '$retract_ref'(Refs, Head, Body)
+        )
+    ).
 
 % Module:Clause is Clause with its head and the goals of its body renamed to
 % Module's private predicates, where Module has one of that name.
@@ -473,6 +485,7 @@ retract(Clause) :- '$with_context'(('$check_head'(Clause), '$check_static'(Claus
 
 %!  findall(+Template, :Goal, -List) is det.
 findall(Template, Goal, List) :-
+    ( var(List) -> true ; '$with_context'(can_be(list, List), findall/3) ),
     '$$bag_open'(Bag),
     catch(( call(Goal), '$$bag_add'(Bag, Template), fail ; true ), Error,
           ( '$$bag_drop'(Bag), throw(Error) )),
@@ -583,6 +596,7 @@ bagof(Template, Goal0, Bag) :-
 
 %!  setof(+Template, :Goal, -Set) is nondet.
 setof(Template, Goal, Set) :-
+    '$with_context'(can_be(list, Set), setof/3),
     bagof(Template, Goal, Bag),
     sort(Bag, Set).
 
