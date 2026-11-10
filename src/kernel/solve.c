@@ -2998,6 +2998,7 @@ A:
                                  .outer_active_catch = active_catch});
           active_catch = idx;
           size_t uncatch_arg[1] = {heap_new_int(T, (int64_t)idx)};
+          T->catch_stack[idx].uncatch_cell = uncatch_arg[0];
           size_t uncatch_term =
               heap_new_struct(T, atom_uncatch, 1, uncatch_arg);
           size_t after_goal = build_conj_tail(T, &uncatch_term, 1, rest);

@@ -460,6 +460,11 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
     catches[i].recovery = moved(T, heap_base, catches[i].recovery);
     catches[i].continuation = moved(T, heap_base, catches[i].continuation);
     catches[i].heap_mark = moved(T, heap_base, catches[i].heap_mark);
+    size_t u = catches[i].uncatch_cell;
+    catches[i].uncatch_cell = u >= old_top ? NIL
+                              : u < heap_base || (T->marked[u] & LIVE)
+                                  ? moved(T, heap_base, u)
+                                  : NIL;
   }
 
   for (size_t i = 0; i < nframes; i++)
@@ -479,17 +484,9 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
     if (frames[i].active_catch != NIL)
       frames[i].active_catch = T->new_catch_index[frames[i].active_catch];
   // A running catch/3 ends in '$$uncatch'(Index): that index moves too.
-  for (size_t i = 0; i + 1 < new_top; i++) {
-    if (T->heap[i].tag != TAG_FUNCTOR ||
-        T->heap[i].as.func.atom_id != atom_uncatch ||
-        T->heap[i].as.func.arity != 1)
-      continue;
-    size_t a = heap_deref(T, i + 1);
-    if (T->heap[a].tag == TAG_INT && T->heap[a].as.ival >= 0 &&
-        (size_t)T->heap[a].as.ival < ncatches &&
-        T->catch_live[T->heap[a].as.ival])
-      T->heap[a].as.ival = (int64_t)T->new_catch_index[T->heap[a].as.ival];
-  }
+  for (size_t i = 0; i < new_ncatches; i++)
+    if (catches[i].uncatch_cell != NIL)
+      T->heap[catches[i].uncatch_cell].as.ival = (int64_t)i;
   catch_stack_set_size(T, new_ncatches);
 
   heap_set_size(T, new_top);

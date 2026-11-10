@@ -57,6 +57,7 @@ typedef struct {
   size_t catcher, recovery;
   size_t continuation;
   size_t outer_active_catch;
+  size_t uncatch_cell; // the integer in this frame's '$$uncatch'(Index)
 } catch_frame_t;
 
 #define PRED_HASH_SIZE 1024
