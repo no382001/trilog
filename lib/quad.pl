@@ -654,18 +654,26 @@ read_lines(S, Lines) :-
     ).
 
 % Each run of clauses between tests is a small consult: the first clause a
-% block gives a predicate replaces what earlier blocks defined for it.
-run_items(Items, Skip) :- run_items(Items, Skip, 0, []).
+% block gives a predicate replaces what earlier blocks defined for it. Every
+% predicate has its own file, so consulting it again replaces only that
+% predicate, and its clauses are static unless declared dynamic.
+:- dynamic(quad_pred_file/2).
 
-run_items([], _, _, _).
+run_items(Items, Skip) :-
+    retractall(quad_pred_file(_, _)),
+    run_items(Items, Skip, 0, []).
+
+run_items([], _, _, Block) :- flush_block(Block).
 run_items([I|Is], Skip, Seen0, Block0) :-
     run_item(I, Skip, Seen0, Seen, Block0, Block),
     run_items(Is, Skip, Seen, Block).
 
-run_item(test(Query, Answer), Skip, Seen0, Seen, _, []) :-
+run_item(test(Query, Answer), Skip, Seen0, Seen, Block, []) :-
+    flush_block(Block),
     Seen is Seen0 + 1,
     ( Seen =< Skip -> true ; once(run_one_test(Query, Answer, _)) ).
-run_item(directive(Cs), _, Seen, Seen, _, []) :-
+run_item(directive(Cs), _, Seen, Seen, Block, []) :-
+    flush_block(Block),
     strip_terminating_dot(Cs, Text),
     atom_chars(A, Text),
     (   catch((atom_to_term(A, Goal, _),
@@ -678,8 +686,7 @@ run_item(clause(Cs), _, Seen, Seen, Block0, Block) :-
     atom_chars(A, Text),
     (   catch(atom_to_term(A, Term, _), _, fail),
         clause_predicate(Term, PI)
-    ->  block_predicate(PI, Block0, Block),
-        catch(add_clause(Term), _, true)
+    ->  block_add(PI, Cs, Block0, Block)
     ;   Block = Block0
     ).
 
@@ -690,13 +697,38 @@ clause_predicate(H, N/A) :- callable(H), functor(H, N, A).
 dcg_head((H, _), H) :- !.
 dcg_head(H, H).
 
-block_predicate(PI, Block, Block) :- memberchk(PI, Block), !.
-block_predicate(N/A, Block, [N/A|Block]) :-
-    functor(Skel, N, A),
-    catch(retractall(Skel), _, true).
+% Block: PI-Texts in the order the predicates first appear, each text list reversed.
+block_add(PI, Cs, [], [PI-[Cs]]).
+block_add(PI, Cs, [P-Ts|B], [P-[Cs|Ts]|B]) :- P == PI, !.
+block_add(PI, Cs, [E|B0], [E|B]) :- block_add(PI, Cs, B0, B).
 
-add_clause((H --> B)) :- !, '$dcg_compile'(H, B).
-add_clause(Clause) :- assertz(Clause).
+flush_block([]).
+flush_block([N/A-_|B]) :-
+    '$$is_static'(N, A),
+    \+ quad_pred_file(N/A, _),
+    !,
+    flush_block(B).
+flush_block([N/A-RevTexts|B]) :-
+    (   current_predicate(N/A)
+    ->  functor(Skel, N, A),
+        catch(retractall(Skel), _, true)
+    ;   true
+    ),
+    pred_file(N/A, Path),
+    reverse(RevTexts, Texts),
+    open(Path, write, S),
+    maplist(write_clause_text(S), Texts),
+    close(S),
+    catch(consult(Path), _, true),
+    flush_block(B).
+
+write_clause_text(S, Cs) :- atom_chars(A, Cs), write(S, A), nl(S).
+
+pred_file(PI, Path) :- quad_pred_file(PI, Path), !.
+pred_file(PI, Path) :-
+    countall(quad_pred_file(_, _), N),
+    format_atom('_build/quad-pred-~w.pl', [N], Path),
+    assertz(quad_pred_file(PI, Path)).
 
 % --- CLI entry point: exit code 0 if all pass, 1 if any failed ---
 
