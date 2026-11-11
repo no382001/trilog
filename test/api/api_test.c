@@ -614,7 +614,7 @@ static void test_catch_stack(void) {
             "catch(number_chars(_, L), error(syntax_error(_), _), true)).\n") ==
         TRILOG_TRUE);
   collected c = {0};
-  CHECK(trilog_query(t, "run(10)", collect, &c) == TRILOG_TRUE);
+  CHECK(trilog_query(t, "run(14)", collect, &c) == TRILOG_TRUE);
   size_t before = z.live;
   CHECK(trilog_query(t, "run(14)", collect, &c) == TRILOG_TRUE);
   CHECK(z.live < before + 32768);

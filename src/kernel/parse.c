@@ -328,9 +328,20 @@ static tterm_t *parse_number(trilog_t *T, bool negative) {
   size_t n = 0;
   if (negative)
     buf[n++] = '-';
-  const char *start = T->P;
-  while (ascii_digit((unsigned char)*T->P))
+  for (;;) {
+    while (ascii_digit((unsigned char)*T->P)) {
+      if (n >= sizeof buf - 1)
+        perr(T, "number literal too long");
+      buf[n++] = *T->P++;
+    }
+    if (*T->P != '_')
+      break;
     T->P++;
+    skip_ws(T);
+    if (!ascii_digit((unsigned char)*T->P))
+      perr(T, "digit group separator without a digit after it");
+  }
+  const char *start = T->P;
   bool is_float = T->P[0] == '.' && ascii_digit((unsigned char)T->P[1]);
   if (is_float) {
     T->P++;
