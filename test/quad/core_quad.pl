@@ -68,7 +68,8 @@
 
 % --- last/2 ---
 
-?- last(X, [a, b, c]).
+% last(+List, ?Last) per lib/lists.pl.
+?- last([a, b, c], X).
    X = c.
 
 % --- arithmetic ---
@@ -377,8 +378,9 @@ ite_cut(X) :- ( !, fail -> X = yes ; X = no ).
 ?- catch(throw(hello), hello, true).
    true.
 
-?- catch(throw(foo), bar, true).
-   error(unhandled exception).
+% a catcher that does not unify passes the ball to the next catch/3.
+?- catch(catch(throw(foo), bar, true), B, true).
+   B = foo.
 
 ?- catch(throw(error(type, ctx)), error(type, X), true).
    X = ctx.

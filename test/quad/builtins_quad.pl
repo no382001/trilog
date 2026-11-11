@@ -78,8 +78,9 @@ bpair(3, 4).
 ?- X is foo + 1.
    error(type_error(evaluable, foo/0)).
 
+%  the culprit is the principal functor of the list.
 ?- X is "hello".
-   error(type_error(evaluable, "hello")).
+   error(type_error(evaluable, '.'/2)).
 
 % --- comparison: less than ---
 
@@ -583,11 +584,12 @@ bcapply(G) :- call(G).
 ?- current_prolog_flag(double_quotes, V).
    V = chars.
 
+% implementation defined; trilog integers are 64-bit.
 ?- current_prolog_flag(max_integer, V).
-   V = 2147483647.
+   V = 9223372036854775807.
 
 ?- current_prolog_flag(min_integer, V).
-   V = -2147483648.
+   V = -9223372036854775808.
 
 % enumeration: all flags must be produced
 ?- findall(F, current_prolog_flag(F, _), Fs), length(Fs, N), N > 0.

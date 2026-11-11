@@ -216,9 +216,9 @@ saboth :- safoo3(_), safoo3(_).
 ?- sub_atom(hello, 1, 3, _, S).
    S = ell.
 
-% sub_atom returns only first match (builtin limitation)
 ?- sub_atom(abcabc, B, _, _, abc).
-   B = 0.
+   B = 0
+;  B = 3.
 
 % --- combined stress ---
 

@@ -250,7 +250,8 @@ smsg("goodbye").
 ?- reverse("abc", X).
    X = "cba".
 
-?- last(X, "hello").
+% last(+List, ?Last) per lib/lists.pl.
+?- last("hello", X).
    X = o.
 
 ?- member(h, "hello").
