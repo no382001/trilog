@@ -1,4 +1,3 @@
-builtins_quad	X is "hello"
 core_quad	X = Y, X == Y
 iso_quad	'='(X,Y)
 iso_quad	abolish(bar/1)

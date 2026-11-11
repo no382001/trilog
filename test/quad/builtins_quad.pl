@@ -78,9 +78,10 @@ bpair(3, 4).
 ?- X is foo + 1.
    error(type_error(evaluable, foo/0)).
 
-%  the culprit is the principal functor of the list.
+% arguments are evaluated first, in an implementation dependent order.
 ?- X is "hello".
-   error(type_error(evaluable, '.'/2)).
+   error(type_error(evaluable, h/0))
+|  error(type_error(evaluable, []/0)).
 
 % --- comparison: less than ---
 
