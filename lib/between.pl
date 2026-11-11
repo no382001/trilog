@@ -1,9 +1,17 @@
 :- '$builtin_file'.
 
 %!  between(+Low, +High, ?X) is nondet.
-between(L, H, X) :- integer(X), !, X >= L, X =< H.
-between(L, H, L) :- L =< H.
-between(L, H, X) :- L < H, L1 is L + 1, between(L1, H, X).
+between(L, H, X) :-
+    '$with_context'(( must_be(integer, L),
+                      must_be(integer, H),
+                      can_be(integer, X) ), between/3),
+    (   integer(X)
+    ->  X >= L, X =< H
+    ;   '$between'(L, H, X)
+    ).
+
+'$between'(L, H, L) :- L =< H.
+'$between'(L, H, X) :- L < H, L1 is L + 1, '$between'(L1, H, X).
 
 %!  succ(?X, ?S) is semidet.
 %   S is the successor of the non-negative integer X.
