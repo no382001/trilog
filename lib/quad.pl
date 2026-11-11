@@ -318,13 +318,19 @@ format_bindings(NameVars, Str) :-
 '$format_bindings_pairs'([], []).
 '$format_bindings_pairs'([Name=Val|Rest], Pairs) :-
     ( atom_chars(Name, ['_'|_]) -> Pairs = Pairs1
-    ; var(Val) -> Pairs = Pairs1
-    ; Pairs = [Name=Val|Pairs1]
+    ; var(Val) -> ( '$later_alias'(Rest, Val, M) -> Pairs = [Name=alias(M)|Pairs1] ; Pairs = Pairs1 )
+    ; Pairs = [Name=value(Val)|Pairs1]
     ),
     '$format_bindings_pairs'(Rest, Pairs1).
 
-'$write_bindings'([N=V]) :- !, write(N), write(' = '), writeq(V).
-'$write_bindings'([N=V|Rest]) :- write(N), write(' = '), writeq(V), write(', '), '$write_bindings'(Rest).
+'$later_alias'([M=V|_], Val, M) :- V == Val, \+ atom_chars(M, ['_'|_]), !.
+'$later_alias'([_|Rest], Val, M) :- '$later_alias'(Rest, Val, M).
+
+'$write_bindings'([P]) :- !, '$write_binding'(P).
+'$write_bindings'([P|Rest]) :- '$write_binding'(P), write(', '), '$write_bindings'(Rest).
+
+'$write_binding'(N=alias(M)) :- write(N), write(' = '), write(M).
+'$write_binding'(N=value(V)) :- write(N), write(' = '), writeq(V).
 
 % --- running one test ---
 
@@ -472,21 +478,29 @@ quad_answers_match([E|Es], [G|Gs], [S|Ss]) :-
 quad_answer_match(ExpAtom, Snap) :-
     Snap \== none,
     catch(atom_to_term(ExpAtom, ET, ENames), _, fail),
-    qa_exp_pairs(ET, ENames, EPairs0),
-    \+ \+ ( qa_mark_unbound(Snap),
-            qa_link_names(ENames, Snap),
-            qa_got_pairs(Snap, GPairs0),
-            qa_drop_any(EPairs0, GPairs0, EPairs1, GPairs1),
-            msort(EPairs1, EPairs),
-            msort(GPairs1, GPairs),
-            qa_variant(EPairs, GPairs) ).
+    qa_exp_pairs(ET, ENames, EPairs),
+    forall(member(N = _, EPairs), memberchk(N = _, Snap)),
+    findall(N, member(N = '...', EPairs), Any),
+    \+ \+ ( qa_exp_unify(ET),
+            qa_values(Snap, Any, ENames, GVs, EVs),
+            acyclic_term(EVs),
+            qa_variant(GVs, EVs) ).
 
-qa_drop_any(E0, G0, E, G) :-
-    findall(N, member(N = '...', E0), Any),
-    exclude(qa_named(Any), E0, E),
-    exclude(qa_named(Any), G0, G).
+% The expected answer's equations, applied to its own variables.
+qa_exp_unify(true) :- !.
+qa_exp_unify((A, B)) :- !, qa_exp_unify(A), qa_exp_unify(B).
+qa_exp_unify(L = R) :- L = R.
 
-qa_named(Names, N = _) :- memberchk(N, Names).
+% Each query variable's value, got and expected, skipping '_' names and "= ..." ones.
+qa_values([], _, _, [], []).
+qa_values([N = G|Ps], Any, ENames, GVs, EVs) :-
+    (   ( atom_chars(N, ['_'|_]) ; memberchk(N, Any) )
+    ->  qa_values(Ps, Any, ENames, GVs, EVs)
+    ;   ( memberchk(N = E, ENames) -> true ; true ),
+        GVs = [G|GVs1],
+        EVs = [E|EVs1],
+        qa_values(Ps, Any, ENames, GVs1, EVs1)
+    ).
 
 % "X = a, Y = b" -> ['X'=a, 'Y'=b]; "true" -> [].
 qa_exp_pairs(true, _, []) :- !.
@@ -496,24 +510,6 @@ qa_exp_pairs(L = R, Names, [N = R]) :- var(L), qa_var_name(Names, L, N).
 
 qa_var_name([N = V|_], L, N) :- V == L, !.
 qa_var_name([_|Ns], L, N) :- qa_var_name(Ns, L, N).
-
-% Unbound query vars become '$qv'(Name), matching only same-named expected vars.
-qa_mark_unbound([]).
-qa_mark_unbound([N = V|Ps]) :- ( var(V) -> V = '$qv'(N) ; true ), qa_mark_unbound(Ps).
-
-qa_link_names([], _).
-qa_link_names([N = V|Ns], Snap) :-
-    ( member(N = GV, Snap) -> V = GV ; true ),
-    qa_link_names(Ns, Snap).
-
-% Mirrors format_bindings/2.
-qa_got_pairs([], []).
-qa_got_pairs([N = V|Ps], Out) :-
-    ( atom_chars(N, ['_'|_]) -> Out = Out1
-    ; V == '$qv'(N) -> Out = Out1
-    ; Out = [N = V|Out1]
-    ),
-    qa_got_pairs(Ps, Out1).
 
 qa_variant(A, B) :-
     \+ \+ ( copy_term(A, A1), copy_term(B, B1),

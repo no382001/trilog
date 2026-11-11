@@ -1,9 +1,4 @@
-core_quad	X = Y, X == Y
-iso_quad	'='(X,Y)
 iso_quad	abolish(bar/1)
-iso_quad	copy_term(X+X+_Y,A+B+B)
 member_quad	member(X, X)
-nth_quad	nth0(0, [A,B|non_list], E)
 nth_quad	nth0(N, [[]|Es], Es)
 select_quad	select(E, Xs, Xs)
-select_quad	select(X, [Y|nonlist], Xs)

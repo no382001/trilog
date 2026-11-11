@@ -37,7 +37,7 @@
 % An unbound variable shared between solutions stays one variable.
 
 ?- once(( bagof(X, member(X-Y, [1-A,2-B,3-A]), L), L == [1,3], Y == A )).
-   L = [1,3].
+   Y = A, L = [1,3].
 
 ?- findall(L, bagof(X, member(X-Y, [1-A,2-B,3-A]), L), Ls).
    Ls = [[1,3],[2]].
