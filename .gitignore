@@ -1,7 +1,6 @@
 _build/
 trilog
 trilog-hostile
-trilog-check-builtins
 examples/embed
 pico/build/
 *.o
