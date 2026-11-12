@@ -293,22 +293,31 @@ load common
   succeeded
 }
 
-@test "copy_term/2 throws on a cyclic term instead of crashing (regression)" {
+@test "copy_term/2 copies a cyclic term" {
   run "$TRILOG" -e "
-    X = f(X),
-    catch(copy_term(X, _), error(E, _), (write(caught(E)), nl)).
+    X = f(X, A), copy_term(X, Y), Y = f(Z, B),
+    ( Z == Y, var(B), B \\== A -> write(copied) ; write(wrong) ), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"caught(representation_error(term))"* ]]
+  [[ "$output" == *"copied"* ]]
 }
 
-@test "findall/3 throws on a cyclic solution instead of crashing (regression)" {
+@test "findall/3 collects a cyclic solution" {
   run "$TRILOG" -e "
-    X = [X|_],
-    catch(findall(X, true, _), error(E, _), (write(caught(E)), nl)).
+    X = [X|_], findall(X, true, [Y]), Y = [Z|_],
+    ( Z == Y -> write(collected) ; write(wrong) ), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"caught(representation_error(term))"* ]]
+  [[ "$output" == *"collected"* ]]
+}
+
+@test "throw/1 keeps a cyclic ball" {
+  run "$TRILOG" -e "
+    X = f(X), catch(throw(X), B, true), B = f(C),
+    ( C == B -> write(kept) ; write(wrong) ), nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"kept"* ]]
 }
 
 @test "assertz/1 throws on a cyclic term instead of crashing (regression)" {

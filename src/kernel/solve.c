@@ -250,6 +250,7 @@ static idx_key_t key_of_template(tterm_t *head) {
   switch (a0->tag) {
   case T_VAR:
   case T_FLT:
+  case T_BACK:
     return k;
   case T_ATOM:
     k.kind = IDX_ATOM;
@@ -782,10 +783,6 @@ static size_t *tmp_goals(trilog_t *T, int32_t n) {
   mem_reserve(T, (void **)&T->goals_tmp, &T->goals_tmp_cap,
               (size_t)(n > 0 ? n : 1) * sizeof(size_t));
   return T->goals_tmp;
-}
-
-static size_t fresh_copy_term(trilog_t *T, tterm_t *t, int32_t nvars) {
-  return heap_copy(T, t, tmp_rename(T, nvars), 0);
 }
 
 static void fresh_copy_clause(trilog_t *T, clause_t *c, size_t *head_out,
@@ -2285,20 +2282,17 @@ BUILTIN(bi_bag_add) {
     int whole = pending_templates(T, &(size_t){f + 2}, 1, &t, &nvars);
     b->chunks = T->arena_pending;
     T->arena_pending = NULL;
-    if (!whole) {
-      T->pending_error_ball = make_cyclic_term_error(T);
-      *ok = 0;
-      return 1;
-    }
-    b->items[b->len++] = (bag_item_t){t, nvars};
+    b->items[b->len++] = (bag_item_t){t, nvars, !whole};
     return 1;
   }
   if (id == atom_bag_collect) {
     size_t list = heap_new_atom(T, atom_nil);
     for (size_t i = b->len; i-- > 0;) {
-      size_t args[2] = {
-          heap_copy(T, b->items[i].t, tmp_rename(T, b->items[i].nvars), 0),
-          list};
+      size_t *rn = tmp_rename(T, b->items[i].nvars);
+      size_t args[2] = {b->items[i].cyclic
+                            ? heap_copy_cyclic(T, b->items[i].t, rn)
+                            : heap_copy(T, b->items[i].t, rn, 0),
+                        list};
       list = heap_new_struct(T, atom_dot, 2, args);
     }
     bags_drop(T, (int32_t)n);
@@ -2312,13 +2306,10 @@ BUILTIN(bi_bag_add) {
 BUILTIN(bi_copy_term) {
   int32_t nvars;
   tterm_t *tmpl;
-  if (!pending_templates(T, &(size_t){f + 1}, 1, &tmpl, &nvars)) {
-    pending_free(T);
-    T->pending_error_ball = make_cyclic_term_error(T);
-    *ok = 0;
-    return 1;
-  }
-  size_t copy = heap_copy(T, tmpl, tmp_rename(T, nvars), 0);
+  bool cyclic = !pending_templates(T, &(size_t){f + 1}, 1, &tmpl, &nvars);
+  size_t *rn = tmp_rename(T, nvars);
+  size_t copy =
+      cyclic ? heap_copy_cyclic(T, tmpl, rn) : heap_copy(T, tmpl, rn, 0);
   pending_free(T);
   *ok = unify(T, f + 2, copy);
   return 1;
@@ -2892,11 +2883,7 @@ static int do_throw(trilog_t *T, size_t ball, size_t *cn_out,
                     size_t *active_catch_ptr) {
   int32_t nballvars;
   tterm_t *ball_template;
-  if (!pending_templates(T, &ball, 1, &ball_template, &nballvars)) {
-    pending_free(T);
-    size_t cyclic = make_cyclic_term_error(T);
-    pending_templates(T, &cyclic, 1, &ball_template, &nballvars);
-  }
+  bool cyclic = !pending_templates(T, &ball, 1, &ball_template, &nballvars);
   size_t idx = *active_catch_ptr;
   for (;;) {
     if (idx == (size_t)-1) {
@@ -2908,7 +2895,9 @@ static int do_throw(trilog_t *T, size_t ball, size_t *cn_out,
     heap_release(T, entry.heap_mark);
     trail_release(T, entry.trail_mark);
     T->sp = entry.sp_at_entry;
-    size_t ball_copy = fresh_copy_term(T, ball_template, nballvars);
+    size_t *rn = tmp_rename(T, nballvars);
+    size_t ball_copy = cyclic ? heap_copy_cyclic(T, ball_template, rn)
+                              : heap_copy(T, ball_template, rn, 0);
     if (unify(T, entry.catcher, ball_copy)) {
       pending_free(T);
       T->catch_sp = idx;

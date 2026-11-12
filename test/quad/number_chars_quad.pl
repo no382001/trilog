@@ -290,13 +290,7 @@
       false.
 
 46 ?- L=['1'|L], number_chars(N,L).
-      sto, ... ; ... .
-      sto, type_error(list,['1'|...]) % rational trees
-   |  sto, false % occurs-check
-   |  sto, representation_error(term)
-   |  sto, instantiation_error % literal substitutions
-   |  sto, resource_error(...)
-   |  sto, loops.
+      sto, type_error(list,['1'|...]).
 
 % issue #31: the floats of 13211-1 have no negative zero
 ?- number_chars(-0.0,[-|L]).

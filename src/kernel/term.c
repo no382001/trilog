@@ -124,6 +124,33 @@ size_t heap_copy(trilog_t *T, tterm_t *t, size_t *rename, size_t cut_barrier) {
   }
 }
 
+static void template_push(trilog_t *T, size_t v);
+
+size_t heap_copy_cyclic(trilog_t *T, tterm_t *t, size_t *rename) {
+  size_t wbase = T->wsp, base = T->template_marks_len, root = NO_HOLE,
+         hole = NO_HOLE;
+  for (;;) {
+    size_t r;
+    if (t->tag == T_STR) {
+      r = heap_new_struct(T, t->as.str.atom_id, t->as.str.arity, NULL);
+      size_t f = T->heap[r].as.ptr;
+      fill_hole(T, hole, r, &root);
+      template_push(T, r);
+      push_template_args(T, t, f);
+      hole = f + 1;
+      t = t->as.str.args[0];
+      continue;
+    }
+    r = t->tag == T_BACK ? T->template_marks[base + (size_t)t->as.slot]
+                         : heap_copy(T, t, rename, 0);
+    fill_hole(T, hole, r, &root);
+    if (!pop_template(T, wbase, &t, &hole)) {
+      T->template_marks_len = base;
+      return root;
+    }
+  }
+}
+
 // Same as unify(heap_copy(t), goal) but builds only the parts of t
 // that meet an unbound variable in goal.
 int unify_template(trilog_t *T, tterm_t *t, size_t goal, size_t *rename) {
@@ -949,21 +976,34 @@ void print_term_via(trilog_t *T, size_t r, int flags, emit_fn emit) {
   print_term_ex(T, r, flags, emit);
 }
 
-static void template_mark(trilog_t *T, size_t f) {
+static void template_push(trilog_t *T, size_t v) {
   if (T->template_marks_len == T->template_marks_cap) {
     size_t cap = T->template_marks_cap ? T->template_marks_cap * 2 : 64;
     T->template_marks = mem_grow_n(T, T->template_marks, cap, sizeof(size_t));
     T->template_marks_cap = cap;
   }
+  T->template_marks[T->template_marks_len++] = v;
+}
+
+static void template_mark(trilog_t *T, size_t f) {
   T->heap[f].as.func.arity = -1 - T->heap[f].as.func.arity;
-  T->template_marks[T->template_marks_len++] = f;
+  template_push(T, f);
+}
+
+static int32_t template_back_index(trilog_t *T, size_t base, size_t f) {
+  size_t i = T->template_marks_len;
+  while (i > base && T->template_marks[i - 2] != f)
+    i -= 2;
+  return (int32_t)T->template_marks[i - 1];
 }
 
 #define TEMPLATE_EXIT ((size_t)-1)
 
-// Path marks only: shared is not cyclic.
+// Path marks only: shared is not cyclic. Each mark is followed by the
+// preorder number of its structure, which a T_BACK leaf names.
 static tterm_t *heap_to_template_rec(trilog_t *T, size_t r, int32_t *nseen) {
   size_t base = T->template_marks_len, wbase = T->wsp;
+  int32_t nstr = 0;
   tterm_t *first = NULL, **hole = &first;
   for (;;) {
     r = heap_deref(T, r);
@@ -993,14 +1033,16 @@ static tterm_t *heap_to_template_rec(trilog_t *T, size_t r, int32_t *nseen) {
     case TAG_STR: {
       size_t f = T->heap[r].as.ptr;
       int32_t arity = T->heap[f].as.func.arity;
-      if (arity < 0 || T->template_cyclic) {
+      if (arity < 0) {
         T->template_cyclic = true;
-        t = tt_atom(T, "[]");
+        t = tt_new(T, T_BACK);
+        t->as.slot = template_back_index(T, base, f);
         break;
       }
       t = tt_struct(T, atom_name(T, T->heap[f].as.func.atom_id), arity, NULL);
       *hole = t;
       template_mark(T, f);
+      template_push(T, (size_t)nstr++);
       wstack_push(T, TEMPLATE_EXIT);
       wstack_push(T, f);
       for (int32_t i = arity - 1; i >= 1; i--) {
@@ -1023,13 +1065,15 @@ static tterm_t *heap_to_template_rec(trilog_t *T, size_t r, int32_t *nseen) {
         hole = (tterm_t **)(uintptr_t)b;
         break;
       }
-      size_t f = T->template_marks[--T->template_marks_len];
+      T->template_marks_len -= 2;
+      size_t f = T->template_marks[T->template_marks_len];
       T->heap[f].as.func.arity = -1 - T->heap[f].as.func.arity;
     }
   }
 done:
   while (T->template_marks_len > base) {
-    size_t f = T->template_marks[--T->template_marks_len];
+    T->template_marks_len -= 2;
+    size_t f = T->template_marks[T->template_marks_len];
     T->heap[f].as.func.arity = -1 - T->heap[f].as.func.arity;
   }
   T->wsp = wbase;

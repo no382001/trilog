@@ -3,13 +3,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef enum { T_VAR, T_ATOM, T_INT, T_FLT, T_STR } ttag_t;
+typedef enum { T_VAR, T_ATOM, T_INT, T_FLT, T_STR, T_BACK } ttag_t;
 
 #pragma pack(push, 4)
 typedef struct tterm {
   ttag_t tag;
   union {
-    int32_t slot;    // T_VAR
+    int32_t slot;    // T_VAR; T_BACK: preorder number of a T_STR above
     int32_t atom_id; // T_ATOM
     int64_t ival;    // T_INT
     double fval;     // T_FLT
@@ -33,6 +33,8 @@ tterm_t *tt_struct(trilog_t *T, const char *name, int32_t arity,
                    tterm_t **args);
 
 size_t heap_copy(trilog_t *T, tterm_t *t, size_t *rename, size_t cut_barrier);
+// heap_copy for a template that holds T_BACK leaves.
+size_t heap_copy_cyclic(trilog_t *T, tterm_t *t, size_t *rename);
 int unify_template(trilog_t *T, tterm_t *t, size_t goal, size_t *rename);
 // Returns roots, moved with the templates under them into one exact chunk.
 tterm_t **templates_flatten(trilog_t *T, tterm_t **roots, int32_t n);

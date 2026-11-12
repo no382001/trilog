@@ -567,10 +567,10 @@ load common
   [[ "$output" == *"L2 = [1,1,2,3,4,5,6,9]"* ]]
 }
 
-@test "number_chars/2 on a cyclic list throws a catchable error instead of dying (regression)" {
+@test "number_chars/2 on a cyclic list throws a type error instead of dying (regression)" {
   # regression: the heap grew until GC's scratch arrays failed to allocate, killing the process.
-  run bash -c "ulimit -v 524288; timeout 60 $TRILOG -e \"L = ['1'|L], catch(number_chars(_, L), error(E, _), true), write(caught(E)), nl.\""
-  [[ "$output" == *"caught(representation_error(term))"* ]]
+  run bash -c "ulimit -v 524288; timeout 60 $TRILOG -e \"L = ['1'|L], catch(number_chars(_, L), error(type_error(T, C), _), true), ( C == L -> write(caught(T)) ; true ), nl.\""
+  [[ "$output" == *"caught(list)"* ]]
 }
 
 @test "floats with an exponent print with a fraction, so their text reads back (regression)" {
@@ -630,17 +630,17 @@ PLEOF
   [[ "$output" == *"next_bag(0)"* ]]
 }
 
-@test "findall/3 nests, copies fresh variables per solution and rejects cyclic solutions" {
+@test "findall/3 nests, copies fresh variables per solution and keeps cyclic solutions" {
   run "$TRILOG" -e "
     findall(X-Ys, (member(X, [1,2]), findall(Y, between(1, X, Y), Ys)), L1),
     findall(X, fail, L2),
     findall(f(A, B, A), member(B, [x,y]), [f(P, x, Q), f(R, y, S)]),
     ( P == Q, R == S, P \\== R -> Fresh = yes ; Fresh = no ),
-    C = [1|C], catch(findall(C, true, _), error(E, _), true),
+    C = [1|C], findall(C, true, [D]), ( D = [1|D] -> E = cyclic ; E = no ),
     write(r(L1, L2, Fresh, E)), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"r([1-[1],2-[1,2]],[],yes,representation_error(term))"* ]]
+  [[ "$output" == *"r([1-[1],2-[1,2]],[],yes,cyclic)"* ]]
 }
 
 @test "findall/3 collects 400000 solutions in linear time (regression)" {

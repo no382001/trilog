@@ -24,6 +24,7 @@ typedef struct {
 typedef struct {
   struct tterm *t;
   int32_t nvars;
+  bool cyclic;
 } bag_item_t;
 
 typedef struct {

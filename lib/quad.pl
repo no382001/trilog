@@ -291,10 +291,10 @@ collect_solutions(Query, NameVars, Max, Exps, Strs, Snaps) :-
     with_output_to(atom(_), findall(Str-Snap, capped_snapshot(Query, NameVars, Max, Exps, Str, Snap), Sols)),
     pairs_keys_values_(Sols, Strs, Snaps).
 
-% Cyclic bindings can't be copied, so they are matched against every expected answer here.
+% Cyclic bindings are matched against every expected answer here, as rational trees.
 capped_snapshot(Query, NameVars, Max, Exps, Str, Snap) :-
     capped_solution(Query, NameVars, Max, Str),
-    (   catch(copy_term(NameVars, _), error(representation_error(term), _), fail)
+    (   acyclic_term(NameVars)
     ->  Snap = NameVars
     ;   include(qa_match(rt_variant, NameVars), Exps, Matched),
         Snap = cyclic(Matched)
