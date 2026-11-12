@@ -138,10 +138,9 @@ write_answer(VNs) :-
     ;   write_pairs(Shown, Names, '')
     ).
 
-% term_variables/2 does not end on a cyclic term, so those are left out.
 values([], []).
 values([_-S|Ps], Vs) :-
-    (   S = value(V), acyclic_term(V) -> Vs = [V|Vs1] ; Vs = Vs1 ),
+    (   S = value(V) -> Vs = [V|Vs1] ; Vs = Vs1 ),
     values(Ps, Vs1).
 
 claims([], Cs, Cs).

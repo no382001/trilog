@@ -2320,6 +2320,11 @@ BUILTIN(bi_acyclic_term) {
   return 1;
 }
 
+BUILTIN(bi_term_variables) {
+  *ok = unify(T, f + 2, heap_term_variables(T, f + 1));
+  return 1;
+}
+
 BUILTIN(bi_nb_setarg) {
   // no trail entry, so the value survives backtracking; an atomic value has
   // no cells to be released.
@@ -2823,6 +2828,7 @@ static const builtin_t builtins[WELL_KNOWN_ATOM_COUNT] = {
     [atom_bag_drop] = {bi_bag_add, B(1)},
     [atom_copy_term] = {bi_copy_term, B(2)},
     [atom_acyclic_term] = {bi_acyclic_term, B(1)},
+    [atom_term_variables] = {bi_term_variables, B(2)},
     [atom_nb_setarg] = {bi_nb_setarg, B(3)},
     [atom_predicates] = {bi_predicates, B(1)},
     [atom_erase_clause] = {bi_erase_clause, B(2)},

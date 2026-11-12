@@ -147,6 +147,7 @@
   X(atom_bag_open, "$$bag_open")                                               \
   X(atom_predicates, "$$predicates")                                           \
   X(atom_acyclic_term, "acyclic_term")                                         \
+  X(atom_term_variables, "$$term_variables")                                   \
   X(atom_nb_setarg, "$$nb_setarg")                                             \
   X(atom_bag_add, "$$bag_add")                                                 \
   X(atom_bag_collect, "$$bag_collect")                                         \

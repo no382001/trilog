@@ -1126,6 +1126,54 @@ done:
   return acyclic;
 }
 
+// Each structure is marked once, so we only walk shared and cyclic parts once.
+size_t heap_term_variables(trilog_t *T, size_t r) {
+  size_t base = T->template_marks_len, wbase = T->wsp;
+  size_t hmark = heap_mark(T), tmark = trail_mark(T);
+  size_t *vars = NULL, nvars = 0, cap = 0;
+  for (;;) {
+    r = heap_deref(T, r);
+    if (T->heap[r].tag == TAG_REF) {
+      if (nvars == cap) {
+        cap = cap ? cap * 2 : 16;
+        vars = mem_grow_n(T, vars, cap, sizeof(size_t));
+      }
+      vars[nvars++] = r;
+      size_t m = heap_alloc(T, 1);
+      T->heap[m].tag = TAG_FUNCTOR;
+      T->heap[m].as.func.atom_id = -1;
+      T->heap[m].as.func.arity = 0;
+      heap_bind(T, r, m);
+    } else if (T->heap[r].tag == TAG_STR) {
+      size_t f = T->heap[r].as.ptr;
+      int32_t arity = T->heap[f].as.func.arity;
+      if (arity > 0) {
+        template_mark(T, f);
+        for (int32_t i = arity - 1; i >= 1; i--)
+          wstack_push(T, f + 1 + (size_t)i);
+        r = f + 1;
+        continue;
+      }
+    }
+    if (T->wsp == wbase)
+      break;
+    r = T->wstack[--T->wsp];
+  }
+  while (T->template_marks_len > base) {
+    size_t f = T->template_marks[--T->template_marks_len];
+    T->heap[f].as.func.arity = -1 - T->heap[f].as.func.arity;
+  }
+  trail_release(T, tmark);
+  heap_release(T, hmark);
+  size_t list = heap_new_atom(T, atom_nil);
+  for (size_t i = nvars; i-- > 0;) {
+    size_t args[2] = {vars[i], list};
+    list = heap_new_struct(T, atom_dot, 2, args);
+  }
+  mem_free(T, vars);
+  return list;
+}
+
 // 0 if any of terms is cyclic.
 int heap_terms_to_templates(trilog_t *T, size_t *terms, int32_t n,
                             tterm_t **out, int32_t *nvars_out) {

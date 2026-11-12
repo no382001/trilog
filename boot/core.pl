@@ -512,32 +512,11 @@ clause(Head, Body) :-
     '$$clause_candidates'(Head, Candidates),
     member(Head - Body, Candidates).
 
-%!  term_variables(@Term, -Vars) is det.
-%   Vars in first-occurrence order, each exactly once.
+%!  term_variables(@Term, ?Vars) is det.
+%   Vars in first-occurrence order, each exactly once; Term may be cyclic.
 term_variables(Term, Vars) :-
-    '$term_variables'(Term, [], Vs0),
-    reverse(Vs0, Vars).
-
-'$term_variables'(Term, Seen, Vars) :-
-    var(Term),
-    !,
-    ( '$var_memberchk'(Term, Seen) -> Vars = Seen ; Vars = [Term|Seen] ).
-'$term_variables'(Term, Seen, Vars) :-
-    compound(Term),
-    !,
-    functor(Term, _, Arity),
-    '$term_variables_args'(1, Arity, Term, Seen, Vars).
-'$term_variables'(_, Seen, Seen).
-
-'$term_variables_args'(I, N, _, Seen, Seen) :- I > N, !.
-'$term_variables_args'(I, N, Term, Seen0, Vars) :-
-    arg(I, Term, A),
-    '$term_variables'(A, Seen0, Seen1),
-    I1 is I + 1,
-    '$term_variables_args'(I1, N, Term, Seen1, Vars).
-
-'$var_memberchk'(V, [W|_]) :- V == W, !.
-'$var_memberchk'(V, [_|T]) :- '$var_memberchk'(V, T).
+    '$with_context'(can_be(list, Vars), term_variables/2),
+    '$$term_variables'(Term, Vars).
 
 %!  bagof(+Template, :Goal, -Bag) is nondet.
 %   One Bag for each binding of Goal's free variables, those not in Template
