@@ -189,9 +189,9 @@ unexpected_line(L) :-
 
 strip_sto(L, Out) :-
     trim_leading(L, T),
-    (   T = ['|'|R0]
+    (   T = [Sep|R0], memberchk(Sep, ['|', ';'])
     ->  trim_leading(R0, R),
-        ( append("sto, ", R1, R) -> append("| ", R1, Out) ; Out = L )
+        ( append("sto, ", R1, R) -> append([Sep, ' '], R1, Out) ; Out = L )
     ;   append("sto, ", R1, T)
     ->  Out = R1
     ;   Out = L
@@ -285,18 +285,19 @@ chars_atom(Cs, A) :- atom_chars(A, Cs).
 
 :- dynamic(quad_solution_count/1).
 
-collect_solutions(Query, NameVars, Max, Strs, Snaps) :-
+collect_solutions(Query, NameVars, Max, Exps, Strs, Snaps) :-
     retractall(quad_solution_count(_)),
     assertz(quad_solution_count(0)),
-    with_output_to(atom(_), findall(Str-Snap, capped_snapshot(Query, NameVars, Max, Str, Snap), Sols)),
+    with_output_to(atom(_), findall(Str-Snap, capped_snapshot(Query, NameVars, Max, Exps, Str, Snap), Sols)),
     pairs_keys_values_(Sols, Strs, Snaps).
 
-% Cyclic bindings can't be copied - text comparison only.
-capped_snapshot(Query, NameVars, Max, Str, Snap) :-
+% Cyclic bindings can't be copied, so they are matched against every expected answer here.
+capped_snapshot(Query, NameVars, Max, Exps, Str, Snap) :-
     capped_solution(Query, NameVars, Max, Str),
-    ( catch(copy_term(NameVars, _), error(representation_error(term), _), fail)
-    -> Snap = NameVars
-    ;  Snap = none
+    (   catch(copy_term(NameVars, _), error(representation_error(term), _), fail)
+    ->  Snap = NameVars
+    ;   include(qa_match(rt_variant, NameVars), Exps, Matched),
+        Snap = cyclic(Matched)
     ).
 
 pairs_keys_values_([], [], []).
@@ -363,9 +364,10 @@ run_one_test(QueryRaw, AnswerRaw, Pass) :-
     quad_display(Query, Display),
     quad_ckpt_before(Display),
     quad_now(T0),
+    expect_answers(Expect, Exps),
     ( catch(atom_to_term(Query, QueryTerm, NameVars), error(syntax_error(_), _), fail)
     -> ( catch(
-             ( collect_solutions(QueryTerm, NameVars, 64, Got, Snaps), Error = none ),
+             ( collect_solutions(QueryTerm, NameVars, 64, Exps, Got, Snaps), Error = none ),
              Ball,
              ( Got = [], Snaps = [], quad_error_type(Ball, Error) )
          )
@@ -386,6 +388,10 @@ run_one_test(QueryRaw, AnswerRaw, Pass) :-
     quad_ckpt_after(Display, Pass, Reason, ElapsedMs),
     quad_report(TestNum, Display, Pass, Reason, ElapsedMs),
     !.
+
+expect_answers(not(Alts), Exps) :- !, expect_answers(Alts, Exps).
+expect_answers(Alts, Exps) :-
+    findall(E, ( member(Alt, Alts), parse_expected(Alt, Es, _), member(E, Es) ), Exps).
 
 % JUnit-mode crash checkpointing: when set, each test durably records itself before/after, so a crash mid-file is recoverable (quad_cli_junit/3).
 :- dynamic(quad_ckpt_ctx/3).
@@ -475,16 +481,18 @@ quad_answers_match([E|Es], [G|Gs], [S|Ss]) :-
     ( E == G -> true ; quad_answer_match(E, S) ),
     quad_answers_match(Es, Gs, Ss).
 
-quad_answer_match(ExpAtom, Snap) :-
-    Snap \== none,
+quad_answer_match(ExpAtom, cyclic(Matched)) :- !, memberchk(ExpAtom, Matched).
+quad_answer_match(ExpAtom, Snap) :- qa_match(qa_variant, Snap, ExpAtom).
+
+qa_match(Variant, Snap, ExpAtom) :-
     catch(atom_to_term(ExpAtom, ET, ENames), _, fail),
     qa_exp_pairs(ET, ENames, EPairs),
-    forall(member(N = _, EPairs), memberchk(N = _, Snap)),
+    forall(( member(N = _, EPairs), \+ atom_chars(N, ['_'|_]) ), memberchk(N = _, Snap)),
     findall(N, member(N = '...', EPairs), Any),
     \+ \+ ( qa_exp_unify(ET),
             qa_values(Snap, Any, ENames, GVs, EVs),
-            acyclic_term(EVs),
-            qa_variant(GVs, EVs) ).
+            ( Variant == qa_variant -> acyclic_term(EVs) ; true ),
+            call(Variant, GVs, EVs) ).
 
 % The expected answer's equations, applied to its own variables.
 qa_exp_unify(true) :- !.
@@ -515,6 +523,33 @@ qa_variant(A, B) :-
     \+ \+ ( copy_term(A, A1), copy_term(B, B1),
             qa_number_vars(A1, 0, _), qa_number_vars(B1, 0, _),
             A1 == B1 ).
+
+% Variant on rational trees: a pair of subterms already being compared is equal.
+rt_variant(A, B) :- rt_variant(A, B, [], _, [], _).
+
+rt_variant(A, B, S, S, M0, M) :- var(A), !, var(B), rt_var_pair(M0, A, B, M).
+rt_variant(_, B, _, _, _, _) :- var(B), !, fail.
+rt_variant(A, B, S, S, M, M) :- rt_seen(S, A, B), !.
+rt_variant(A, B, S, S, M, M) :- atomic(A), !, A == B.
+rt_variant(A, B, S0, S, M0, M) :-
+    compound(B),
+    functor(A, F, N),
+    functor(B, F, N),
+    A =.. [_|As],
+    B =.. [_|Bs],
+    rt_variant_list(As, Bs, [A-B|S0], S, M0, M).
+
+rt_variant_list([], [], S, S, M, M).
+rt_variant_list([A|As], [B|Bs], S0, S, M0, M) :-
+    rt_variant(A, B, S0, S1, M0, M1),
+    rt_variant_list(As, Bs, S1, S, M1, M).
+
+rt_seen([X-Y|_], A, B) :- X == A, Y == B, !.
+rt_seen([_|S], A, B) :- rt_seen(S, A, B).
+
+rt_var_pair([], A, B, [A-B]).
+rt_var_pair([X-Y|M], A, B, [X-Y|M]) :- X == A, !, Y == B.
+rt_var_pair([X-Y|M0], A, B, [X-Y|M]) :- Y \== B, rt_var_pair(M0, A, B, M).
 
 qa_number_vars(T, N0, N) :- var(T), !, T = '$qa_var'(N0), N is N0 + 1.
 qa_number_vars(T, N0, N0) :- atomic(T), !.

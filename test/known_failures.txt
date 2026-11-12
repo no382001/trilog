@@ -1,3 +1,0 @@
-member_quad	member(X, X)
-nth_quad	nth0(N, [[]|Es], Es)
-select_quad	select(E, Xs, Xs)
