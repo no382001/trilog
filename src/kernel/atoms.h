@@ -3,6 +3,8 @@
 #define WELL_KNOWN_ATOMS(X)                                                    \
   X(atom_true, "true")                                                         \
   X(atom_comma, ",")                                                           \
+  X(atom_semicolon, ";")                                                       \
+  X(atom_arrow, "->")                                                          \
   X(atom_dot, ".")                                                             \
   X(atom_nil, "[]")                                                            \
   X(atom_curly, "{}")                                                          \
@@ -19,7 +21,6 @@
   X(atom_uncatch, "$$uncatch")                                                 \
   X(atom_cut, "$$cut")                                                         \
   X(atom_bang, "!")                                                            \
-  X(atom_dyn_call, "$dyn_call")                                                \
   X(atom_catch, "catch")                                                       \
   X(atom_throw, "throw")                                                       \
   X(atom_assertz, "$$assertz")                                                 \
@@ -70,8 +71,8 @@
   X(atom_gt, ">")                                                              \
   X(atom_get_code, "get_code")                                                 \
   X(atom_write_raw, "$$write_raw")                                             \
-  X(atom_open, "open")                                                         \
-  X(atom_close, "close")                                                       \
+  X(atom_open, "$$open")                                                       \
+  X(atom_close, "$$close")                                                     \
   X(atom_consult, "$$consult")                                                 \
   X(atom_dynamic, "dynamic")                                                   \
   X(atom_capture_start, "$$capture_start")                                     \
@@ -85,6 +86,10 @@
   X(atom_read_term, "$$read_term")                                             \
   X(atom_end_of_file, "end_of_file")                                           \
   X(atom_user_input, "user_input")                                             \
+  X(atom_user_output, "user_output")                                           \
+  X(atom_user_error, "user_error")                                             \
+  X(atom_write_text, "$$write_text")                                           \
+  X(atom_stream_binary, "$$stream_binary")                                     \
   X(atom_unload, "$$unload")                                                   \
   X(atom_source_path, "$$source_path")                                         \
   X(atom_loading_file, "$$loading_file")                                       \
@@ -98,6 +103,14 @@
   X(atom_flag_integer_rounding_function, "integer_rounding_function")          \
   X(atom_flag_max_arity, "max_arity")                                          \
   X(atom_flag_double_quotes, "double_quotes")                                  \
+  X(atom_flag_unknown, "unknown")                                              \
+  X(atom_flag_char_conversion, "char_conversion")                              \
+  X(atom_flag_debug, "debug")                                                  \
+  X(atom_kw_codes, "codes")                                                    \
+  X(atom_off, "off")                                                           \
+  X(atom_warning, "warning")                                                   \
+  X(atom_set_flag, "$$set_flag")                                               \
+  X(atom_get_char, "$$get_char")                                               \
   X(atom_toward_zero, "toward_zero")                                           \
   X(atom_chars_kw, "chars")                                                    \
   X(atom_bitand, "/\\")                                                        \
@@ -111,6 +124,10 @@
   X(atom_integer, "integer")                                                   \
   X(atom_kw_float, "float")                                                    \
   X(atom_compound, "compound")                                                 \
+  X(atom_nonvar, "nonvar")                                                     \
+  X(atom_number, "number")                                                     \
+  X(atom_atomic, "atomic")                                                     \
+  X(atom_callable, "callable")                                                 \
   X(atom_functor, "functor")                                                   \
   X(atom_arg, "arg")                                                           \
   X(atom_univ, "=..")                                                          \
@@ -121,12 +138,16 @@
   X(atom_mode_append, "append")                                                \
   X(atom_copy_term, "copy_term")                                               \
   X(atom_term_to_atom, "term_to_atom")                                         \
+  X(atom_write_vars, "$$write_vars")                                           \
   X(atom_atom_to_term, "atom_to_term")                                         \
   X(atom_dollar_var, "$VAR")                                                   \
   X(atom_clause_candidates, "$$clause_candidates")                             \
+  X(atom_clause_refs, "$$clause_refs")                                         \
+  X(atom_erase_clause, "$$erase_clause")                                       \
   X(atom_bag_open, "$$bag_open")                                               \
   X(atom_predicates, "$$predicates")                                           \
   X(atom_acyclic_term, "acyclic_term")                                         \
+  X(atom_term_variables, "$$term_variables")                                   \
   X(atom_nb_setarg, "$$nb_setarg")                                             \
   X(atom_bag_add, "$$bag_add")                                                 \
   X(atom_bag_collect, "$$bag_collect")                                         \
@@ -143,8 +164,6 @@
   X(atom_term_gt, "@>")                                                        \
   X(atom_term_le, "@=<")                                                       \
   X(atom_term_ge, "@>=")                                                       \
-  X(atom_semicolon, ";")                                                       \
-  X(atom_arrow, "->")                                                          \
   X(atom_dcg_arrow, "-->")                                                     \
   X(atom_colon, ":")                                                           \
   X(atom_user, "user")                                                         \

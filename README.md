@@ -8,7 +8,7 @@ The "tri" is for three: the three states of the ABC algorithm, which trilog's so
 
 ## Contents
 
-- [Current goals](#current-goals)
+- [Goals](#goals)
 - [Build](#build)
 - [Embedding](#embedding)
 - [Libraries](#libraries)
@@ -16,10 +16,17 @@ The "tri" is for three: the three states of the ABC algorithm, which trilog's so
 - [History](#history)
 - [License](#license)
 
-## Current goals
+## Goals
 
-- **Conformity.** Syntax comes first: trilog passes 336 of the 366 [syntactic conformity tests](https://www.complang.tuwien.ac.at/ulrich/iso-prolog/conformity_testing). Where the standard leaves room, as in how the toplevel prints answers or which error a library predicate throws, trilog follows [Scryer Prolog](https://codeberg.org/mthom/scryer-prolog).
-- **Useful work on a Raspberry Pi Pico W.** The aim is a system that does real tasks (at least) on a 264 KB microcontroller, written in portable ISO Prolog, with C only for the hardware. [`pico/`](pico/) is the current state: an HTTP server in Prolog that serves pages, switches the LED, and shows memory stats, a mail log and the files built into the image.
+### Reached
+
+- **Syntactic conformity.** trilog passes all 366 [syntactic conformity tests](https://www.complang.tuwien.ac.at/ulrich/iso-prolog/conformity_testing), since v0.2.1.
+- **Useful work on a Raspberry Pi Pico W.** trilog does real tasks on a 264 KB microcontroller, written in portable ISO Prolog, with C only for the hardware. [`pico/`](pico/) is an HTTP server in Prolog that serves pages, switches the LED, and shows memory stats, a mail log and the files built into the image.
+
+### Current
+
+- **Conformity beyond syntax.** The aim is builtins and errors that follow ISO 13211-1. Modules, `char_conversion/2` and `set_stream_position/2` are still open. Where the standard leaves room, as in how the toplevel prints answers or which error a library predicate throws, trilog follows [Scryer Prolog](https://codeberg.org/mthom/scryer-prolog).
+- **A ZIP VM.** It runs compiled bytecode instead of interpreting every goal at run time, and the first numbers show it about 4x faster. It will probably join trilog as a runtime on Linux. See [Next: the ZIP VM](#next-the-zip-vm).
 
 ## Build
 
@@ -37,6 +44,7 @@ The release build has the Prolog core and libraries built in, so it runs without
 | `make test` | the system tests in `test/e2e/` and the C API tests |
 | `make quad` | the Prolog tests in `test/quad/` |
 | `make conformity` | the ISO conformity tests in `test/conformity/` |
+| `make check` | every suite, as CI does; fails on a failure not in `test/known_failures.txt` |
 | `make format` | `clang-format` on every C source |
 
 ## Embedding
@@ -178,15 +186,21 @@ trilog uses the ABC algorithm because it is simple, where an efficient solver is
 
 > The only novelty we believe this paper to have is the human-oriented form of the algorithm and its derivation from a mathematical description of the SLD (Selective Linear Definite clause resolution) theorem-prover. — M. H. van Emden, *An interpreting algorithm for Prolog programs*, First International Logic Programming Conference (1982)
 
-trilog has no WAM. The goal is the most efficient interpreter that stays this simple. A WAM, ZIP or BinWAM backend would be much faster. trilog is fast enough for now, but one would be nice to have later.
+trilog has no WAM. The goal is the most efficient interpreter that stays this simple. A WAM, ZIP or BinWAM backend would be much faster; see [Next: the ZIP VM](#next-the-zip-vm).
+
+### The first engine
 
 The first engine is on [`a3536a4`](https://github.com/no382001/trilog/commit/a3536a4597ec586ace19cc373ceccc0b86343f0b). Lots of things already worked there, but it was getting harder to see what the engine was actually doing and the design problems kept piling up. It also did not fit on a Raspberry Pi Pico W, which was the goal. So it was rewritten from the ground up, because:
 
 > The only applicable research method is to accumulate experience by implementing a system, synthesize the experience, think for a while and start over. — E. Sandewall, *Programming in an Interactive Environment: The LISP Experience* (1978)
 
-Both engines were measured on the same machine, an AMD Ryzen 5 5600, with [`test/perf/run.sh`](test/perf/run.sh): the current engine as a release build, the first engine with `-O2` and no sanitizer. Each figure is the median of 7 runs (63 for start-up). Times are CPU time (`task-clock`). Instructions are user-space instructions retired, which barely change between runs. Peak memory is the peak resident set size. "Now" runs `_build/trilog -f -n`, which loads only the core; the benchmarks need nothing else. `fib/2` cuts on `N < 2`, because the first engine runs out of stack on the version without the cut.
+### How the versions are measured
 
-| Workload | First engine | Now, v0.2.0 ([`5b8feef`](https://github.com/no382001/trilog/commit/5b8feef550df7375eab563fd1a72ab316da3899e)) | Faster | Fewer instructions | Less memory |
+Every version was measured on the same machine, an AMD Ryzen 5 5600, with [`test/perf/run.sh`](test/perf/run.sh): v0.2.0 and v0.2.1 as release builds, the first engine with `-O2` and no sanitizer. v0.2.0 was measured again beside v0.2.1 and came within 0.2 ms of its first figures. Each figure is the median of 7 runs (63 for start-up). Times are CPU time (`task-clock`). Instructions are user-space instructions retired, which barely change between runs. Peak memory is the peak resident set size. v0.2.0 and v0.2.1 run `_build/trilog -f -n`, which loads only the core; the benchmarks need nothing else. `fib/2` cuts on `N < 2`, because the first engine runs out of stack on the version without the cut.
+
+### v0.2.0
+
+| Workload | First engine | v0.2.0 ([`5b8feef`](https://github.com/no382001/trilog/commit/5b8feef550df7375eab563fd1a72ab316da3899e)) | Faster | Fewer instructions | Less memory |
 | --- | --- | --- | --- | --- | --- |
 | start and exit | 2.35 ms, 14.3M ins, 4.5 MB | 0.52 ms, 1.1M ins, 2.4 MB | 4.5x | 13x | 1.9x |
 | naive reverse, 300 elements | 308 ms, 4,373M ins, 234 MB | 7.0 ms, 105M ins, 3.0 MB | 44x | 42x | 78x |
@@ -194,9 +208,33 @@ Both engines were measured on the same machine, an AMD Ryzen 5 5600, with [`test
 | `fib(21)` | 648 ms, 6,686M ins, 57.3 MB | 11.9 ms, 178M ins, 3.0 MB | 54x | 37x | 19x |
 | build 20,000 atoms | 3,822 ms, 41,105M ins, 31.5 MB | 237 ms, 3,473M ins, 3.3 MB | 16x | 12x | 9.5x |
 
-On average (geometric mean) the new engine is 16.9x faster, runs 17.5x fewer instructions and uses 11.5x less memory. Sadly the interpreter used to be marginally faster in some previous commits after the rearchitecture, but added features lost some performance.
+On average (geometric mean) v0.2.0 is 16.9x faster than the first engine, runs 17.5x fewer instructions and uses 11.5x less memory. Sadly the interpreter used to be marginally faster in some previous commits after the rearchitecture, but added features lost some performance.
 
-Without `-n`, the CLI also loads its four libraries, and start-up takes 1.1 ms, 5.3M instructions and 2.9 MB.
+v0.2.0 passes 336 of the 366 conformity tests.
+
+### v0.2.1
+
+v0.2.1 is faster again:
+
+| Workload | v0.2.0 ([`5b8feef`](https://github.com/no382001/trilog/commit/5b8feef550df7375eab563fd1a72ab316da3899e)) | v0.2.1 ([`4f9dd72`](https://github.com/no382001/trilog/commit/4f9dd729775cf7c51d04007845708e548d06105f)) | Faster | Fewer instructions | Less memory |
+| --- | --- | --- | --- | --- | --- |
+| start and exit | 0.52 ms, 1.1M ins, 2.4 MB | 0.57 ms, 1.3M ins, 2.4 MB | 0.91x | 0.84x | 1.00x |
+| naive reverse, 300 elements | 7.0 ms, 105M ins, 3.0 MB | 5.7 ms, 82M ins, 2.8 MB | 1.23x | 1.28x | 1.07x |
+| 8 queens, all solutions | 128 ms, 2,137M ins, 2.5 MB | 95.2 ms, 1,606M ins, 2.4 MB | 1.34x | 1.33x | 1.04x |
+| `fib(21)` | 11.9 ms, 178M ins, 3.0 MB | 8.6 ms, 130M ins, 2.8 MB | 1.38x | 1.37x | 1.07x |
+| build 20,000 atoms | 237 ms, 3,473M ins, 3.3 MB | 139 ms, 2,212M ins, 3.2 MB | 1.71x | 1.57x | 1.03x |
+
+On average (geometric mean) v0.2.1 is 1.29x faster than v0.2.0, runs 1.25x fewer instructions and uses 1.04x less memory. Start-up is the exception: it is 0.05 ms slower and runs 0.2M more instructions. Against the first engine it is 21.8x faster, runs 21.9x fewer instructions and uses 11.9x less memory.
+
+Without `-n`, the CLI also loads its four libraries, and start-up takes 0.97 ms, 4.6M instructions and 2.6 MB in v0.2.1 (1.1 ms, 5.3M instructions and 2.9 MB in v0.2.0).
+
+v0.2.1 passes all 366 conformity tests.
+
+### Next: the ZIP VM
+
+trilog is fast enough to serve a small HTTP server on the Pico W, in its limited memory. Still, that showed that even a fast enough interpreter is not the way to do serious programming on a target that small. So trilog will stay as an interpreter for now, while the work for small targets will be moved to a ZIP virtual machine, which runs compiled bytecode instead of interpreting every goal at run time. The first numbers show that it is about 4x faster (not feature complete).
+
+The ZIP VM will probably join trilog as a runtime on Linux. Later, I plan to release the ZIP VM and trilog separately. The ZIP VM will be for very small embedded targets like the Pico W. A program there rarely needs dynamic code, or a REPL to talk to the system. Instead, you upload the bytecode to the Pico W over the network, then send it a signal to run. With a protocol like 9P, a mesh of such devices could run compiled Prolog code on demand.
 
 ## License
 

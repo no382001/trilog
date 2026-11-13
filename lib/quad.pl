@@ -189,9 +189,9 @@ unexpected_line(L) :-
 
 strip_sto(L, Out) :-
     trim_leading(L, T),
-    (   T = ['|'|R0]
+    (   T = [Sep|R0], memberchk(Sep, ['|', ';'])
     ->  trim_leading(R0, R),
-        ( append("sto, ", R1, R) -> append("| ", R1, Out) ; Out = L )
+        ( append("sto, ", R1, R) -> append([Sep, ' '], R1, Out) ; Out = L )
     ;   append("sto, ", R1, T)
     ->  Out = R1
     ;   Out = L
@@ -285,18 +285,19 @@ chars_atom(Cs, A) :- atom_chars(A, Cs).
 
 :- dynamic(quad_solution_count/1).
 
-collect_solutions(Query, NameVars, Max, Strs, Snaps) :-
+collect_solutions(Query, NameVars, Max, Exps, Strs, Snaps) :-
     retractall(quad_solution_count(_)),
     assertz(quad_solution_count(0)),
-    with_output_to(atom(_), findall(Str-Snap, capped_snapshot(Query, NameVars, Max, Str, Snap), Sols)),
+    with_output_to(atom(_), findall(Str-Snap, capped_snapshot(Query, NameVars, Max, Exps, Str, Snap), Sols)),
     pairs_keys_values_(Sols, Strs, Snaps).
 
-% Cyclic bindings can't be copied - text comparison only.
-capped_snapshot(Query, NameVars, Max, Str, Snap) :-
+% Cyclic bindings are matched against every expected answer here, as rational trees.
+capped_snapshot(Query, NameVars, Max, Exps, Str, Snap) :-
     capped_solution(Query, NameVars, Max, Str),
-    ( catch(copy_term(NameVars, _), error(representation_error(term), _), fail)
-    -> Snap = NameVars
-    ;  Snap = none
+    (   acyclic_term(NameVars)
+    ->  Snap = NameVars
+    ;   include(qa_match(rt_variant, NameVars), Exps, Matched),
+        Snap = cyclic(Matched)
     ).
 
 pairs_keys_values_([], [], []).
@@ -318,13 +319,19 @@ format_bindings(NameVars, Str) :-
 '$format_bindings_pairs'([], []).
 '$format_bindings_pairs'([Name=Val|Rest], Pairs) :-
     ( atom_chars(Name, ['_'|_]) -> Pairs = Pairs1
-    ; var(Val) -> Pairs = Pairs1
-    ; Pairs = [Name=Val|Pairs1]
+    ; var(Val) -> ( '$later_alias'(Rest, Val, M) -> Pairs = [Name=alias(M)|Pairs1] ; Pairs = Pairs1 )
+    ; Pairs = [Name=value(Val)|Pairs1]
     ),
     '$format_bindings_pairs'(Rest, Pairs1).
 
-'$write_bindings'([N=V]) :- !, write(N), write(' = '), writeq(V).
-'$write_bindings'([N=V|Rest]) :- write(N), write(' = '), writeq(V), write(', '), '$write_bindings'(Rest).
+'$later_alias'([M=V|_], Val, M) :- V == Val, \+ atom_chars(M, ['_'|_]), !.
+'$later_alias'([_|Rest], Val, M) :- '$later_alias'(Rest, Val, M).
+
+'$write_bindings'([P]) :- !, '$write_binding'(P).
+'$write_bindings'([P|Rest]) :- '$write_binding'(P), write(', '), '$write_bindings'(Rest).
+
+'$write_binding'(N=alias(M)) :- write(N), write(' = '), write(M).
+'$write_binding'(N=value(V)) :- write(N), write(' = '), writeq(V).
 
 % --- running one test ---
 
@@ -357,9 +364,10 @@ run_one_test(QueryRaw, AnswerRaw, Pass) :-
     quad_display(Query, Display),
     quad_ckpt_before(Display),
     quad_now(T0),
+    expect_answers(Expect, Exps),
     ( catch(atom_to_term(Query, QueryTerm, NameVars), error(syntax_error(_), _), fail)
     -> ( catch(
-             ( collect_solutions(QueryTerm, NameVars, 64, Got, Snaps), Error = none ),
+             ( collect_solutions(QueryTerm, NameVars, 64, Exps, Got, Snaps), Error = none ),
              Ball,
              ( Got = [], Snaps = [], quad_error_type(Ball, Error) )
          )
@@ -380,6 +388,10 @@ run_one_test(QueryRaw, AnswerRaw, Pass) :-
     quad_ckpt_after(Display, Pass, Reason, ElapsedMs),
     quad_report(TestNum, Display, Pass, Reason, ElapsedMs),
     !.
+
+expect_answers(not(Alts), Exps) :- !, expect_answers(Alts, Exps).
+expect_answers(Alts, Exps) :-
+    findall(E, ( member(Alt, Alts), parse_expected(Alt, Es, _), member(E, Es) ), Exps).
 
 % JUnit-mode crash checkpointing: when set, each test durably records itself before/after, so a crash mid-file is recoverable (quad_cli_junit/3).
 :- dynamic(quad_ckpt_ctx/3).
@@ -469,24 +481,34 @@ quad_answers_match([E|Es], [G|Gs], [S|Ss]) :-
     ( E == G -> true ; quad_answer_match(E, S) ),
     quad_answers_match(Es, Gs, Ss).
 
-quad_answer_match(ExpAtom, Snap) :-
-    Snap \== none,
+quad_answer_match(ExpAtom, cyclic(Matched)) :- !, memberchk(ExpAtom, Matched).
+quad_answer_match(ExpAtom, Snap) :- qa_match(qa_variant, Snap, ExpAtom).
+
+qa_match(Variant, Snap, ExpAtom) :-
     catch(atom_to_term(ExpAtom, ET, ENames), _, fail),
-    qa_exp_pairs(ET, ENames, EPairs0),
-    \+ \+ ( qa_mark_unbound(Snap),
-            qa_link_names(ENames, Snap),
-            qa_got_pairs(Snap, GPairs0),
-            qa_drop_any(EPairs0, GPairs0, EPairs1, GPairs1),
-            msort(EPairs1, EPairs),
-            msort(GPairs1, GPairs),
-            qa_variant(EPairs, GPairs) ).
+    qa_exp_pairs(ET, ENames, EPairs),
+    forall(( member(N = _, EPairs), \+ atom_chars(N, ['_'|_]) ), memberchk(N = _, Snap)),
+    findall(N, member(N = '...', EPairs), Any),
+    \+ \+ ( qa_exp_unify(ET),
+            qa_values(Snap, Any, ENames, GVs, EVs),
+            ( Variant == qa_variant -> acyclic_term(EVs) ; true ),
+            call(Variant, GVs, EVs) ).
 
-qa_drop_any(E0, G0, E, G) :-
-    findall(N, member(N = '...', E0), Any),
-    exclude(qa_named(Any), E0, E),
-    exclude(qa_named(Any), G0, G).
+% The expected answer's equations, applied to its own variables.
+qa_exp_unify(true) :- !.
+qa_exp_unify((A, B)) :- !, qa_exp_unify(A), qa_exp_unify(B).
+qa_exp_unify(L = R) :- L = R.
 
-qa_named(Names, N = _) :- memberchk(N, Names).
+% Each query variable's value, got and expected, skipping '_' names and "= ..." ones.
+qa_values([], _, _, [], []).
+qa_values([N = G|Ps], Any, ENames, GVs, EVs) :-
+    (   ( atom_chars(N, ['_'|_]) ; memberchk(N, Any) )
+    ->  qa_values(Ps, Any, ENames, GVs, EVs)
+    ;   ( memberchk(N = E, ENames) -> true ; true ),
+        GVs = [G|GVs1],
+        EVs = [E|EVs1],
+        qa_values(Ps, Any, ENames, GVs1, EVs1)
+    ).
 
 % "X = a, Y = b" -> ['X'=a, 'Y'=b]; "true" -> [].
 qa_exp_pairs(true, _, []) :- !.
@@ -497,28 +519,37 @@ qa_exp_pairs(L = R, Names, [N = R]) :- var(L), qa_var_name(Names, L, N).
 qa_var_name([N = V|_], L, N) :- V == L, !.
 qa_var_name([_|Ns], L, N) :- qa_var_name(Ns, L, N).
 
-% Unbound query vars become '$qv'(Name), matching only same-named expected vars.
-qa_mark_unbound([]).
-qa_mark_unbound([N = V|Ps]) :- ( var(V) -> V = '$qv'(N) ; true ), qa_mark_unbound(Ps).
-
-qa_link_names([], _).
-qa_link_names([N = V|Ns], Snap) :-
-    ( member(N = GV, Snap) -> V = GV ; true ),
-    qa_link_names(Ns, Snap).
-
-% Mirrors format_bindings/2.
-qa_got_pairs([], []).
-qa_got_pairs([N = V|Ps], Out) :-
-    ( atom_chars(N, ['_'|_]) -> Out = Out1
-    ; V == '$qv'(N) -> Out = Out1
-    ; Out = [N = V|Out1]
-    ),
-    qa_got_pairs(Ps, Out1).
-
 qa_variant(A, B) :-
     \+ \+ ( copy_term(A, A1), copy_term(B, B1),
             qa_number_vars(A1, 0, _), qa_number_vars(B1, 0, _),
             A1 == B1 ).
+
+% Variant on rational trees: a pair of subterms already being compared is equal.
+rt_variant(A, B) :- rt_variant(A, B, [], _, [], _).
+
+rt_variant(A, B, S, S, M0, M) :- var(A), !, var(B), rt_var_pair(M0, A, B, M).
+rt_variant(_, B, _, _, _, _) :- var(B), !, fail.
+rt_variant(A, B, S, S, M, M) :- rt_seen(S, A, B), !.
+rt_variant(A, B, S, S, M, M) :- atomic(A), !, A == B.
+rt_variant(A, B, S0, S, M0, M) :-
+    compound(B),
+    functor(A, F, N),
+    functor(B, F, N),
+    A =.. [_|As],
+    B =.. [_|Bs],
+    rt_variant_list(As, Bs, [A-B|S0], S, M0, M).
+
+rt_variant_list([], [], S, S, M, M).
+rt_variant_list([A|As], [B|Bs], S0, S, M0, M) :-
+    rt_variant(A, B, S0, S1, M0, M1),
+    rt_variant_list(As, Bs, S1, S, M1, M).
+
+rt_seen([X-Y|_], A, B) :- X == A, Y == B, !.
+rt_seen([_|S], A, B) :- rt_seen(S, A, B).
+
+rt_var_pair([], A, B, [A-B]).
+rt_var_pair([X-Y|M], A, B, [X-Y|M]) :- X == A, !, Y == B.
+rt_var_pair([X-Y|M0], A, B, [X-Y|M]) :- Y \== B, rt_var_pair(M0, A, B, M).
 
 qa_number_vars(T, N0, N) :- var(T), !, T = '$qa_var'(N0), N is N0 + 1.
 qa_number_vars(T, N0, N0) :- atomic(T), !.
@@ -658,18 +689,26 @@ read_lines(S, Lines) :-
     ).
 
 % Each run of clauses between tests is a small consult: the first clause a
-% block gives a predicate replaces what earlier blocks defined for it.
-run_items(Items, Skip) :- run_items(Items, Skip, 0, []).
+% block gives a predicate replaces what earlier blocks defined for it. Every
+% predicate has its own file, so consulting it again replaces only that
+% predicate, and its clauses are static unless declared dynamic.
+:- dynamic(quad_pred_file/2).
 
-run_items([], _, _, _).
+run_items(Items, Skip) :-
+    retractall(quad_pred_file(_, _)),
+    run_items(Items, Skip, 0, []).
+
+run_items([], _, _, Block) :- flush_block(Block).
 run_items([I|Is], Skip, Seen0, Block0) :-
     run_item(I, Skip, Seen0, Seen, Block0, Block),
     run_items(Is, Skip, Seen, Block).
 
-run_item(test(Query, Answer), Skip, Seen0, Seen, _, []) :-
+run_item(test(Query, Answer), Skip, Seen0, Seen, Block, []) :-
+    flush_block(Block),
     Seen is Seen0 + 1,
     ( Seen =< Skip -> true ; once(run_one_test(Query, Answer, _)) ).
-run_item(directive(Cs), _, Seen, Seen, _, []) :-
+run_item(directive(Cs), _, Seen, Seen, Block, []) :-
+    flush_block(Block),
     strip_terminating_dot(Cs, Text),
     atom_chars(A, Text),
     (   catch((atom_to_term(A, Goal, _),
@@ -682,8 +721,7 @@ run_item(clause(Cs), _, Seen, Seen, Block0, Block) :-
     atom_chars(A, Text),
     (   catch(atom_to_term(A, Term, _), _, fail),
         clause_predicate(Term, PI)
-    ->  block_predicate(PI, Block0, Block),
-        catch(add_clause(Term), _, true)
+    ->  block_add(PI, Cs, Block0, Block)
     ;   Block = Block0
     ).
 
@@ -694,13 +732,38 @@ clause_predicate(H, N/A) :- callable(H), functor(H, N, A).
 dcg_head((H, _), H) :- !.
 dcg_head(H, H).
 
-block_predicate(PI, Block, Block) :- memberchk(PI, Block), !.
-block_predicate(N/A, Block, [N/A|Block]) :-
-    functor(Skel, N, A),
-    catch(retractall(Skel), _, true).
+% Block: PI-Texts in the order the predicates first appear, each text list reversed.
+block_add(PI, Cs, [], [PI-[Cs]]).
+block_add(PI, Cs, [P-Ts|B], [P-[Cs|Ts]|B]) :- P == PI, !.
+block_add(PI, Cs, [E|B0], [E|B]) :- block_add(PI, Cs, B0, B).
 
-add_clause((H --> B)) :- !, '$dcg_compile'(H, B).
-add_clause(Clause) :- assertz(Clause).
+flush_block([]).
+flush_block([N/A-_|B]) :-
+    '$$is_static'(N, A),
+    \+ quad_pred_file(N/A, _),
+    !,
+    flush_block(B).
+flush_block([N/A-RevTexts|B]) :-
+    (   current_predicate(N/A)
+    ->  functor(Skel, N, A),
+        catch(retractall(Skel), _, true)
+    ;   true
+    ),
+    pred_file(N/A, Path),
+    reverse(RevTexts, Texts),
+    open(Path, write, S),
+    maplist(write_clause_text(S), Texts),
+    close(S),
+    catch(consult(Path), _, true),
+    flush_block(B).
+
+write_clause_text(S, Cs) :- atom_chars(A, Cs), write(S, A), nl(S).
+
+pred_file(PI, Path) :- quad_pred_file(PI, Path), !.
+pred_file(PI, Path) :-
+    countall(quad_pred_file(_, _), N),
+    format_atom('_build/quad-pred-~w.pl', [N], Path),
+    assertz(quad_pred_file(PI, Path)).
 
 % --- CLI entry point: exit code 0 if all pass, 1 if any failed ---
 

@@ -1,4 +1,5 @@
 #include "gc.h"
+#include "atoms.h"
 #include "ctx.h"
 #include "fmt.h"
 #include "heap.h"
@@ -230,15 +231,52 @@ static size_t compact_heap(trilog_t *T, size_t base, size_t old_top,
   return write_ptr;
 }
 
-// trail entries whose target var didn't survive marking are safe to drop
+static bool marks_in_trail_order(trilog_t *T, frame_t *frames, size_t nframes,
+                                 catch_frame_t *catches, size_t ncatches) {
+  for (size_t i = 1; i < nframes; i++)
+    if (frames[i].trail_mark < frames[i - 1].trail_mark)
+      return false;
+  size_t last = 0;
+  for (size_t i = 0; i < ncatches; i++) {
+    if (!T->catch_live[i])
+      continue;
+    if (catches[i].trail_mark < last)
+      return false;
+    last = catches[i].trail_mark;
+  }
+  return true;
+}
+
+// Backtracking to a mark only resets variables older than the mark, so an
+// entry is needed only if its variable is older than some mark below it.
+static void index_needed_trail(trilog_t *T, size_t *trail, size_t trail_top,
+                               frame_t *frames, size_t nframes,
+                               catch_frame_t *catches, size_t ncatches) {
+  bool tidy = marks_in_trail_order(T, frames, nframes, catches, ncatches);
+  size_t keep_below = T->query_heap_base, fi = 0, ci = 0, next_free = 0;
+  for (size_t i = 0; i < trail_top; i++) {
+    for (; fi < nframes && frames[fi].trail_mark <= i; fi++)
+      if (frames[fi].heap_mark > keep_below)
+        keep_below = frames[fi].heap_mark;
+    for (; ci < ncatches && (!T->catch_live[ci] || catches[ci].trail_mark <= i);
+         ci++)
+      if (T->catch_live[ci] && catches[ci].heap_mark > keep_below)
+        keep_below = catches[ci].heap_mark;
+    size_t v = trail[i];
+    T->trail_new_index[i] = next_free;
+    if (v < T->marked_cap && T->marked[v] &&
+        (!tidy || i < T->query_trail_base || v < keep_below))
+      next_free++;
+  }
+  T->trail_new_index[trail_top] = next_free;
+}
+
 static size_t compact_trail(trilog_t *T, size_t base, size_t old_trail_top) {
   size_t *trail = trail_array(T);
   size_t write_ptr = 0;
-  for (size_t i = 0; i < old_trail_top; i++) {
-    size_t v = trail[i];
-    if (v < T->marked_cap && T->marked[v])
-      trail[write_ptr++] = moved(T, base, v);
-  }
+  for (size_t i = 0; i < old_trail_top; i++)
+    if (T->trail_new_index[i + 1] != T->trail_new_index[i])
+      trail[write_ptr++] = moved(T, base, trail[i]);
   return write_ptr;
 }
 
@@ -269,7 +307,7 @@ size_t gc_max_live(trilog_t *T) {
 
 int gc_heap_exhausted(trilog_t *T) {
   int e = T->heap_exhausted;
-  T->heap_exhausted = 0;
+  T->heap_exhausted = false;
   return e;
 }
 
@@ -344,7 +382,7 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
   if (old_top < gc_get_threshold(T))
     return;
   if (setjmp(T->gc_oom)) {
-    T->heap_exhausted = 1;
+    T->heap_exhausted = true;
     return;
   }
 
@@ -396,20 +434,13 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
         T, T->trail_new_index, (old_trail_top + 1) * sizeof(size_t));
     T->trail_new_index_cap = old_trail_top + 1;
   }
-  {
-    size_t next_free = 0;
-    for (size_t i = 0; i < old_trail_top; i++) {
-      T->trail_new_index[i] = next_free;
-      if (trail[i] < T->marked_cap && T->marked[trail[i]])
-        next_free++;
-    }
-    T->trail_new_index[old_trail_top] = next_free;
-  }
+  index_needed_trail(T, trail, old_trail_top, frames, nframes, catches,
+                     ncatches);
 
   size_t new_top = compact_heap(T, heap_base, old_top, trail, old_trail_top,
                                 frames, nframes, catches, ncatches);
   if (new_top > gc_max_live(T))
-    T->heap_exhausted = 1;
+    T->heap_exhausted = true;
   size_t new_trail_top = compact_trail(T, heap_base, old_trail_top);
 
   *cn = moved(T, heap_base, *cn);
@@ -429,10 +460,17 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
     catches[i].recovery = moved(T, heap_base, catches[i].recovery);
     catches[i].continuation = moved(T, heap_base, catches[i].continuation);
     catches[i].heap_mark = moved(T, heap_base, catches[i].heap_mark);
+    size_t u = catches[i].uncatch_cell;
+    catches[i].uncatch_cell = u >= old_top ? NIL
+                              : u < heap_base || (T->marked[u] & LIVE)
+                                  ? moved(T, heap_base, u)
+                                  : NIL;
   }
 
   for (size_t i = 0; i < nframes; i++)
     frames[i].trail_mark = T->trail_new_index[frames[i].trail_mark];
+  if (T->query_trail_base <= old_trail_top)
+    T->query_trail_base = T->trail_new_index[T->query_trail_base];
   for (size_t i = 0; i < ncatches; i++)
     if (T->catch_live[i])
       catches[i].trail_mark = T->trail_new_index[catches[i].trail_mark];
@@ -445,6 +483,10 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
   for (size_t i = 0; i < nframes; i++)
     if (frames[i].active_catch != NIL)
       frames[i].active_catch = T->new_catch_index[frames[i].active_catch];
+  // A running catch/3 ends in '$$uncatch'(Index): that index moves too.
+  for (size_t i = 0; i < new_ncatches; i++)
+    if (catches[i].uncatch_cell != NIL)
+      T->heap[catches[i].uncatch_cell].as.ival = (int64_t)i;
   catch_stack_set_size(T, new_ncatches);
 
   heap_set_size(T, new_top);
@@ -460,6 +502,9 @@ void gc_maybe_run(trilog_t *T, size_t *cn, frame_t *frames, size_t nframes,
       query_base + mem_grow_by(T, new_top - query_base, T->gc_grow_percent);
   size_t floor = T->gc_fixed ? T->gc_fixed : query_base + GC_MIN_CELLS;
   size_t room = heap_capacity(T) / 4 * 3;
+  // Freeing almost nothing under 3/4 would start the next collection at once.
+  if (old_top - new_top < room / 8)
+    room = heap_capacity(T) / 8 * 7;
   if (T->gc_fixed && !GC_SHRINK && next > room)
     next = room;
   T->gc_threshold = next > floor ? next : floor;

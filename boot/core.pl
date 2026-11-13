@@ -1,31 +1,12 @@
 % '$$name' = raw kernel primitive; 
 % '$name' = private helper.
 
-% --- dynamic predicate calls ---
-
-% Calls to dynamic predicates iterate a snapshot of their clauses.
-'$dyn_call'(G) :-
-    '$$clause_candidates'(G, Cands),
-    '$$choice_mark'(Mark),
-    '$dyn_alts'(Cands, G, Mark).
-
-'$dyn_alts'([H - Body|Cs], G, Mark) :- '$dyn_alt'(Cs, H, Body, G, Mark).
-
-'$dyn_alt'([], H, Body, G, Mark) :- G = H, '$dyn_body'(Body, Mark, B), call(B).
-'$dyn_alt'([_|_], H, Body, G, Mark) :- G = H, '$dyn_body'(Body, Mark, B), call(B).
-'$dyn_alt'([C|Cs], _, _, G, Mark) :- '$dyn_alts'([C|Cs], G, Mark).
-
-'$dyn_body'(V, _, call(V)) :- var(V), !.
-'$dyn_body'(!, Mark, '$$cut_to'(Mark)) :- !.
-'$dyn_body'((A, B), Mark, (A1, B1)) :- !, '$dyn_body'(A, Mark, A1), '$dyn_body'(B, Mark, B1).
-'$dyn_body'((A ; B), Mark, (A1 ; B1)) :- !, '$dyn_body'(A, Mark, A1), '$dyn_body'(B, Mark, B1).
-'$dyn_body'((C -> T), Mark, (C -> T1)) :- !, '$dyn_body'(T, Mark, T1).
-'$dyn_body'(G, _, G).
-
 % --- control ---
 
 %!  ;/2, ->/2 is nondet.
 %   Disjunction and if-then, including if-then-else.
+%   The solver runs both natively. These clauses only run for an unbound left
+%   side of ;/2, and keep both predicates defined and static.
 ';'('->'(If, Then), _) :- If, !, Then.
 ';'('->'(_, _), Else) :- !, Else.
 ';'(A, _) :- A.
@@ -156,24 +137,34 @@ meta_predicate(Heads) :-
     ;   throw(error(syntax_error(invalid_meta_predicate_decl), load/1))
     ).
 
-'$meta_decls'(V, _) :- var(V), !, fail.
-'$meta_decls'((A, B), Ds) :- !, '$meta_decls'(A, D1), '$meta_decls'(B, D2), append(D1, D2, Ds).
-'$meta_decls'([], []) :- !.
-'$meta_decls'([H|T], Ds) :- !, '$meta_decls'(H, D1), '$meta_decls'(T, D2), append(D1, D2, Ds).
-'$meta_decls'(_:H, Ds) :- !, '$meta_decls'(H, Ds).
-'$meta_decls'(H, [N/A-Specs]) :-
+'$meta_decls'(Heads, Decls) :- '$meta_decls'(Heads, Decls, []).
+
+'$meta_decls'(V, _, _) :- var(V), !, fail.
+'$meta_decls'((A, B), Ds0, Ds) :- !, '$meta_decls'(A, Ds0, Ds1), '$meta_decls'(B, Ds1, Ds).
+'$meta_decls'([], Ds, Ds) :- !.
+'$meta_decls'([H|T], Ds0, Ds) :- !, '$meta_decls'(H, Ds0, Ds1), '$meta_decls'(T, Ds1, Ds).
+'$meta_decls'(_:H, Ds0, Ds) :- !, '$meta_decls'(H, Ds0, Ds).
+'$meta_decls'(H, [N/A-Specs|Ds], Ds) :-
     callable(H),
-    H =.. [N|Specs],
-    '$meta_specs'(Specs),
-    length(Specs, A).
+    functor(H, N, A),
+    H =.. [_|Specs],
+    '$meta_specs'(Specs).
 
 '$meta_specs'([]).
 '$meta_specs'([S|Ss]) :-
     nonvar(S),
     (   integer(S) -> S >= 0, S =< 9
-    ;   atom(S), memberchk(S, [':', '^', '//', '?', '+', '-', '*'])
+    ;   atom(S), '$meta_spec_atom'(S)
     ),
     '$meta_specs'(Ss).
+
+'$meta_spec_atom'(':').
+'$meta_spec_atom'('^').
+'$meta_spec_atom'('//').
+'$meta_spec_atom'('?').
+'$meta_spec_atom'('+').
+'$meta_spec_atom'('-').
+'$meta_spec_atom'('*').
 
 '$meta_assert'([]).
 '$meta_assert'([N/A-Specs|Ds]) :-
@@ -200,6 +191,12 @@ meta_predicate(Heads) :-
 '$meta_spec'(findall, 3, [?, 0, '-']).
 '$meta_spec'(bagof, 3, [?, '^', '-']).
 '$meta_spec'(setof, 3, [?, '^', '-']).
+'$meta_spec'(assert, 1, [:]).
+'$meta_spec'(asserta, 1, [:]).
+'$meta_spec'(assertz, 1, [:]).
+'$meta_spec'(retract, 1, [:]).
+'$meta_spec'(retractall, 1, [:]).
+'$meta_spec'(clause, 2, [:, ?]).
 
 %!  :(+Module, :Goal) is nondet.
 %   Calls Goal, using Module's private predicate of that name if it has one.
@@ -214,18 +211,46 @@ M:G :-
     ;   call(G)
     ).
 
+% A file in the image has no text, only its '$consulted' name.
 '$ensure_loaded'(Spec) :-
     '$source_file'(Spec, File0),
     '$with_extension'(File0, File),
     (   '$$source_path'(File, Path) -> true
+    ;   '$normal_path'(File, Path), '$consulted'(Path, _) -> true
     ;   throw(error(existence_error(source_sink, Spec), _))
     ),
     ( '$consulted'(Path, _) -> true ; consult(Path) ).
 
+'$normal_path'(File, Path) :-
+    '$$atom_codes'(File, Cs),
+    '$$atom_codes'('embedded:', E),
+    (   append(E, Rest, Cs) -> Prefix = E ; Prefix = [], Rest = Cs ),
+    '$path_segments'(Rest, Ss),
+    '$drop_dots'(Ss, [], Rs),
+    reverse(Rs, Ns),
+    '$join_segments'(Ns, Joined),
+    append(Prefix, Joined, Ps),
+    '$$atom_codes'(Path, Ps).
+
+'$path_segments'(Cs, [S|Ss]) :-
+    (   append(S, [0'/|Rest], Cs) -> '$path_segments'(Rest, Ss) ; S = Cs, Ss = [] ).
+
+'$drop_dots'([], Acc, Acc).
+'$drop_dots'([S|Ss], Acc, Rs) :-
+    (   S == [0'.] -> '$drop_dots'(Ss, Acc, Rs)
+    ;   S == [0'., 0'.], Acc = [P|Acc1], P \== [0'., 0'.] -> '$drop_dots'(Ss, Acc1, Rs)
+    ;   '$drop_dots'(Ss, [S|Acc], Rs)
+    ).
+
+'$join_segments'([S], S) :- !.
+'$join_segments'([S|Ss], Cs) :-
+    '$join_segments'(Ss, Cs1),
+    append(S, [0'/|Cs1], Cs).
+
 '$source_file'(Spec, _) :- var(Spec), !, throw(error(instantiation_error, _)).
 '$source_file'(library(Name), File) :-
     !,
-    '$must_be_atom'(Name),
+    must_be(atom, Name),
     '$boot_file'(Boot),
     '$directory'(Boot, Dir),
     atom_concat(Dir, '/../lib/', D1),
@@ -275,18 +300,8 @@ compare(O, A, B) :-
 '\\='(X, Y) :- \+ X = Y.
 
 % --- type checks ---
-% var/1, atom/1, integer/1, float/1, compound/1 are native.
-
-%!  nonvar(@Term) is semidet.
-nonvar(X) :- \+ var(X).
-
-%!  number(@Term) is semidet.
-number(X) :- integer(X).
-number(X) :- float(X).
-
-%!  atomic(@Term) is semidet.
-atomic(X) :- atom(X).
-atomic(X) :- number(X).
+% var/1, nonvar/1, atom/1, number/1, integer/1, float/1, atomic/1,
+% compound/1 and callable/1 are native.
 
 %!  subsumes_term(@General, @Specific) is semidet.
 subsumes_term(General, Specific) :-
@@ -299,19 +314,19 @@ subsumes_term(General, Specific) :-
 %!  ground(@Term) is semidet.
 ground(T) :- term_variables(T, []).
 
-%!  callable(@Term) is semidet.
-callable(X) :- atom(X).
-callable(X) :- compound(X).
-
 % --- errors ---
 
 %!  '$with_context'(:Goal, +PI) is nondet.
-%   An error Goal raises without a context gets PI as its context.
+%   An error Goal raises without a context, or from must_be/2 or can_be/2,
+%   gets PI as its context.
 '$with_context'(Goal, PI) :-
     catch(Goal, error(Formal, Context), '$rethrow'(Formal, Context, PI)).
 
-'$rethrow'(Formal, Context, PI) :-
-    ( var(Context) -> Context = PI ; true ),
+'$rethrow'(Formal, Context0, PI) :-
+    (   ( var(Context0) ; Context0 == must_be/2 ; Context0 == can_be/2 )
+    ->  Context = PI
+    ;   Context = Context0
+    ),
     throw(error(Formal, Context)).
 
 % --- sorting ---
@@ -362,7 +377,7 @@ keysort(Pairs, Sorted) :-
 '$keysort'(Pairs, Sorted) :-
     '$sort_length'(Pairs, Pairs, 0, _),
     '$keysort_index'(Pairs, 0, Indexed),
-    '$can_be_list'(Sorted),
+    can_be(list, Sorted),
     '$msort'(Indexed, S),
     '$keysort_strip'(S, Sorted0),
     Sorted = Sorted0.
@@ -380,9 +395,6 @@ keysort(Pairs, Sorted) :-
 '$keysort_strip'([], []).
 '$keysort_strip'([K-(_-V)|Is], [K-V|Ps]) :- '$keysort_strip'(Is, Ps).
 
-'$can_be_list'(L) :-
-    '$$skip_list'(L, _, T),
-    ( var(T) -> true ; T == [] -> true ; throw(error(type_error(list, L), _)) ).
 
 % --- database ---
 
@@ -390,10 +402,45 @@ keysort(Pairs, Sorted) :-
 %   Refuses static (consulted) predicates with permission_error unless declared dynamic/1;
 %   asserting makes the predicate dynamic, so it still exists (and fails) once
 %   its last clause is retracted.
+assertz(MC) :- nonvar(MC), MC = M:C, !, '$module_clause'(M, C, C1), assertz(C1).
 assertz(Clause) :- '$with_context'(('$check_clause'(Clause), '$check_static'(Clause)), assertz/1), '$make_dynamic'(Clause), '$$assertz'(Clause).
+assert(MC) :- nonvar(MC), MC = M:C, !, '$module_clause'(M, C, C1), assert(C1).
 assert(Clause) :- '$with_context'(('$check_clause'(Clause), '$check_static'(Clause)), assert/1), '$make_dynamic'(Clause), '$$assert'(Clause).
+asserta(MC) :- nonvar(MC), MC = M:C, !, '$module_clause'(M, C, C1), asserta(C1).
 asserta(Clause) :- '$with_context'(('$check_clause'(Clause), '$check_static'(Clause)), asserta/1), '$make_dynamic'(Clause), '$$asserta'(Clause).
-retract(Clause) :- '$with_context'(('$check_head'(Clause), '$check_static'(Clause)), retract/1), '$$retract'(Clause).
+retract(MC) :- nonvar(MC), MC = M:C, !, '$module_clause'(M, C, C1), retract(C1).
+retract(Clause) :-
+    '$with_context'(('$check_head'(Clause), '$check_static'(Clause)), retract/1),
+    ( Clause = (Head :- Body) -> true ; Head = Clause, Body = true ),
+    '$$clause_refs'(Head, Refs),
+    '$retract_ref'(Refs, Head, Body).
+
+'$retract_ref'([Ref-HB|Refs], Head, Body) :-
+    (   Refs == []
+    ->  HB = Head-Body, '$$erase_clause'(Head, Ref)
+    ;   (   HB = Head-Body, '$$erase_clause'(Head, Ref)
+        ;   '$retract_ref'(Refs, Head, Body)
+        )
+    ).
+
+% Module:Clause is Clause with its head and the goals of its body renamed to
+% Module's private predicates, where Module has one of that name.
+'$module_clause'(M, _, _) :- var(M), !, throw(error(instantiation_error, _)).
+'$module_clause'(M, C, C1) :-
+    (   nonvar(C), C = (H :- B)
+    ->  '$module_head'(M, H, H1), '$module_body'(M, B, B1), C1 = (H1 :- B1)
+    ;   '$module_head'(M, C, C1)
+    ).
+
+'$module_body'(M, G, M:G) :- var(G), !.
+'$module_body'(M, (A, B), (A1, B1)) :- !, '$module_body'(M, A, A1), '$module_body'(M, B, B1).
+'$module_body'(M, (A ; B), (A1 ; B1)) :- !, '$module_body'(M, A, A1), '$module_body'(M, B, B1).
+'$module_body'(M, (A -> B), (A1 -> B1)) :- !, '$module_body'(M, A, A1), '$module_body'(M, B, B1).
+'$module_body'(M, \+ A, \+ A1) :- !, '$module_body'(M, A, A1).
+'$module_body'(M, G, G1) :- '$module_head'(M, G, G1).
+
+'$module_head'(M, H, H1) :-
+    (   callable(H), M \== user -> '$$qualify'(M, H, H1) ; H1 = H ).
 
 '$check_static'(Clause) :-
     '$clause_head'(Clause, Head),
@@ -438,6 +485,7 @@ retract(Clause) :- '$with_context'(('$check_head'(Clause), '$check_static'(Claus
 
 %!  findall(+Template, :Goal, -List) is det.
 findall(Template, Goal, List) :-
+    ( var(List) -> true ; '$with_context'(can_be(list, List), findall/3) ),
     '$$bag_open'(Bag),
     catch(( call(Goal), '$$bag_add'(Bag, Template), fail ; true ), Error,
           ( '$$bag_drop'(Bag), throw(Error) )),
@@ -459,56 +507,75 @@ current_predicate(PI) :-
     PI = N/A.
 
 %!  clause(?Head, ?Body) is nondet.
+clause(MH, Body) :- nonvar(MH), MH = M:H, !, '$module_head'(M, H, H1), clause(H1, Body).
 clause(Head, Body) :-
     '$$clause_candidates'(Head, Candidates),
     member(Head - Body, Candidates).
 
-%!  term_variables(@Term, -Vars) is det.
-%   Vars in first-occurrence order, each exactly once.
+%!  term_variables(@Term, ?Vars) is det.
+%   Vars in first-occurrence order, each exactly once; Term may be cyclic.
 term_variables(Term, Vars) :-
-    '$term_variables'(Term, [], Vs0),
-    reverse(Vs0, Vars).
+    '$with_context'(can_be(list, Vars), term_variables/2),
+    '$$term_variables'(Term, Vars).
 
-'$term_variables'(Term, Seen, Vars) :-
-    var(Term),
-    !,
-    ( '$var_memberchk'(Term, Seen) -> Vars = Seen ; Vars = [Term|Seen] ).
-'$term_variables'(Term, Seen, Vars) :-
-    compound(Term),
-    !,
-    functor(Term, _, Arity),
-    '$term_variables_args'(1, Arity, Term, Seen, Vars).
-'$term_variables'(_, Seen, Seen).
-
-'$term_variables_args'(I, N, _, Seen, Seen) :- I > N, !.
-'$term_variables_args'(I, N, Term, Seen0, Vars) :-
-    arg(I, Term, A),
-    '$term_variables'(A, Seen0, Seen1),
-    I1 is I + 1,
-    '$term_variables_args'(I1, N, Term, Seen1, Vars).
-
-'$var_memberchk'(V, [W|_]) :- V == W, !.
-'$var_memberchk'(V, [_|T]) :- '$var_memberchk'(V, T).
-
-%!  bagof(+Template, :Goal, -Bag) is semidet.
-%   NOT ISO grouping: always merges into one bag
-%   regardless of free vars/^. It's a findall/3 that fails on [].
+%!  bagof(+Template, :Goal, -Bag) is nondet.
+%   One Bag for each binding of Goal's free variables, those not in Template
+%   or under V^; with none, the findall/3 of Goal, failing when empty. The
+%   bags come in the standard order of their bindings, as in Scryer.
 bagof(Template, Goal0, Bag) :-
-    '$bagof_strip'(Goal0, Goal),
-    findall(Template, Goal, Bag),
-    Bag \= [].
+    '$with_context'(can_be(list, Bag), bagof/3),
+    '$bagof_strip'(Goal0, Goal, Ex),
+    term_variables(Goal, GVs),
+    term_variables(Template-Ex, Bound),
+    '$bagof_free'(GVs, Bound, W),
+    (   W == []
+    ->  findall(Template, Goal, Bag),
+        Bag \== []
+    ;   findall(W-Template, Goal, Pairs),
+        Pairs \== [],
+        '$bagof_share'(Pairs, _),
+        keysort(Pairs, Sorted),
+        '$bagof_pick'(Sorted, W, Bag)
+    ).
 
 % nonvar first: an unbound Goal0 would otherwise unify with V^G0
 % itself (binding fresh vars) and recurse on that fresh var forever.
-'$bagof_strip'(Goal0, G) :-
+'$bagof_strip'(Goal0, G, [V|Ex]) :-
     nonvar(Goal0),
-    Goal0 = _ ^ G0,
+    Goal0 = V ^ G0,
     !,
-    '$bagof_strip'(G0, G).
-'$bagof_strip'(G, G).
+    '$bagof_strip'(G0, G, Ex).
+'$bagof_strip'(G, G, []).
 
-%!  setof(+Template, :Goal, -Set) is semidet.
+'$bagof_free'([], _, []).
+'$bagof_free'([V|Vs], Bound, W) :-
+    (   '$bagof_member'(V, Bound) -> W = W1 ; W = [V|W1] ),
+    '$bagof_free'(Vs, Bound, W1).
+
+'$bagof_member'(V, [U|Us]) :- ( V == U -> true ; '$bagof_member'(V, Us) ).
+
+% findall/3 copies each solution apart, so a variable shared between them comes
+% back as several; the n-th variable of every witness is made one again, as
+% in Scryer.
+'$bagof_share'([], _).
+'$bagof_share'([W-_|Ps], Dict) :-
+    term_variables(W, Vs),
+    append(Vs, _, Dict),
+    '$bagof_share'(Ps, Dict).
+
+% Each run of pairs with identical witnesses is one bag.
+'$bagof_pick'([K-T|Ps], W, Bag) :-
+    '$bagof_run'(Ps, K, Ts, Rest),
+    (   W = K, Bag = [T|Ts]
+    ;   Rest \== [], '$bagof_pick'(Rest, W, Bag)
+    ).
+
+'$bagof_run'([K1-T|Ps], K, [T|Ts], Rest) :- K1 == K, !, '$bagof_run'(Ps, K, Ts, Rest).
+'$bagof_run'(Rest, _, [], Rest).
+
+%!  setof(+Template, :Goal, -Set) is nondet.
 setof(Template, Goal, Set) :-
+    '$with_context'(can_be(list, Set), setof/3),
     bagof(Template, Goal, Bag),
     sort(Bag, Set).
 
@@ -519,27 +586,68 @@ setof(Template, Goal, Set) :-
 '$resolve_stream'(S, _) :- var(S), !, throw(error(instantiation_error, _)).
 '$resolve_stream'(S, N) :- '$stream_alias'(S, N), !.
 '$resolve_stream'('$stream'(Id), '$stream'(Id)) :- !.
+'$resolve_stream'(A, S) :- atom(A), '$user_alias'(A, S), !.
 '$resolve_stream'(user_input, _) :- !,
     throw(error(permission_error(output, stream, user_input), _)).
+'$resolve_stream'(S, _) :- atom(S), !, throw(error(existence_error(stream, S), _)).
 '$resolve_stream'(S, _) :- throw(error(domain_error(stream_or_alias, S), _)).
 
+% The current output, as the stream's name and as the target the writing
+% built-ins take.
+:- dynamic('$output'/2).
+'$output'(user_output, 0).
+
 %!  current_output(?Stream) is det.
-%   The current output is always user_output.
+%!  set_output(+Stream) is det.
+%   Closing the current output makes user_output current again.
 current_output(S) :-
     (   ( var(S) ; S = '$stream'(_) ; atom(S), '$stream_alias'(S, _) )
-    ->  S = user_output
+    ->  '$output'(C, _),
+        S = C
     ;   throw(error(domain_error(stream, S), current_output/1))
     ).
 
+set_output(S) :-
+    '$with_context'(('$resolve_stream'(S, N), '$output_stream'(S, N)), set_output/1),
+    '$set_output'(S, N).
+
+'$output_stream'(_, N) :- integer(N), !.
+'$output_stream'(S, N) :-
+    (   '$stream_info'(N, _, Mode, _, _, _)
+    ->  ( Mode == read -> throw(error(permission_error(output, stream, S), _)) ; true )
+    ;   throw(error(existence_error(stream, S), _))
+    ).
+
+'$set_output'(S0, N) :-
+    '$std_name'(N, S1),
+    ( atom(S1), '$stream_alias'(S1, _) -> S = S1 ; '$alias_stream'(S0, S) ),
+    (   '$output'(S, N)
+    ->  true
+    ;   ( '$$retract'('$output'(_, _)) -> true ; true ),
+        '$$assertz'('$output'(S, N))
+    ).
+
+% The current output's target, checked to be a text stream unless it is a
+% standard one.
+'$out_text'(PI, N) :-
+    '$output'(_, N),
+    ( integer(N) -> true ; '$with_context'('$want_type'(N, text, output), PI) ).
+
 %!  put_char(+Char), put_char(+Stream, +Char) is det.
 %!  put_code(+Code), put_code(+Stream, +Code) is det.
-put_char(C) :- '$with_context'('$check_char'(C), put_char/1), '$$write_raw'(0, C, 2).
+put_char(C) :-
+    '$out_text'(put_char/1, N),
+    '$with_context'('$check_char'(C), put_char/1),
+    '$$write_raw'(N, C, 2).
 put_char(S, C) :-
-    '$with_context'(('$resolve_stream'(S, N), '$check_char'(C)), put_char/2),
+    '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output), '$check_char'(C)), put_char/2),
     '$put'(N, C, S, put_char/2).
-put_code(C) :- '$with_context'('$code_char'(C, Ch), put_code/1), '$$write_raw'(0, Ch, 2).
+put_code(C) :-
+    '$out_text'(put_code/1, N),
+    '$with_context'('$code_char'(C, Ch), put_code/1),
+    '$$write_raw'(N, Ch, 2).
 put_code(S, C) :-
-    '$with_context'(('$resolve_stream'(S, N), '$code_char'(C, Ch)), put_code/2),
+    '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output), '$code_char'(C, Ch)), put_code/2),
     '$put'(N, Ch, S, put_code/2).
 
 '$put'(N, C, S, PI) :-
@@ -550,10 +658,155 @@ put_code(S, C) :-
 '$code_char'(C, Ch) :- '$char_code'(Ch, C).
 
 %!  flush_output, flush_output(+Stream) is det.
-flush_output :- '$$flush'(0).
+flush_output :- '$output'(_, N), '$$flush'(N).
 flush_output(S) :-
     '$with_context'('$resolve_stream'(S, N), flush_output/1),
     ( '$$flush'(N) -> true ; throw(error(existence_error(stream, S), flush_output/1)) ).
+
+%!  open(@Source, @Mode, -Stream) is det.
+%!  open(@Source, @Mode, -Stream, +Options) is det.
+%   A file that cannot be opened raises existence_error, or permission_error
+%   when it or its directory is there. Options are type(text|binary),
+%   alias(Atom), eof_action(error|eof_code|reset) and reposition(Bool), with
+%   Scryer's defaults text, eof_code and false.
+open(Source, Mode, Stream) :- '$open'(Source, Mode, Stream, [], open/3).
+open(Source, Mode, Stream, Options) :-
+    '$open'(Source, Mode, Stream, Options, open/4).
+
+'$open'(Source, Mode, Stream, Options, PI) :-
+    O = opts(Alias, Type, Eof, Repos),
+    '$with_context'(( '$open_check'(Source, Mode, Stream),
+                      '$open_options'(Options, Options, O) ), PI),
+    ( var(Type) -> Type = text ; true ),
+    ( var(Eof) -> Eof = eof_code ; true ),
+    ( var(Repos) -> Repos = false ; true ),
+    (   '$with_context'('$$open'(Source, Mode, S), PI)
+    ->  ( var(Alias) -> true ; '$$assertz'('$user_alias'(Alias, S)) ),
+        '$$assertz'('$stream_info'(S, Source, Mode, Type, Eof, Repos)),
+        ( Type == binary -> '$$stream_binary'(S) ; true ),
+        Stream = S
+    ;   '$open_error'(Source, Mode, E),
+        throw(error(E, PI))
+    ).
+
+'$open_options'(L, _, _) :- var(L), !, throw(error(instantiation_error, _)).
+'$open_options'([], _, _) :- !.
+'$open_options'([O|Os], L, Opts) :-
+    !,
+    '$open_option'(O, Opts),
+    '$open_options'(Os, L, Opts).
+'$open_options'(_, L, _) :- throw(error(type_error(list, L), _)).
+
+'$open_option'(O, _) :- var(O), !, throw(error(instantiation_error, _)).
+'$open_option'(O, _) :- compound(O), arg(1, O, V), var(V), !, throw(error(instantiation_error, _)).
+'$open_option'(type(T), opts(_, T0, _, _)) :- memberchk(T, [text, binary]), !, '$open_last'(T0, T).
+'$open_option'(eof_action(A), opts(_, _, A0, _)) :-
+    memberchk(A, [error, eof_code, reset]), !, '$open_last'(A0, A).
+'$open_option'(reposition(B), opts(_, _, _, B0)) :- memberchk(B, [true, false]), !, '$open_last'(B0, B).
+'$open_option'(alias(A), opts(Alias, _, _, _)) :-
+    atom(A),
+    !,
+    (   ( '$user_alias'(A, _) ; '$stream_alias'(A, _) ; A == user_input )
+    ->  throw(error(permission_error(open, source_sink, alias(A)), _))
+    ;   '$open_last'(Alias, A)
+    ).
+'$open_option'(O, _) :- throw(error(domain_error(stream_option, O), _)).
+
+% The first option of a kind counts.
+'$open_last'(V, X) :- ( var(V) -> V = X ; true ).
+
+:- dynamic('$user_alias'/2).
+:- dynamic('$stream_info'/6).
+:- dynamic('$stream_past'/1).
+
+% A stream's alias, from open/4, as the stream itself.
+'$alias_stream'(A, S) :- atom(A), '$user_alias'(A, S0), !, S = S0.
+'$alias_stream'(S, S).
+
+%!  close(@Stream) is det.
+close(S0) :-
+    '$alias_stream'(S0, S),
+    '$$close'(S),
+    (   '$$retract'('$user_alias'(_, S)) -> true ; true ),
+    (   '$$retract'('$stream_info'(S, _, _, _, _, _)) -> true ; true ),
+    (   '$$retract'('$stream_past'(S)) -> true ; true ),
+    (   '$output'(_, S) -> '$set_output'(user_output, 0) ; true ).
+
+%!  stream_property(?Stream, ?Property) is nondet.
+stream_property(S, P) :-
+    '$with_context'('$stream_property_args'(S, P, S1), stream_property/2),
+    (   var(S1)
+    ->  ( member(S1, [user_input, user_output, user_error]) ; '$stream_info'(S1, _, _, _, _, _) )
+    ;   true
+    ),
+    '$stream_property'(S1, P),
+    ( var(S) -> S = S1 ; true ).
+
+'$stream_property_args'(S, P, S1) :-
+    (   nonvar(P), \+ '$stream_property_name'(P)
+    ->  throw(error(domain_error(stream_property, P), _))
+    ;   var(S) -> true
+    ;   memberchk(S, [user_input, user_output, user_error]) -> S1 = S
+    ;   '$alias_stream'(S, S1), S1 = '$stream'(_), '$stream_info'(S1, _, _, _, _, _) -> true
+    ;   S = '$stream'(_) -> throw(error(existence_error(stream, S), _))
+    ;   atom(S) -> throw(error(existence_error(stream, S), _))
+    ;   throw(error(domain_error(stream, S), _))
+    ).
+
+'$stream_property_name'(P) :-
+    memberchk(P, [input, output, file_name(_), mode(_), alias(_), end_of_stream(_),
+                  eof_action(_), reposition(_), type(_), position(_)]).
+
+'$stream_property'(user_input, P) :-
+    member(P, [input, mode(read), alias(user_input), end_of_stream(not),
+               eof_action(eof_code), reposition(false), type(text)]).
+'$stream_property'(user_output, P) :-
+    member(P, [output, mode(write), alias(user_output), eof_action(eof_code),
+               reposition(false), type(text)]).
+'$stream_property'(user_error, P) :-
+    member(P, [output, mode(write), alias(user_error), eof_action(eof_code),
+               reposition(false), type(text)]).
+'$stream_property'('$stream'(Id), P) :-
+    S = '$stream'(Id),
+    '$stream_info'(S, F, M, T, E, R),
+    ( M == read -> IO = input ; IO = output ),
+    (   P = IO
+    ;   P = file_name(F)
+    ;   P = mode(M)
+    ;   '$user_alias'(A, S), P = alias(A)
+    ;   M == read, '$end_of_stream'(S, EOS), P = end_of_stream(EOS)
+    ;   P = eof_action(E)
+    ;   P = reposition(R)
+    ;   P = type(T)
+    ).
+
+'$end_of_stream'(S, E) :-
+    (   '$stream_past'(S) -> E = past
+    ;   '$$get_byte'(S, 1, -1) -> E = at
+    ;   E = not
+    ).
+
+'$open_check'(Source, Mode, Stream) :-
+    (   var(Source) -> throw(error(instantiation_error, _))
+    ;   var(Mode) -> throw(error(instantiation_error, _))
+    ;   \+ atom(Mode) -> throw(error(type_error(atom, Mode), _))
+    ;   nonvar(Stream) -> throw(error(uninstantiation_error(Stream), _))
+    ;   \+ atom(Source) -> throw(error(domain_error(source_sink, Source), _))
+    ;   memberchk(Mode, [read, write, append]) -> true
+    ;   throw(error(domain_error(io_mode, Mode), _))
+    ).
+
+'$open_error'(F, Mode, E) :-
+    (   '$file_exists'(F)
+    ->  E = permission_error(open, source_sink, F)
+    ;   Mode \== read, '$directory'(F, Dir), '$file_exists'(Dir)
+    ->  E = permission_error(open, source_sink, F)
+    ;   E = existence_error(source_sink, F)
+    ).
+
+% file_mtime/2 is the platform's; without it nothing is known to exist.
+'$file_exists'(F) :-
+    catch(file_mtime(F, _), error(existence_error(procedure, _), _), fail).
 
 %!  close(+Stream, +Options) is det.
 %   Options: force(Bool), which changes nothing; close/1 never raises.
@@ -571,16 +824,24 @@ close(S, Opts) :-
 
 %!  write(@Term), write(+Stream, @Term) is det.
 %   TODO: no operator-aware output.
-write(T) :- '$$write_raw'(0, T, 2).
+% '$$write_text' writes to a stream it can check alone; the rest, aliases and
+% errors, takes the long way.
+write(T) :-
+    '$output'(_, N),
+    ( '$$write_text'(N, T, 2) -> true ; '$out_text'(write/1, N), '$$write_raw'(N, T, 2) ).
+write(S, T) :- '$$write_text'(S, T, 2), !.
 write(S, T) :-
-    '$with_context'('$resolve_stream'(S, N), write/2),
+    '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output)), write/2),
     ( '$$write_raw'(N, T, 2) -> true ; throw(error(existence_error(stream, S), write/2)) ).
 
 %!  writeq(@Term) is det.
 %!  writeq(+Stream, @Term) is det.
-writeq(T) :- '$$write_raw'(0, T, 3).
+writeq(T) :-
+    '$output'(_, N),
+    ( '$$write_text'(N, T, 3) -> true ; '$out_text'(writeq/1, N), '$$write_raw'(N, T, 3) ).
+writeq(S, T) :- '$$write_text'(S, T, 3), !.
 writeq(S, T) :-
-    '$with_context'('$resolve_stream'(S, N), writeq/2),
+    '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output)), writeq/2),
     ( '$$write_raw'(N, T, 3) -> true ; throw(error(existence_error(stream, S), writeq/2)) ).
 
 %!  write_term(@Term, +Options) is det.
@@ -588,25 +849,44 @@ writeq(S, T) :-
 %   Options: quoted(Bool), ignore_ops(Bool), numbervars(Bool).
 %   TODO: ignore_ops(false) is accepted but not honored.
 write_term(T, Opts) :-
-    '$with_context'('$write_options'(Opts, Q), write_term/2),
-    '$$write_raw'(0, T, Q).
+    '$out_text'(write_term/2, N),
+    '$with_context'('$write_options'(Opts, Q, VNs), write_term/2),
+    '$write_term'(N, T, Q, VNs).
 write_term(S, T, Opts) :-
-    '$with_context'(('$resolve_stream'(S, N), '$write_options'(Opts, Q)), write_term/3),
-    ( '$$write_raw'(N, T, Q) -> true ; throw(error(existence_error(stream, S), write_term/3)) ).
+    '$with_context'(('$resolve_stream'(S, N), '$want_type'(N, text, output), '$write_options'(Opts, Q, VNs)), write_term/3),
+    ( '$write_term'(N, T, Q, VNs) -> true ; throw(error(existence_error(stream, S), write_term/3)) ).
 
-'$write_options'(Opts, Q) :-
+'$write_term'(N, T, Q, []) :- !, '$$write_raw'(N, T, Q).
+'$write_term'(N, T, Q, VNs) :- '$$write_vars'(N, T, Q, VNs).
+
+'$write_options'(Opts, Q, VNs) :-
     '$options_list'(Opts),
-    '$write_options'(Opts, 0, Q).
-'$write_options'([], Q, Q).
-'$write_options'([O|Os], Q0, Q) :-
-    '$write_option'(O, Q0, Q1),
-    '$write_options'(Os, Q1, Q).
+    '$write_options'(Opts, 0, Q, [], VNs).
+'$write_options'([], Q, Q, VNs, VNs).
+'$write_options'([O|Os], Q0, Q, VNs0, VNs) :-
+    '$write_option'(O, Q0, Q1, VNs0, VNs1),
+    '$write_options'(Os, Q1, Q, VNs1, VNs).
 
-'$write_option'(O, _, _) :- var(O), !, throw(error(instantiation_error, _)).
-'$write_option'(quoted(B), F0, F) :- '$option_bool'(quoted(B), write_option, V), !, F is F0 \/ V.
-'$write_option'(ignore_ops(B), F0, F) :- '$option_bool'(ignore_ops(B), write_option, V), !, F is F0 \/ V << 2.
-'$write_option'(numbervars(B), F0, F) :- '$option_bool'(numbervars(B), write_option, V), !, F is F0 \/ V << 1.
-'$write_option'(O, _, _) :- throw(error(domain_error(write_option, O), _)).
+'$write_option'(O, _, _, _, _) :- var(O), !, throw(error(instantiation_error, _)).
+'$write_option'(quoted(B), F0, F, VNs, VNs) :- '$option_bool'(quoted(B), write_option, V), !, F is F0 \/ V.
+'$write_option'(ignore_ops(B), F0, F, VNs, VNs) :- '$option_bool'(ignore_ops(B), write_option, V), !, F is F0 \/ V << 2.
+'$write_option'(numbervars(B), F0, F, VNs, VNs) :- '$option_bool'(numbervars(B), write_option, V), !, F is F0 \/ V << 1.
+'$write_option'(double_quotes(B), F0, F, VNs, VNs) :- '$option_bool'(double_quotes(B), write_option, V), !, F is F0 \/ V << 4.
+'$write_option'(variable_names(L), F, F, _, L) :- !, '$variable_names'(L, L).
+'$write_option'(O, _, _, _, _) :- throw(error(domain_error(write_option, O), _)).
+
+'$variable_names'(L, _) :- var(L), !, throw(error(instantiation_error, _)).
+'$variable_names'([], _) :- !.
+'$variable_names'([P|Ps], L) :-
+    nonvar(P),
+    P = (N = _),
+    !,
+    (   var(N) -> throw(error(instantiation_error, _))
+    ;   atom(N) -> '$variable_names'(Ps, L)
+    ;   throw(error(domain_error(write_option, variable_names(L)), _))
+    ).
+'$variable_names'([P|_], _) :- var(P), !, throw(error(instantiation_error, _)).
+'$variable_names'(_, L) :- throw(error(domain_error(write_option, variable_names(L)), _)).
 
 '$option_bool'(O, _, _) :- arg(1, O, B), var(B), !, throw(error(instantiation_error, _)).
 '$option_bool'(O, _, 1) :- arg(1, O, true), !.
@@ -638,7 +918,7 @@ atom_codes(A, Cs) :-
     '$with_context'('$atom_codes'(A, Cs), atom_codes/2).
 '$atom_codes'(A, Cs) :-
     (   nonvar(A)
-    ->  '$must_be_atom'(A),
+    ->  must_be(atom, A),
         '$$atom_codes'(A, Cs0),
         Cs = Cs0
     ;   '$codes_list'(Cs),
@@ -673,6 +953,38 @@ peek_char(C) :-
 peek_char(S, C) :- '$with_context'('$get_char'(S, 1, C), peek_char/2).
 get_code(C) :-
     '$with_context'(('$current_input'(S), '$get_code'(S, 0, C)), get_code/1).
+
+%!  get_byte(?Byte), get_byte(+Stream, ?Byte) is det.
+%!  peek_byte(?Byte), peek_byte(+Stream, ?Byte) is det.
+%!  put_byte(+Byte), put_byte(+Stream, +Byte) is det.
+%   On a binary stream; -1 is the end. A byte of 0 cannot be written: atoms
+%   are C strings.
+get_byte(B) :- '$with_context'(('$current_input'(S), '$get_byte'(S, 0, B)), get_byte/1).
+get_byte(S, B) :- '$with_context'('$get_byte'(S, 0, B), get_byte/2).
+peek_byte(B) :- '$with_context'(('$current_input'(S), '$get_byte'(S, 1, B)), peek_byte/1).
+peek_byte(S, B) :- '$with_context'('$get_byte'(S, 1, B), peek_byte/2).
+put_byte(B) :- '$output'(S, _), '$with_context'('$put_byte'(S, B), put_byte/1).
+put_byte(S, B) :- '$with_context'('$put_byte'(S, B), put_byte/2).
+
+'$get_byte'(S0, Peek, B) :-
+    '$alias_stream'(S0, S),
+    (   var(B) -> true
+    ;   integer(B), B >= -1, B =< 255 -> true
+    ;   throw(error(type_error(in_byte, B), _))
+    ),
+    '$want_type'(S, binary, input),
+    '$read_byte'(S, Peek, B0),
+    B = B0.
+
+'$put_byte'(S, B) :-
+    '$resolve_stream'(S, N),
+    (   var(B) -> throw(error(instantiation_error, _))
+    ;   integer(B), B >= 0, B =< 255 -> true
+    ;   throw(error(type_error(byte, B), _))
+    ),
+    '$want_type'(N, binary, output),
+    char_code(C, B),
+    '$$write_raw'(N, C, 2).
 get_code(S, C) :- '$with_context'('$get_code'(S, 0, C), get_code/2).
 peek_code(C) :-
     '$with_context'(('$current_input'(S), '$get_code'(S, 1, C)), peek_code/1).
@@ -691,11 +1003,14 @@ read_term(T, Opts) :-
 read_term(S, T, Opts) :-
     '$with_context'('$read_term'(S, T, Opts), read_term/3).
 
-'$read_term'(S, T, Opts) :-
+'$read_term'(S0, T, Opts) :-
+    '$alias_stream'(S0, S),
+    '$want_type'(S, text, input),
     '$options_list'(Opts),
     '$read_options_check'(Opts),
     '$read_byte'(S, 1, _),
     '$$read_term'(S, T0, Names),
+    ( T0 == end_of_file -> '$hit_eof'(S, 0) ; true ),
     term_variables(T0, Vars),
     '$read_options_bind'(Opts, T0, Names, Vars),
     T = T0.
@@ -759,41 +1074,88 @@ current_input(S) :-
 
 set_input(S) :- '$with_context'('$set_input'(S), set_input/1).
 
-'$set_input'(S) :-
-    ( var(S) -> throw(error(instantiation_error, _)) ; true ),
+'$set_input'(S0) :-
+    ( var(S0) -> throw(error(instantiation_error, _)) ; true ),
+    '$alias_stream'(S0, S),
     '$input_stream'(S),
     ( S == user_input -> true ; '$read_byte'(S, 1, _) ),
-    ( '$$retract'('$input'(_)) -> true ; true ),
-    '$$assertz'('$input'(S)).
+    (   '$input'(S)
+    ->  true
+    ;   ( '$$retract'('$input'(_)) -> true ; true ),
+        '$$assertz'('$input'(S))
+    ).
 
-'$get_char'(S, Peek, C) :-
+'$get_char'(S0, Peek, C) :-
+    '$alias_stream'(S0, S),
     '$check_in_char'(C),
-    '$read_byte'(S, Peek, B),
+    '$want_type'(S, text, input),
+    '$read_unit'(char, S, Peek, B),
     (   B =:= -1
     ->  C = end_of_file
     ;   char_code(C0, B),
         C = C0
     ).
 
-'$get_code'(S, Peek, C) :-
+'$get_code'(S0, Peek, C) :-
+    '$alias_stream'(S0, S),
     '$check_in_code'(C),
-    '$read_byte'(S, Peek, B),
+    '$want_type'(S, text, input),
+    '$read_unit'(char, S, Peek, B),
     C = B.
 
-'$read_byte'(S, _, _) :- var(S), !, throw(error(instantiation_error, _)).
-'$read_byte'(S, Peek, B) :-
+'$read_byte'(S, Peek, B) :- '$read_unit'(byte, S, Peek, B).
+
+% A byte, or a UTF-8 character's code.
+'$read_unit'(_, S, _, _) :- var(S), !, throw(error(instantiation_error, _)).
+'$read_unit'(Unit, S, Peek, B) :-
     '$input_stream'(S),
-    '$$get_byte'(S, Peek, B0),
+    (   Unit == byte -> '$$get_byte'(S, Peek, B0) ; '$$get_char'(S, Peek, B0) ),
     (   B0 =:= -2 -> throw(error(existence_error(stream, S), _))
     ;   B0 =:= -3 -> throw(error(permission_error(input, stream, S), _))
+    ;   B0 =:= -1 -> '$hit_eof'(S, Peek), B = -1
     ;   B = B0
     ).
+
+% A read that hits the end puts the stream past it; one more read then does
+% what its eof_action says. A peek moves nothing.
+'$hit_eof'(S, Peek) :-
+    (   '$stream_past'(S)
+    ->  (   '$stream_info'(S, _, _, _, error, _)
+        ->  throw(error(permission_error(input, past_end_of_stream, S), _))
+        ;   true
+        )
+    ;   Peek =:= 1
+    ->  true
+    ;   S = '$stream'(_)
+    ->  '$$assertz'('$stream_past'(S))
+    ;   true
+    ).
+
+% Text predicates want a text stream, byte predicates a binary one; the
+% standard streams are text.
+'$want_type'(S, _, _) :- var(S), !.
+'$want_type'(S0, Want, Dir) :-
+    '$std_name'(S0, S),
+    (   '$stream_info'(S, _, Mode, Type, _, _) -> true ; Mode = none, Type = text ),
+    (   Dir == input, Mode \== read, Mode \== none
+    ->  throw(error(permission_error(input, stream, S), _))
+    ;   Dir == output, Mode == read
+    ->  throw(error(permission_error(output, stream, S), _))
+    ;   Type == Want
+    ->  true
+    ;   Type == binary
+    ->  throw(error(permission_error(Dir, binary_stream, S), _))
+    ;   throw(error(permission_error(Dir, text_stream, S), _))
+    ).
+
+'$std_name'(N, S) :- ( integer(N), '$stream_alias'(S0, N) -> S = S0 ; S = N ).
 
 '$input_stream'(user_input) :- !.
 '$input_stream'('$stream'(_)) :- !.
 '$input_stream'(S) :-
     '$stream_alias'(S, _), !,
     throw(error(permission_error(input, stream, S), _)).
+'$input_stream'(S) :- atom(S), !, throw(error(existence_error(stream, S), _)).
 '$input_stream'(S) :- throw(error(domain_error(stream_or_alias, S), _)).
 
 '$check_in_char'(C) :- var(C), !.
@@ -810,7 +1172,7 @@ set_input(S) :- '$with_context'('$set_input'(S), set_input/1).
 atom_length(A, L) :-
     '$with_context'('$atom_length'(A, L), atom_length/2).
 '$atom_length'(A, L) :-
-    '$must_be_atom'(A),
+    must_be(atom, A),
     (   var(L) -> true
     ;   integer(L) -> ( L >= 0 -> true ; throw(error(domain_error(not_less_than_zero, L), _)) )
     ;   throw(error(type_error(integer, L), _))
@@ -824,9 +1186,9 @@ atom_concat(A, B, C) :-
     '$with_context'('$atom_concat_check'(A, B, C), atom_concat/3),
     '$atom_concat'(A, B, C).
 '$atom_concat_check'(A, B, C) :-
-    '$can_be_atom'(A),
-    '$can_be_atom'(B),
-    '$can_be_atom'(C),
+    can_be(atom, A),
+    can_be(atom, B),
+    can_be(atom, C),
     (   var(C), ( var(A) ; var(B) )
     ->  throw(error(instantiation_error, _))
     ;   true
@@ -872,22 +1234,22 @@ sub_atom(Atom, Before, Length, After, Sub) :-
 '$sub_prefix'(_, L, L, []).
 '$sub_prefix'([C|Cs], L0, L, [C|P]) :- L1 is L0 + 1, '$sub_prefix'(Cs, L1, L, P).
 '$sub_atom_check'(Atom, Before, Length, After, Sub) :-
-    '$must_be_atom'(Atom),
-    '$can_be_atom'(Sub),
-    '$can_be_integer'(Before),
-    '$can_be_integer'(Length),
-    '$can_be_integer'(After).
+    must_be(atom, Atom),
+    can_be(atom, Sub),
+    can_be(integer, Before),
+    can_be(integer, Length),
+    can_be(integer, After).
 
 %!  atom_chars(?Atom, ?Chars) is det.
 atom_chars(A, Chars) :-
     '$with_context'('$atom_chars'(A, Chars), atom_chars/2).
 '$atom_chars'(A, Chars) :-
     (   nonvar(A)
-    ->  '$must_be_atom'(A),
+    ->  must_be(atom, A),
         '$$atom_codes'(A, Codes),
         '$codes_chars'(Codes, Chars)
     ;   '$chars_list'(Chars),
-        '$codes_chars'(Codes, Chars),
+        '$chars_codes'(Chars, Codes),
         '$$atom_codes'(A, Codes)
     ).
 
@@ -896,7 +1258,7 @@ number_codes(N, Cs) :-
     '$with_context'('$number_codes'(N, Cs), number_codes/2).
 '$number_codes'(N, Cs) :-
     (   nonvar(N)
-    ->  '$must_be_number'(N),
+    ->  must_be(number, N),
         '$text_list_bound'(Cs, '$check_code'),
         (   '$complete_list'(Cs)
         ->  '$parse_number'(Cs, N)
@@ -912,16 +1274,16 @@ number_chars(N, Chars) :-
     '$with_context'('$number_chars'(N, Chars), number_chars/2).
 '$number_chars'(N, Chars) :-
     (   nonvar(N)
-    ->  '$must_be_number'(N),
+    ->  must_be(number, N),
         '$text_list_bound'(Chars, '$check_char'),
         (   '$complete_list'(Chars)
-        ->  '$codes_chars'(Codes, Chars),
+        ->  '$chars_codes'(Chars, Codes),
             '$parse_number'(Codes, N)
         ;   '$$number_codes'(N, Codes),
             '$codes_chars'(Codes, Chars)
         )
     ;   '$chars_list'(Chars),
-        '$codes_chars'(Codes, Chars),
+        '$chars_codes'(Chars, Codes),
         '$parse_number'(Codes, N)
     ).
 
@@ -936,22 +1298,18 @@ number_chars(N, Chars) :-
     '$$atom_codes'(Char, [Code]),
     '$codes_chars'(Codes, Chars).
 
-'$must_be_atom'(A) :- var(A), !, throw(error(instantiation_error, _)).
-'$must_be_atom'(A) :- atom(A), !.
-'$must_be_atom'(A) :- throw(error(type_error(atom, A), _)).
+'$chars_codes'([], []).
+'$chars_codes'([Char|Chars], [Code|Codes]) :-
+    '$$atom_codes'(Char, [Code]),
+    '$chars_codes'(Chars, Codes).
 
-'$must_be_number'(N) :- number(N), !.
-'$must_be_number'(N) :- throw(error(type_error(number, N), _)).
 
-'$can_be_atom'(A) :- ( var(A) ; atom(A) ), !.
-'$can_be_atom'(A) :- throw(error(type_error(atom, A), _)).
 
-'$can_be_integer'(I) :- ( var(I) ; integer(I) ), !.
-'$can_be_integer'(I) :- throw(error(type_error(integer, I), _)).
+
 
 '$codes_list'(L) :- '$text_list'(L, '$check_code').
 '$check_code'(C) :- var(C), !, throw(error(instantiation_error, _)).
-'$check_code'(C) :- integer(C), C >= 1, C =< 1114111, !.
+'$check_code'(C) :- integer(C), C >= 0, C =< 1114111, !.
 '$check_code'(C) :- throw(error(representation_error(character_code), _)).
 
 % Walks the elements before the tail first, so a bad element in a partial list
@@ -984,6 +1342,7 @@ number_chars(N, Chars) :-
 
 %!  retractall(+Head) is det.
 %   an unknown predicate is created as dynamic.
+retractall(MH) :- nonvar(MH), MH = M:H, !, '$module_clause'(M, H, H1), retractall(H1).
 retractall(Head) :-
     '$with_context'('$check_static'(Head), retractall/1),
     '$make_dynamic'(Head),
@@ -1096,7 +1455,6 @@ current_op(P, T, N) :- '$$op'(P, T, N).
 % --- prolog flags ---
 
 %!  current_prolog_flag(?Flag, ?Value) is nondet.
-%   no set_prolog_flag/2 currently
 current_prolog_flag(Flag, Value) :-
     '$$prolog_flags'(Flags),
     (   var(Flag)
@@ -1108,7 +1466,30 @@ current_prolog_flag(Flag, Value) :-
     ;   throw(error(type_error(atom, Flag), current_prolog_flag/2))
     ).
 
+%!  set_prolog_flag(+Flag, +Value) is det.
+set_prolog_flag(Flag, Value) :-
+    '$with_context'('$check_flag'(Flag, Value), set_prolog_flag/2),
+    '$$set_flag'(Flag, Value).
+
+'$check_flag'(Flag, _) :- var(Flag), !, throw(error(instantiation_error, _)).
+'$check_flag'(_, Value) :- var(Value), !, throw(error(instantiation_error, _)).
+'$check_flag'(Flag, _) :- \+ atom(Flag), !, throw(error(type_error(atom, Flag), _)).
+'$check_flag'(Flag, Value) :-
+    (   '$flag_values'(Flag, Values)
+    ->  (   atom(Value), memberchk(Value, Values) -> true
+        ;   throw(error(domain_error(flag_value, Flag+Value), _))
+        )
+    ;   '$$prolog_flags'(Flags), memberchk(Flag-_, Flags)
+    ->  throw(error(permission_error(modify, flag, Flag), _))
+    ;   throw(error(domain_error(prolog_flag, Flag), _))
+    ).
+
+'$flag_values'(double_quotes, [chars, codes, atom]).
+'$flag_values'(unknown, [error, fail, warning]).
+'$flag_values'(char_conversion, [on, off]).
+'$flag_values'(debug, [on, off]).
+
 % The core's own dependencies.
-:- consult('../lib/lists.pl').
 :- consult('../lib/error.pl').
+:- consult('../lib/lists.pl').
 :- consult('../lib/misc.pl').

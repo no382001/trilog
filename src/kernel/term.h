@@ -3,12 +3,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef enum { T_VAR, T_ATOM, T_INT, T_FLT, T_STR } ttag_t;
+typedef enum { T_VAR, T_ATOM, T_INT, T_FLT, T_STR, T_BACK } ttag_t;
 
+#pragma pack(push, 4)
 typedef struct tterm {
   ttag_t tag;
   union {
-    int32_t slot;    // T_VAR
+    int32_t slot;    // T_VAR; T_BACK: preorder number of a T_STR above
     int32_t atom_id; // T_ATOM
     int64_t ival;    // T_INT
     double fval;     // T_FLT
@@ -19,6 +20,10 @@ typedef struct tterm {
     } str; // T_STR
   } as;
 } tterm_t;
+#pragma pack(pop)
+
+_Static_assert(sizeof(tterm_t) == 12 + sizeof(void *),
+               "tterm_t has no padding");
 
 tterm_t *tt_var(trilog_t *T, int32_t slot);
 tterm_t *tt_atom(trilog_t *T, const char *name);
@@ -28,6 +33,8 @@ tterm_t *tt_struct(trilog_t *T, const char *name, int32_t arity,
                    tterm_t **args);
 
 size_t heap_copy(trilog_t *T, tterm_t *t, size_t *rename, size_t cut_barrier);
+// heap_copy for a template that holds T_BACK leaves.
+size_t heap_copy_cyclic(trilog_t *T, tterm_t *t, size_t *rename);
 int unify_template(trilog_t *T, tterm_t *t, size_t goal, size_t *rename);
 // Returns roots, moved with the templates under them into one exact chunk.
 tterm_t **templates_flatten(trilog_t *T, tterm_t **roots, int32_t n);
@@ -44,7 +51,8 @@ enum {
   PRINT_QUOTED = 1,
   PRINT_NUMBERVARS = 2,
   PRINT_IGNORE_OPS = 4,
-  PRINT_ANSWER = 8
+  PRINT_ANSWER = 8,
+  PRINT_DOUBLE_QUOTES = 16 // a list of one-character atoms prints as "abc"
 };
 void print_term_via(trilog_t *T, size_t r, int flags, emit_fn emit);
 
@@ -54,6 +62,8 @@ const char *answer_name(trilog_t *T, size_t ref);
 
 tterm_t *heap_to_template(trilog_t *T, size_t r, int32_t *nvars_out);
 bool heap_acyclic(trilog_t *T, size_t r);
+// The variables of r in first-occurrence order, as a list; r may be cyclic.
+size_t heap_term_variables(trilog_t *T, size_t r);
 
 int heap_terms_to_templates(trilog_t *T, size_t *terms, int32_t n,
                             tterm_t **out, int32_t *nvars_out);

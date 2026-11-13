@@ -94,8 +94,9 @@
 ?- atom_number('3.5', X).
    X = 3.5.
 
+% atom_number(?Atom, ?Number) per lib/misc.pl gives an atom.
 ?- atom_number(X, 3.5).
-   X = 3.5.
+   X = '3.5'.
 
 ?- number_codes(33.0, [0'3|_L]).
    true.

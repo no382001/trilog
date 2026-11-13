@@ -1,10 +1,13 @@
 #include "io.h"
+#include "chars.h"
 #include "ctx.h"
 #include "mem.h"
 #include "platform.h"
 #include <string.h>
 
 bool io_cwd(trilog_t *T, char *buf, size_t cap) {
+  if (T->hooks.cwd)
+    return T->hooks.cwd(T->hooks.userdata, buf, cap);
   return T->default_io && platform_cwd(buf, cap);
 }
 
@@ -30,8 +33,7 @@ static void capture_append(trilog_t *T, const char *str) {
   T->capture_pos += len;
 }
 
-static bool write_all(trilog_t *T, void *handle, const char *str) {
-  size_t n = strlen(str);
+static bool write_bytes(trilog_t *T, void *handle, const char *str, size_t n) {
   while (n > 0) {
     long k = T->hooks.write(T->hooks.userdata, handle, str, n);
     if (k <= 0)
@@ -40,6 +42,24 @@ static bool write_all(trilog_t *T, void *handle, const char *str) {
     n -= (size_t)k;
   }
   return true;
+}
+
+// Code 0, kept as C0 80 inside, leaves as one NUL byte.
+static bool write_all(trilog_t *T, void *handle, const char *str) {
+  static const char nul = '\0';
+  for (;;) {
+    const char *p = str;
+    while (*p && !((unsigned char)p[0] == NUL_LEAD &&
+                   (unsigned char)p[1] == NUL_TRAIL))
+      p++;
+    if (!write_bytes(T, handle, str, (size_t)(p - str)))
+      return false;
+    if (!*p)
+      return true;
+    if (!write_bytes(T, handle, &nul, 1))
+      return false;
+    str = p + 2;
+  }
 }
 
 static void io_write(trilog_t *T, void *handle, const char *str) {
@@ -62,22 +82,32 @@ void io_flush_target(trilog_t *T, void *handle) {
   T->hooks.flush(T->hooks.userdata, handle);
 }
 
-// One byte at a time, so input meant for the host is never read ahead.
+// One byte at a time, so input meant for the host is never read ahead
+// further than a peek asks.
+int io_peek_at(trilog_t *T, int i) {
+  while (T->in_ahead_len <= i) {
+    char c;
+    if (T->in_eof ||
+        T->hooks.read(T->hooks.userdata, T->hooks.in, &c, 1) != 1) {
+      T->in_eof = true;
+      return -1;
+    }
+    T->in_ahead[T->in_ahead_len++] = (unsigned char)c;
+  }
+  return T->in_ahead[i];
+}
+
 int io_read_char(trilog_t *T) {
-  int c = io_peek_char(T);
-  T->in_peeked = -2;
+  int c = io_peek_at(T, 0);
+  if (c < 0) {
+    T->in_eof = false;
+    return -1;
+  }
+  memmove(T->in_ahead, T->in_ahead + 1, (size_t)--T->in_ahead_len);
   return c;
 }
 
-int io_peek_char(trilog_t *T) {
-  if (T->in_peeked == -2) {
-    char c;
-    T->in_peeked = T->hooks.read(T->hooks.userdata, T->hooks.in, &c, 1) == 1
-                       ? (unsigned char)c
-                       : -1;
-  }
-  return T->in_peeked;
-}
+int io_peek_char(trilog_t *T) { return io_peek_at(T, 0); }
 
 char *io_read_line(trilog_t *T, char *buf, int size) {
   int n = 0;
@@ -106,6 +136,22 @@ bool io_file_write(trilog_t *T, void *handle, const char *str) {
 
 long io_file_read(trilog_t *T, void *handle, char *buf, size_t n) {
   return T->hooks.read(T->hooks.userdata, handle, buf, n);
+}
+
+int io_reader_peek_at(trilog_t *T, io_reader_t *r, int i) {
+  if (r->pos + (size_t)i >= r->len) {
+    memmove(r->buf, r->buf + r->pos, r->len - r->pos);
+    r->len -= r->pos;
+    r->pos = 0;
+    while (r->len <= (size_t)i) {
+      long got = T->hooks.read(T->hooks.userdata, r->handle, r->buf + r->len,
+                               sizeof r->buf - r->len);
+      if (got <= 0)
+        return -1;
+      r->len += (size_t)got;
+    }
+  }
+  return (unsigned char)r->buf[r->pos + (size_t)i];
 }
 
 int io_reader_byte(trilog_t *T, io_reader_t *r, bool peek) {

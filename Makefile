@@ -14,7 +14,7 @@ ifeq ($(PLATFORM),freestanding)
   override CFLAGS += -ffreestanding -fno-stack-protector -U_FORTIFY_SOURCE
 endif
 KERNEL_SRCS = src/kernel/fmt.c src/kernel/heap.c src/kernel/unify.c src/kernel/term.c src/kernel/solve.c \
-              src/kernel/parse.c src/kernel/arena.c src/kernel/gc.c src/kernel/mem.c
+              src/kernel/parse.c src/kernel/module.c src/kernel/arena.c src/kernel/gc.c src/kernel/mem.c
 IO_SRCS = src/io/io.c src/io/streams.c
 LIB_SRCS = $(KERNEL_SRCS) $(IO_SRCS) src/trilog.c src/platform/$(PLATFORM).c src/platform/$(if $(filter 0,$(LIBC)),nolibc,libc).c
 CLI_SRCS = cli/main.c cli/toplevel.c cli/host_default.c cli/terminal_$(PLATFORM).c
@@ -29,17 +29,17 @@ REL = _build/release-$(VARIANT)
 HIDE_INTERNALS = $(if $(filter 0,$(OPAQUE)),true,objcopy --wildcard --keep-global-symbol='trilog_*')
 DEV_LIB_OBJS = $(patsubst %.c,$(DEV)/%.o,$(LIB_SRCS) src/kernel/embedded_none.c \
                  src/kernel/image_none.c src/kernel/image_dump.c)
-REL_LIB_OBJS = $(patsubst %.c,$(REL)/%.o,$(LIB_SRCS) _build/embedded.c) $(REL)/image.o
+REL_LIB_OBJS = $(patsubst %.c,$(REL)/%.o,$(LIB_SRCS)) $(REL)/embedded.o $(REL)/image.o
 DEV_CLI_OBJS = $(patsubst %.c,$(DEV)/%.o,$(CLI_SRCS))
 REL_CLI_OBJS = $(patsubst %.c,$(REL)/%.o,$(CLI_SRCS))
 
 $(DEV)/cli/%.o $(REL)/cli/%.o: CPPFLAGS = -Iinclude -Icli -MMD -MP
 
-$(DEV)/%.o: %.c | format
+$(DEV)/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) -DTRILOG_IMAGE_DUMP $(CFLAGS) -c $< -o $@
 
-$(REL)/%.o: %.c | format
+$(REL)/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) -DTRILOG_EMBEDDED $(CFLAGS) -flto=auto -c $< -o $@
 
@@ -84,13 +84,24 @@ trilog: $(DEV)/trilog
 
 lib: $(DEV)/libtrilog.a
 
-# The release build bakes boot/core.pl and lib/*.pl into the binary, so it
-# runs from anywhere without the library files next to it.
-EMBED_FILES = boot/core.pl $(sort $(wildcard lib/*.pl))
+PROLOG_SRCS = boot/core.pl $(sort $(wildcard lib/*.pl))
 
-_build/embedded.c: $(EMBED_FILES) tools/embed_libs.sh
-	@mkdir -p _build
+# EMBED_FILES are the libraries whose text a release bakes in, every lib/*.pl
+# unless set; EMBED_USERS are the C files that load libraries at run time.
+EMBED_FILES ?= $(sort $(wildcard lib/*.pl))
+EMBED_USERS ?= cli/main.c cli/toplevel.c
+
+# Rewritten only when EMBED_FILES changes, so a new list rebuilds embedded.c.
+$(REL)/embed.list: FORCE
+	@mkdir -p $(@D)
+	@printf '%s\n' "$(EMBED_FILES)" | cmp -s - $@ || printf '%s\n' "$(EMBED_FILES)" >$@
+
+$(REL)/embedded.c: $(EMBED_FILES) $(REL)/embed.list $(EMBED_USERS) tools/embed_libs.sh tools/check_embed.sh $(REL)/image.c
+	sh tools/check_embed.sh $(REL)/image.files $(EMBED_FILES) -- $(EMBED_FILES) $(EMBED_USERS)
 	sh tools/embed_libs.sh $(EMBED_FILES) > $@
+
+$(REL)/embedded.o: $(REL)/embedded.c
+	$(CC) $(CPPFLAGS) -DTRILOG_EMBEDDED $(CFLAGS) -flto=auto -c $< -o $@
 
 # The release library boots from an image of the loaded core, written by the
 # host dev build. IMAGE_LOAD runs before the dump and decides what it holds;
@@ -101,10 +112,15 @@ HOST_MAKE = $(MAKE) --no-print-directory CC=gcc AR=gcc-ar "CFLAGS=-Wall -Wextra 
   PLATFORM=posix LIBC=1 OPAQUE=1 DEV=_build/dev-posix \
   "HIDE_INTERNALS=objcopy --wildcard --keep-global-symbol=trilog_*"
 
-$(REL)/image.c: $(EMBED_FILES) $(LIB_SRCS) $(HDRS) cli/main.c cli/toplevel.c $(IMAGE_DEPS)
+# Rewritten only when IMAGE_LOAD changes, so a new one rebuilds the image.
+$(REL)/image.load: FORCE
+	@mkdir -p $(@D)
+	@printf '%s\n' "$(IMAGE_LOAD)" | cmp -s - $@ || printf '%s\n' "$(IMAGE_LOAD)" >$@
+
+$(REL)/image.c: $(PROLOG_SRCS) $(LIB_SRCS) src/kernel/image_dump.c $(HDRS) cli/main.c cli/toplevel.c $(IMAGE_DEPS) $(REL)/image.load
 	@mkdir -p $(@D)
 	$(HOST_MAKE) trilog
-	./trilog -n -f -e "$(IMAGE_LOAD), '\$$\$$dump_image'('$@'), halt."
+	./trilog -n -f -e "$(IMAGE_LOAD), '\$$\$$dump_image'('$@'), forall('\$$consulted'(P, _), (write(P), nl)), halt." >$(REL)/image.files
 
 $(REL)/image.o: $(REL)/image.c
 	$(CC) $(CPPFLAGS) -DTRILOG_EMBEDDED $(CFLAGS) -flto=auto -c $< -o $@
@@ -129,7 +145,7 @@ examples/embed: $(DEV)/examples/embed.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
 clean:
-	rm -rf trilog trilog-hostile _build/trilog _build/embedded.c $(API_TEST_BINS) examples/embed _build/dev-* _build/release-*
+	rm -rf trilog trilog-hostile _build/trilog $(API_TEST_BINS) examples/embed _build/dev-* _build/release-*
 
 format:
 	clang-format -i $(SRCS) $(API_TEST_SRCS) test/api/api_freestanding_test.c test/hostile/host.c examples/embed.c src/kernel/embedded_none.c src/platform/*.c cli/*.c $(HDRS)

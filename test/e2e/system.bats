@@ -69,9 +69,7 @@ load common
   [[ "$output" == *"L = [5]"* ]]
 }
 
-@test "bagof does not group by Goal's free variables (regression)" {
-  # NOT ISO grouping, deliberately: K/L here stay unbound in the single
-  # collected pair rather than backtracking over distinct witnesses.
+@test "bagof groups by Goal's free variables, one bag for each" {
   run "$TRILOG" -e "
     assertz(bagof_p(a,1)),
     assertz(bagof_p(a,2)),
@@ -79,7 +77,8 @@ load common
     findall(K-L, bagof(X,bagof_p(K,X),L), Groups), length(Groups, N), write(N).
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"N = 1"* ]]
+  [[ "$output" == *"N = 2"* ]]
+  [[ "$output" == *"Groups = [a-[1,2],b-[3]]"* ]]
 }
 
 @test "bagof with V^Goal has no effect on the ungrouped result (regression)" {
@@ -226,6 +225,16 @@ load common
   [ "$status" -eq 0 ]
 }
 
+@test "a finished catch/3 does not outlive a collection (regression)" {
+  # regression: '$$uncatch' kept a catch_stack index from before compaction,
+  # which kept a chain of finished catches, and all they held, alive.
+  run env TRILOG_GC_THRESHOLD=1024 TRILOG_GC_DEBUG=1 timeout 30 "$TRILOG" \
+    test/e2e/files/catch_loop.pl -e "loop(3000)."
+  [ "$status" -eq 0 ]
+  live=$(printf '%s\n' "$output" | awk '/^gc/ { v = $5 } END { sub(",", "", v); print v }')
+  [ "$live" -lt 600 ]
+}
+
 @test "true as a non-final goal does not terminate the query early (regression)" {
   # regression: reaching true as the first pending goal used to end the
   # query, even with real goals still queued after it.
@@ -284,22 +293,31 @@ load common
   succeeded
 }
 
-@test "copy_term/2 throws on a cyclic term instead of crashing (regression)" {
+@test "copy_term/2 copies a cyclic term" {
   run "$TRILOG" -e "
-    X = f(X),
-    catch(copy_term(X, _), error(E, _), (write(caught(E)), nl)).
+    X = f(X, A), copy_term(X, Y), Y = f(Z, B),
+    ( Z == Y, var(B), B \\== A -> write(copied) ; write(wrong) ), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"caught(representation_error(term))"* ]]
+  [[ "$output" == *"copied"* ]]
 }
 
-@test "findall/3 throws on a cyclic solution instead of crashing (regression)" {
+@test "findall/3 collects a cyclic solution" {
   run "$TRILOG" -e "
-    X = [X|_],
-    catch(findall(X, true, _), error(E, _), (write(caught(E)), nl)).
+    X = [X|_], findall(X, true, [Y]), Y = [Z|_],
+    ( Z == Y -> write(collected) ; write(wrong) ), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"caught(representation_error(term))"* ]]
+  [[ "$output" == *"collected"* ]]
+}
+
+@test "throw/1 keeps a cyclic ball" {
+  run "$TRILOG" -e "
+    X = f(X), catch(throw(X), B, true), B = f(C),
+    ( C == B -> write(kept) ; write(wrong) ), nl.
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"kept"* ]]
 }
 
 @test "assertz/1 throws on a cyclic term instead of crashing (regression)" {

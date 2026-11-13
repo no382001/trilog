@@ -30,6 +30,8 @@ typedef struct {
   int32_t nbody;
   int32_t nvars;
   int32_t source; // atom of the file it was consulted from, -1 if asserted
+  // A call made in generation G sees the clause if born <= G < died.
+  uint32_t born, died;
   arg_key_t arg;
   struct chunk *mem; // an asserted clause's own memory, freed with it
 } clause_t;
@@ -41,7 +43,13 @@ typedef struct {
   size_t trail_mark;
   size_t cut_barrier;
   size_t active_catch;
+  size_t catch_sp; // catch frames above it are dead once it is retried
+  uint32_t gen;    // the generation the call was made in
 } frame_t;
+
+// A frame's clause_idx when backtracking runs its goals instead of retrying a
+// clause.
+#define FRAME_GOALS (-1)
 
 typedef struct {
   size_t heap_mark, trail_mark;
@@ -49,6 +57,7 @@ typedef struct {
   size_t catcher, recovery;
   size_t continuation;
   size_t outer_active_catch;
+  size_t uncatch_cell; // the integer in this frame's '$$uncatch'(Index)
 } catch_frame_t;
 
 #define PRED_HASH_SIZE 1024
@@ -56,7 +65,7 @@ typedef struct pred_bucket {
   int32_t pred_id, pred_arity;
   int32_t *indices;
   int32_t count, cap;
-  int dynamic;
+  bool dynamic;
   int32_t foreign;
   struct pred_bucket *next;
 } pred_bucket_t;
@@ -99,6 +108,7 @@ typedef struct {
 catch_frame_t *catch_stack_array(trilog_t *T);
 size_t catch_stack_size(trilog_t *T);
 void catch_stack_set_size(trilog_t *T, size_t n);
+void fatal_trace_fill(trilog_t *T);
 
 void db_add(trilog_t *T, tterm_t *head, tterm_t **body, int32_t nbody,
             int32_t nvars, int mark_static);

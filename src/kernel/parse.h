@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-void module_state_drop(trilog_t *T);
 bool consult_file(trilog_t *T, const char *path, int32_t *source);
 bool consult_string(trilog_t *T, const char *text);
 void ops_seed(trilog_t *T);

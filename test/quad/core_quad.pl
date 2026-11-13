@@ -68,7 +68,8 @@
 
 % --- last/2 ---
 
-?- last(X, [a, b, c]).
+% last(+List, ?Last) per lib/lists.pl.
+?- last([a, b, c], X).
    X = c.
 
 % --- arithmetic ---
@@ -83,7 +84,7 @@
    X = 12.
 
 ?- X is 10 / 2.
-   X = 5.
+   X = 5.0.
 
 ?- X is 7 mod 3.
    X = 1.
@@ -216,6 +217,18 @@ color(blue).
 
 ?- (fail -> X = yes ; (true -> X = inner ; X = no)).
    X = inner.
+
+% a cut in the condition is local to it
+ite_cut(X) :- ( !, fail -> X = yes ; X = no ).
+
+?- ( !, fail -> X = yes ; X = no ).
+   X = no.
+
+?- ( (member(_, [1,2]), !), fail -> X = yes ; X = no ).
+   X = no.
+
+?- ite_cut(X).
+   X = no.
 
 % if-then-else with arithmetic
 ?- (1 =:= 1 -> X = equal ; X = not_equal).
@@ -365,8 +378,9 @@ color(blue).
 ?- catch(throw(hello), hello, true).
    true.
 
-?- catch(throw(foo), bar, true).
-   error(unhandled exception).
+% a catcher that does not unify passes the ball to the next catch/3.
+?- catch(catch(throw(foo), bar, true), B, true).
+   B = foo.
 
 ?- catch(throw(error(type, ctx)), error(type, X), true).
    X = ctx.
@@ -407,3 +421,7 @@ bind_and_succeed(X) :- X = 42.
 
 ?- findall(X, member(X, [a, b, c]), L).
    L = "abc".
+
+% lists.pl was loaded by its absolute path; a relative one names the same file
+?- consult('lib/lists.pl'), findall(X, member(X, [a, b]), L).
+   L = "ab".

@@ -398,7 +398,7 @@ a(2).
    false.
 
 ?- (foo = Foo, nonvar(Foo)).
-   true.
+   Foo = foo.
 
 ?- nonvar(_).
    false.
@@ -1196,7 +1196,7 @@ bar(X) :- true.
    error(instantiation_error).
 
 ?- atom_length(atom, N).
-   false.
+   N = 4.
 
 % --- atom_concat/3 ---
 

@@ -5,7 +5,7 @@
 #include <string.h>
 
 size_t trilog_format_float(char *buf, size_t cap, double v) {
-  int n = snprintf(buf, cap, "%#g", v);
+  int n = snprintf(buf, cap, TRILOG_FLOAT_FORMAT, v);
   return n < 0 ? 0 : (size_t)n;
 }
 
@@ -96,7 +96,8 @@ int main(void) {
                      "X is 1 / 4.0, Y is 2.5 * 2, Z is 1.5e10, W is 1 / 3.0, "
                      "V is -0.5, U is 100.0, R = [X, Y, Z, W, V, U]",
                      last, NULL) == TRILOG_TRUE);
-  CHECK(strcmp(answer, "[0.25,5.0,1.5e+10,0.333333,-0.5,100.0]") == 0);
+  CHECK(strcmp(answer,
+               "[0.25,5.0,15000000000.0,0.3333333333333333,-0.5,100.0]") == 0);
   CHECK(trilog_query(t, "atom_codes('1.5e3', C), number_codes(X, C), Y = X",
                      last, NULL) == TRILOG_TRUE);
   CHECK(strcmp(answer, "1500.0") == 0);

@@ -116,14 +116,14 @@ load common
 }
 
 @test "min_int divided by -1 raises int_overflow instead of trapping (regression)" {
-  # regression: INT64_MIN / -1 killed the process with SIGFPE.
+  # regression: INT64_MIN // -1 killed the process with SIGFPE; / divides as floats.
   run "$TRILOG" -e "
     catch(_ is -9223372036854775808 // -1, error(E1, _), true),
-    catch(_ is -9223372036854775808 / -1, error(E2, _), true),
-    write(r(E1, E2)), nl.
+    X is -9223372036854775808 / -1, float(X),
+    write(r(E1)), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"r(evaluation_error(int_overflow),evaluation_error(int_overflow))"* ]]
+  [[ "$output" == *"r(evaluation_error(int_overflow))"* ]]
 }
 
 @test "mod takes the divisor's sign and never overflows (regression)" {
@@ -186,9 +186,9 @@ load common
   run "$TRILOG" -e "
     A is 1.5 + 2,
     B is 4/2,
-    integer(B),
+    float(B),
     C is 4/3,
-    integer(C),
+    float(C),
     D is min(1, 2.5),
     float(D),
     E is max(1.5, 2),
@@ -205,8 +205,7 @@ load common
   [ "$status" -eq 0 ]
   succeeded
   [[ "$output" == *"A = 3.5"* ]]
-  [[ "$output" == *"B = 2"* ]]
-  [[ "$output" == *"C = 1"* ]]
+  [[ "$output" == *"B = 2.0"* ]]
   [[ "$output" == *"F = 1.5"* ]]
   [[ "$output" == *"G = 3"* ]]
   [[ "$output" == *"H = -3"* ]]
@@ -294,9 +293,9 @@ load common
     compare(O2, foo, abc),
     compare(O3, foo(1), foo(1)).
   "
-  [[ "$output" == *"O1 = <"* ]]
-  [[ "$output" == *"O2 = >"* ]]
-  [[ "$output" == *'O3 = ='* ]]
+  [[ "$output" == *"O1 = (<)"* ]]
+  [[ "$output" == *"O2 = (>)"* ]]
+  [[ "$output" == *'O3 = (=)'* ]]
 }
 
 @test "atom_codes, char_code, and number_codes round-trip both ways" {
@@ -568,10 +567,10 @@ load common
   [[ "$output" == *"L2 = [1,1,2,3,4,5,6,9]"* ]]
 }
 
-@test "number_chars/2 on a cyclic list throws a catchable error instead of dying (regression)" {
+@test "number_chars/2 on a cyclic list throws a type error instead of dying (regression)" {
   # regression: the heap grew until GC's scratch arrays failed to allocate, killing the process.
-  run bash -c "ulimit -v 524288; timeout 60 $TRILOG -e \"L = ['1'|L], catch(number_chars(_, L), error(E, _), true), write(caught(E)), nl.\""
-  [[ "$output" == *"caught(representation_error(term))"* ]]
+  run bash -c "ulimit -v 524288; timeout 60 $TRILOG -e \"L = ['1'|L], catch(number_chars(_, L), error(type_error(T, C), _), true), ( C == L -> write(caught(T)) ; true ), nl.\""
+  [[ "$output" == *"caught(list)"* ]]
 }
 
 @test "floats with an exponent print with a fraction, so their text reads back (regression)" {
@@ -582,7 +581,7 @@ load common
     ( Y =:= X -> write(same) ; write(differs) ), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"r('1.0e-08',1.0e+100,-2.5e-300)"* ]]
+  [[ "$output" == *"r('1.0e-8',1.0e100,-2.5e-300)"* ]]
   [[ "$output" == *"same"* ]]
 }
 
@@ -598,15 +597,25 @@ load common
   [[ "$output" == *"r(representation_error(max_float),representation_error(max_float))"* ]]
 }
 
-@test "character code 0 raises representation_error(character_code), since atoms cannot hold NUL (regression)" {
+@test "character code 0 is a character, so atoms can hold it (regression)" {
   # regression: char_code(N, 0) raised type_error(character, '').
   run "$TRILOG" -e "
-    catch(char_code(_, 0), error(E1, _), true),
-    catch(atom_codes(_, [0'a, 0]), error(E2, _), true),
-    write(r(E1, E2)), nl.
+    char_code(C, 0), atom_length(C, N1),
+    atom_codes(A, [0'a, 0]), atom_length(A, N2),
+    write(r(N1, N2)), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"r(representation_error(character_code),representation_error(character_code))"* ]]
+  [[ "$output" == *"r(1,2)"* ]]
+}
+
+@test "a backtracking loop of catches around number_chars/2 runs in bounded memory (#34, regression)" {
+  cat > "$BATS_TEST_TMPDIR/ab.pl" <<'PLEOF'
+ab([]).
+ab([X|Xs]) :- ( X = a ; X = b ), ab(Xs).
+PLEOF
+  run bash -c "ulimit -v 24576; '$TRILOG' '$BATS_TEST_TMPDIR/ab.pl' -e 'forall(( between(0, 15, N), length(L, N), ab(L) ), catch(number_chars(_, L), error(syntax_error(_), _), true)), write(done), nl, halt.'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"done"* ]]
 }
 
 @test "findall/3 whose goal throws leaves no solutions behind, also when nested (regression)" {
@@ -621,17 +630,17 @@ load common
   [[ "$output" == *"next_bag(0)"* ]]
 }
 
-@test "findall/3 nests, copies fresh variables per solution and rejects cyclic solutions" {
+@test "findall/3 nests, copies fresh variables per solution and keeps cyclic solutions" {
   run "$TRILOG" -e "
     findall(X-Ys, (member(X, [1,2]), findall(Y, between(1, X, Y), Ys)), L1),
     findall(X, fail, L2),
     findall(f(A, B, A), member(B, [x,y]), [f(P, x, Q), f(R, y, S)]),
     ( P == Q, R == S, P \\== R -> Fresh = yes ; Fresh = no ),
-    C = [1|C], catch(findall(C, true, _), error(E, _), true),
+    C = [1|C], findall(C, true, [D]), ( D = [1|D] -> E = cyclic ; E = no ),
     write(r(L1, L2, Fresh, E)), nl.
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"r([1-[1],2-[1,2]],[],yes,representation_error(term))"* ]]
+  [[ "$output" == *"r([1-[1],2-[1,2]],[],yes,cyclic)"* ]]
 }
 
 @test "findall/3 collects 400000 solutions in linear time (regression)" {
@@ -690,9 +699,9 @@ q(X, 4) :- X == a.' >"$BATS_TEST_TMPDIR/q.pl"
   run "$TRILOG" -e "
     findall(x, catch(open('no/such/file', read, _), _, fail), _),
     length(Ss, 16), maplist(open('README.md', read), Ss), Ss = [S1|_],
-    ( open('README.md', read, _) -> R1 = opened ; R1 = full ),
+    catch(( open('README.md', read, _), R1 = opened ), error(resource_error(streams), _), R1 = full),
     close(S1),
-    ( open('README.md', read, _) -> R2 = reused ; R2 = full ),
+    catch(( open('README.md', read, _), R2 = reused ), error(resource_error(streams), _), R2 = full),
     write(r(R1, R2)), nl.
   "
   [ "$status" -eq 0 ]

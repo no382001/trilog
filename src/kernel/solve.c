@@ -108,6 +108,66 @@ catch_frame_t *catch_stack_array(trilog_t *T) { return T->catch_stack; }
 size_t catch_stack_size(trilog_t *T) { return T->catch_sp; }
 void catch_stack_set_size(trilog_t *T, size_t n) { T->catch_sp = n; }
 
+// Allocates nothing: it runs right after the heap failed to grow.
+void fatal_trace_fill(trilog_t *T) {
+  char *out = T->fatal_trace;
+  size_t cap = sizeof T->fatal_trace, n = 0;
+  out[0] = '\0';
+  size_t hs = heap_size(T);
+  size_t cn = T->query_cn ? *T->query_cn : (size_t)-1;
+  T->query_cn = NULL;
+  for (int k = 0; k < 6 && cn < hs && n < cap; k++) {
+    size_t c = heap_deref(T, cn);
+    if (c >= hs || T->heap[c].tag != TAG_STR)
+      break;
+    size_t f = T->heap[c].as.ptr;
+    bool conj = T->heap[f].as.func.atom_id == atom_comma &&
+                T->heap[f].as.func.arity == 2;
+    size_t g = heap_deref(T, conj ? f + 1 : c);
+    if (g >= hs)
+      break;
+    int32_t id = -1, arity = 0;
+    if (T->heap[g].tag == TAG_ATOM)
+      id = T->heap[g].as.atom_id;
+    else if (T->heap[g].tag == TAG_STR) {
+      id = T->heap[T->heap[g].as.ptr].as.func.atom_id;
+      arity = T->heap[T->heap[g].as.ptr].as.func.arity;
+    }
+    if (id >= 0 && id != atom_true)
+      n += fmt(out + n, cap - n, "%s%s/%d", n ? ", " : "goals ",
+               atom_name(T, id), (int)arity);
+    if (!conj)
+      break;
+    cn = f + 2;
+  }
+  int32_t prev_id = -1, prev_arity = -1, run = 0;
+  bool first = true;
+  for (size_t k = 0; k <= T->sp; k++) {
+    int32_t id = -1, arity = 0;
+    if (k < T->sp) {
+      int32_t c = T->stack[T->sp - 1 - k].clause_idx;
+      const tterm_t *h = c >= 0 && c < T->db_count ? T->db[c].head : NULL;
+      if (!h || (h->tag != T_STR && h->tag != T_ATOM))
+        continue;
+      id = h->tag == T_STR ? h->as.str.atom_id : h->as.atom_id;
+      arity = h->tag == T_STR ? h->as.str.arity : 0;
+      if (id == prev_id && arity == prev_arity) {
+        run++;
+        continue;
+      }
+    }
+    if (prev_id >= 0 && n < cap) {
+      n += fmt(out + n, cap - n, run > 1 ? "%s%s/%d x%d" : "%s%s/%d",
+               first ? (n ? "; in " : "in ") : " < ", atom_name(T, prev_id),
+               (int)prev_arity, run);
+      first = false;
+    }
+    prev_id = id;
+    prev_arity = arity;
+    run = 1;
+  }
+}
+
 static size_t catch_stack_push(trilog_t *T, catch_frame_t f) {
   if (T->catch_sp >= T->catch_cap) {
     size_t cap = T->catch_cap ? T->catch_cap * 2 : 16;
@@ -190,6 +250,7 @@ static idx_key_t key_of_template(tterm_t *head) {
   switch (a0->tag) {
   case T_VAR:
   case T_FLT:
+  case T_BACK:
     return k;
   case T_ATOM:
     k.kind = IDX_ATOM;
@@ -281,11 +342,18 @@ static int32_t bucket_seek(const pred_bucket_t *b, int32_t from_idx) {
 }
 
 // Position in b of the first clause from pos on that matches arg, or -1.
+#define ALIVE UINT32_MAX
+
+static bool clause_alive(const clause_t *c) { return c->died == ALIVE; }
+
+// The logical update view: a call sees the clauses there when it began.
 static int32_t bucket_match(trilog_t *T, const pred_bucket_t *b, int32_t pos,
-                            arg_key_t arg) {
-  for (; pos < b->count; pos++)
-    if (!first_arg_conflicts(arg, &T->db[b->indices[pos]]))
+                            arg_key_t arg, uint32_t gen) {
+  for (; pos < b->count; pos++) {
+    const clause_t *c = &T->db[b->indices[pos]];
+    if (c->born <= gen && gen < c->died && !first_arg_conflicts(arg, c))
       return pos;
+  }
   return -1;
 }
 
@@ -294,9 +362,21 @@ static void db_reserve(trilog_t *T, int32_t cap) {
   T->db_cap = cap;
 }
 
+static void db_compact(trilog_t *T);
+static void db_reclaim(trilog_t *T);
+
+// Dead slots are reused before the table grows: growing copies all of it.
 static void db_ensure_cap(trilog_t *T) {
   if (T->db_count < T->db_cap)
     return;
+  db_reclaim(T);
+  if (T->db_count < T->db_cap)
+    return;
+  if (T->db_dead > 0) {
+    db_compact(T);
+    if (T->db_count < T->db_cap)
+      return;
+  }
   db_reserve(T, T->db_cap ? T->db_cap * 2 : 8);
 }
 
@@ -312,6 +392,22 @@ static int was_consulted(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
       return 1;
   return 0;
 }
+
+#define B(n) (1u << (n))
+
+typedef int (*builtin_fn)(trilog_t *T, size_t f, int32_t arity, int32_t id,
+                          int *ok);
+#define BUILTIN(name)                                                          \
+  static int name(__attribute__((unused)) trilog_t *T,                         \
+                  __attribute__((unused)) size_t f,                            \
+                  __attribute__((unused)) int32_t arity,                       \
+                  __attribute__((unused)) int32_t id, int *ok)
+typedef struct {
+  builtin_fn fn;
+  uint32_t arities;
+} builtin_t;
+
+static bool is_builtin_pi(int32_t pred_id, int32_t pred_arity);
 
 static void mark_consulted(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
   if (is_dynamic(T, pred_id, pred_arity) ||
@@ -351,6 +447,8 @@ void db_add(trilog_t *T, tterm_t *head, tterm_t **body, int32_t nbody,
                           .nbody = nbody,
                           .nvars = nvars,
                           .source = mark_static ? T->consulting_atom : -1,
+                          .born = ++T->db_gen,
+                          .died = ALIVE,
                           .arg = arg_key_of(key)};
   pred_bucket_add_index(T, key.pred_id, key.pred_arity, idx);
 }
@@ -376,6 +474,8 @@ static void db_add_front(trilog_t *T, tterm_t *head, tterm_t **body,
                         .nbody = nbody,
                         .nvars = nvars,
                         .source = -1,
+                        .born = ++T->db_gen,
+                        .died = ALIVE,
                         .arg = arg_key_of(key)};
   db_fixup_choice_points_insert_at(T, 0);
   pred_index_fixup_insert_at(T, 0);
@@ -385,26 +485,34 @@ static void db_add_front(trilog_t *T, tterm_t *head, tterm_t **body,
 
 // slides live clauses down over dead slots, remapping every stored db index:
 // bucket entries, and choicepoints' resume positions (a lower bound, so it
-// maps to the number of live slots before it).
+// maps to the number of live slots before it). It allocates nothing, as it
+// runs when memory is short; indices only shrink, so a bucket stays sorted
+// while its entries are rewritten.
 static void db_compact(trilog_t *T) {
-  int32_t *newpos =
-      mem_grow_n(T, NULL, (size_t)T->db_count + 1, sizeof(int32_t));
+  for (size_t f = 0; f < T->sp; f++) {
+    int32_t old = T->stack[f].clause_idx, live = 0;
+    if (old == FRAME_GOALS)
+      continue;
+    for (int32_t i = 0; i < old; i++)
+      live += T->db[i].head != NULL;
+    T->stack[f].clause_idx = live;
+  }
   int32_t live = 0;
   for (int32_t i = 0; i < T->db_count; i++) {
-    newpos[i] = live;
-    if (T->db[i].head)
-      T->db[live++] = T->db[i];
+    if (!T->db[i].head)
+      continue;
+    if (live != i) {
+      idx_key_t k = clause_key(&T->db[i]);
+      pred_bucket_t *b = pred_bucket_find(T, k.pred_id, k.pred_arity);
+      int32_t pos = b ? bucket_seek(b, i) : -1;
+      if (pos >= 0 && pos < b->count && b->indices[pos] == i)
+        b->indices[pos] = live;
+      T->db[live] = T->db[i];
+    }
+    live++;
   }
-  newpos[T->db_count] = live;
-  for (int i = 0; i < PRED_HASH_SIZE; i++)
-    for (pred_bucket_t *b = T->pred_hash[i]; b; b = b->next)
-      for (int32_t j = 0; j < b->count; j++)
-        b->indices[j] = newpos[b->indices[j]];
-  for (size_t i = 0; i < T->sp; i++)
-    T->stack[i].clause_idx = newpos[T->stack[i].clause_idx];
   T->db_count = live;
   T->db_dead = 0;
-  mem_free(T, newpos);
 }
 
 // unlinks the clause from its bucket and leaves db[idx] as a dead slot, so no
@@ -426,22 +534,70 @@ static void db_maybe_compact(trilog_t *T) {
     db_compact(T);
 }
 
-static void db_remove_at(trilog_t *T, int32_t idx) {
-  db_kill(T, idx);
+// Whether a choice point's call of the clause's predicate can still try it;
+// a frame's next clause is one of the predicate it iterates.
+static bool frames_see(trilog_t *T, int32_t idx) {
+  const clause_t *c = &T->db[idx];
+  idx_key_t key = clause_key(c);
+  for (size_t i = 0; i < T->sp; i++) {
+    const frame_t *f = &T->stack[i];
+    if (f->clause_idx == FRAME_GOALS || f->gen < c->born || f->gen >= c->died)
+      continue;
+    idx_key_t fk = clause_key(&T->db[f->clause_idx]);
+    if (fk.pred_id == key.pred_id && fk.pred_arity == key.pred_arity)
+      return true;
+  }
+  return false;
+}
+
+// Frees the retracted clauses no choice point can see any more.
+static void db_reclaim(trilog_t *T) {
+  if (T->db_pending == 0)
+    return;
+  for (int32_t i = 0; i < T->db_count && T->db_pending > 0; i++)
+    if (T->db[i].head && !clause_alive(&T->db[i]) && !frames_see(T, i)) {
+      db_kill(T, i);
+      T->db_pending--;
+    }
   db_maybe_compact(T);
+}
+
+static void clause_dies(trilog_t *T, int32_t idx) {
+  T->db[idx].died = ++T->db_gen;
+  if (clause_key(&T->db[idx]).pred_id == atom_op_pred)
+    T->op_gen++;
+}
+
+// A clause a choice point may still try stays until db_reclaim frees it.
+static void db_remove_at(trilog_t *T, int32_t idx) {
+  clause_dies(T, idx);
+  if (!frames_see(T, idx)) {
+    db_kill(T, idx);
+    db_maybe_compact(T);
+  } else {
+    T->db_pending++;
+  }
+}
+
+static bool bucket_has_alive(trilog_t *T, int32_t pred_id, int32_t arity) {
+  pred_bucket_t *b = pred_bucket_find(T, pred_id, arity);
+  for (int32_t i = 0; b && i < b->count; i++)
+    if (clause_alive(&T->db[b->indices[i]]))
+      return true;
+  return false;
 }
 
 void db_unload(trilog_t *T, int32_t source) {
   for (int32_t i = 0; i < T->db_count; i++) {
-    if (!T->db[i].head || T->db[i].source != source)
+    if (!T->db[i].head || !clause_alive(&T->db[i]) || T->db[i].source != source)
       continue;
     idx_key_t key = clause_key(&T->db[i]);
-    db_kill(T, i);
-    pred_bucket_t *b = pred_bucket_find(T, key.pred_id, key.pred_arity);
-    if (!b || b->count == 0)
+    clause_dies(T, i);
+    T->db_pending++;
+    if (!bucket_has_alive(T, key.pred_id, key.pred_arity))
       unmark_consulted(T, key.pred_id, key.pred_arity);
   }
-  db_maybe_compact(T);
+  db_reclaim(T);
 }
 
 static void dynamic_declare(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
@@ -456,7 +612,7 @@ static void dynamic_declare(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
   }
   T->dynamic_decls[T->dynamic_count++] = (dyn_decl_t){pred_id, pred_arity};
   unmark_consulted(T, pred_id, pred_arity);
-  b->dynamic = 1;
+  b->dynamic = true;
 }
 
 bool image_load(trilog_t *T, const image_t *img) {
@@ -484,7 +640,7 @@ static void dynamic_undeclare(trilog_t *T, int32_t pred_id,
     if (T->dynamic_decls[i].pred_id == pred_id &&
         T->dynamic_decls[i].pred_arity == pred_arity) {
       T->dynamic_decls[i] = T->dynamic_decls[--T->dynamic_count];
-      pred_bucket_find(T, pred_id, pred_arity)->dynamic = 0;
+      pred_bucket_find(T, pred_id, pred_arity)->dynamic = false;
       return;
     }
 }
@@ -504,6 +660,8 @@ int db_is_dynamic(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
 bool db_module_known(trilog_t *T, int32_t module) {
   pred_bucket_t *b = pred_bucket_find(T, atom_known_module, 1);
   for (int32_t i = 0; b && i < b->count; i++) {
+    if (!clause_alive(&T->db[b->indices[i]]))
+      continue;
     tterm_t *a = T->db[b->indices[i]].head->as.str.args[0];
     if (a->tag == T_ATOM && a->as.atom_id == module)
       return true;
@@ -521,6 +679,8 @@ bool db_has_dcg(trilog_t *T, int32_t pred_id, int32_t arity) {
     return true;
   pred_bucket_t *b = pred_bucket_find(T, atom_dcg_arrow, 2);
   for (int32_t i = 0; b && i < b->count; i++) {
+    if (!clause_alive(&T->db[b->indices[i]]))
+      continue;
     tterm_t *nt = T->db[b->indices[i]].head->as.str.args[0];
     if (nt->tag == T_STR && nt->as.str.atom_id == atom_comma &&
         nt->as.str.arity == 2)
@@ -538,6 +698,8 @@ bool db_has_dcg(trilog_t *T, int32_t pred_id, int32_t arity) {
 tterm_t *db_meta_specs(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
   pred_bucket_t *b = pred_bucket_find(T, atom_meta_spec, 3);
   for (int32_t i = 0; b && i < b->count; i++) {
+    if (!clause_alive(&T->db[b->indices[i]]))
+      continue;
     tterm_t **a = T->db[b->indices[i]].head->as.str.args;
     if (a[0]->tag == T_ATOM && a[0]->as.atom_id == pred_id &&
         a[1]->tag == T_INT && a[1]->as.ival == pred_arity)
@@ -621,10 +783,6 @@ static size_t *tmp_goals(trilog_t *T, int32_t n) {
   mem_reserve(T, (void **)&T->goals_tmp, &T->goals_tmp_cap,
               (size_t)(n > 0 ? n : 1) * sizeof(size_t));
   return T->goals_tmp;
-}
-
-static size_t fresh_copy_term(trilog_t *T, tterm_t *t, int32_t nvars) {
-  return heap_copy(T, t, tmp_rename(T, nvars), 0);
 }
 
 static void fresh_copy_clause(trilog_t *T, clause_t *c, size_t *head_out,
@@ -840,25 +998,12 @@ static size_t eval_arith(trilog_t *T, size_t r, int *ok) {
         }
         return heap_new_int(T, res);
       }
-      // "/" is polymorphic: int/int truncates, any float divides exactly.
+      // "/" always divides as floats: 7/2 is 3.5, as in Scryer; // truncates.
       if (id == atom_slash) {
-        if (mixed) {
-          double fb = arith_dbl(T, b);
-          if (fb == 0.0) {
-            T->pending_error_ball = make_evaluation_error(T, atom_zero_divisor);
-            *ok = 0;
-            return 0;
-          }
-          return heap_new_flt(T, arith_dbl(T, a) / fb);
-        }
-        if (T->heap[b].as.ival == 0) {
-          T->pending_error_ball = make_evaluation_error(T, atom_zero_divisor);
-          *ok = 0;
-          return 0;
-        }
-        if (T->heap[a].as.ival == INT64_MIN && T->heap[b].as.ival == -1)
-          return arith_int_overflow(T, ok);
-        return heap_new_int(T, T->heap[a].as.ival / T->heap[b].as.ival);
+        double fb = arith_dbl(T, b);
+        if (fb == 0.0)
+          return arith_eval_error(T, atom_zero_divisor, ok);
+        return arith_float(T, arith_dbl(T, a) / fb, ok);
       }
       if (id == atom_starstar)
         return arith_pow_float(T, arith_dbl(T, a), arith_dbl(T, b), ok);
@@ -1057,10 +1202,12 @@ static char *read_whole_line(trilog_t *T, int sid) {
 }
 
 static size_t codes_from_cstr(trilog_t *T, const char *s) {
+  size_t base = T->wsp;
+  for (int code; *s; wstack_push(T, (size_t)code))
+    s += utf8_decode(s, &code);
   size_t acc = heap_new_atom(T, atom_nil);
-  size_t n = strlen(s);
-  for (size_t i = n; i-- > 0;) {
-    size_t args[2] = {heap_new_int(T, (unsigned char)s[i]), acc};
+  while (T->wsp > base) {
+    size_t args[2] = {heap_new_int(T, (int64_t)T->wstack[--T->wsp]), acc};
     acc = heap_new_struct(T, atom_dot, 2, args);
   }
   return acc;
@@ -1094,8 +1241,12 @@ static char *codes_text(trilog_t *T, size_t list, size_t max_len,
       return 0;
     if (n >= max_len)
       return 0;
-    mem_reserve(T, &T->scratch, &T->scratch_cap, n + 2);
-    ((char *)T->scratch)[n++] = (char)T->heap[h].as.ival;
+    mem_reserve(T, &T->scratch, &T->scratch_cap, n + 5);
+    int64_t code = T->heap[h].as.ival;
+    if (code == 0 || (code >= 0x80 && code <= 0x10FFFF))
+      n += (size_t)utf8_encode((int)code, (char *)T->scratch + n);
+    else
+      ((char *)T->scratch)[n++] = (char)code;
     d = heap_deref(T, f + 2);
   }
   mem_reserve(T, &T->scratch, &T->scratch_cap, n + 1);
@@ -1231,6 +1382,18 @@ static int resolve_write_target(trilog_t *T, size_t target, int *kind_out,
   return 1;
 }
 
+static void write_target(trilog_t *T, int kind, void *h, size_t term,
+                         int flags) {
+  if (kind == OUT_STDOUT)
+    print_term_via(T, term, flags, io_write_str);
+  else if (kind == OUT_STDERR)
+    print_term_via(T, term, flags, io_write_err);
+  else {
+    T->file_target = h;
+    print_term_via(T, term, flags, emit_to_file);
+  }
+}
+
 static void tta_emit(trilog_t *T, const char *str) {
   size_t len = strlen(str);
   mem_reserve(T, &T->scratch, &T->scratch_cap, T->tta_pos + len + 1);
@@ -1303,12 +1466,13 @@ static int call_foreign(trilog_t *T, const foreign_t *f, size_t goal,
       break;
     case 'f':
       if (c.tag != TAG_INT && c.tag != TAG_FLT) {
-        *ball = make_type_error(T, "number", a);
+        *ball = make_type_error(
+            T, "number", a); // FIXME why not a float err? it was tagged as such
         return -1;
       }
       in[i].f = c.tag == TAG_INT ? (double)c.as.ival : c.as.fval;
       break;
-    default:
+    default: // FIXME case 'a' this is parsed before but still
       if (c.tag != TAG_ATOM) {
         *ball = make_type_error(T, "atom", a);
         return -1;
@@ -1468,11 +1632,18 @@ static int read_term_text(trilog_t *T, int sid) {
         return TEXT_CUT_OFF;
       continue;
     }
-    if (c == '\'' && prev == '0' && !ascii_alnum(prev2) && prev2 != '_') {
+    if (c == '\'' && prev == '0' && !name_char(prev2)) {
       int d = read_byte(T, sid, false);
       if (d < 0)
         return TEXT_CUT_OFF;
       read_put(T, &n, d);
+      // A continuation is no character: the quote opens a quoted token.
+      if (d == '\\' && read_byte(T, sid, true) == '\n') {
+        read_put(T, &n, read_byte(T, sid, false));
+        quote = '\'';
+        any = true;
+        continue;
+      }
       if (d == '\\') {
         int e = read_escape_text(T, sid, &n);
         if (e == ESCAPE_EOF)
@@ -1535,6 +1706,58 @@ static int dispatch_builtin(trilog_t *T, size_t goal, int *ok) {
   return r;
 }
 
+static int arith_compare(trilog_t *T, size_t f, int32_t id, int *ok) {
+  int aok = 1;
+  size_t av = eval_arith(T, f + 1, &aok);
+  size_t bv = aok ? eval_arith(T, f + 2, &aok) : 0;
+  if (!aok) {
+    *ok = 0;
+    return 1;
+  }
+  // exact int64 compare unless a float forces double comparison.
+  int cmp;
+  if (T->heap[av].tag == TAG_FLT || T->heap[bv].tag == TAG_FLT) {
+    double a = arith_dbl(T, av), b = arith_dbl(T, bv);
+    cmp = a < b ? -1 : a > b ? 1 : 0;
+  } else {
+    int64_t a = T->heap[av].as.ival, b = T->heap[bv].as.ival;
+    cmp = a < b ? -1 : a > b ? 1 : 0;
+  }
+  if (id == atom_lt)
+    *ok = cmp < 0;
+  else if (id == atom_gt)
+    *ok = cmp > 0;
+  else if (id == atom_arith_le)
+    *ok = cmp <= 0;
+  else if (id == atom_arith_ge)
+    *ok = cmp >= 0;
+  else if (id == atom_arith_eq)
+    *ok = cmp == 0;
+  else
+    *ok = cmp != 0;
+  return 1;
+}
+
+static int order_compare(trilog_t *T, size_t f, int32_t id, int *ok) {
+  int c = term_compare(T, f + 1, f + 2);
+  if (id == atom_term_eq)
+    *ok = c == 0;
+  else if (id == atom_term_ne)
+    *ok = c != 0;
+  else if (id == atom_term_lt)
+    *ok = c < 0;
+  else if (id == atom_term_gt)
+    *ok = c > 0;
+  else if (id == atom_term_le)
+    *ok = c <= 0;
+  else
+    *ok = c >= 0;
+  return 1;
+}
+
+static int dispatch_table(trilog_t *T, size_t f, int32_t arity, int32_t id,
+                          int *ok);
+
 static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
   size_t g = heap_deref(T, goal);
   size_t f = 0;
@@ -1550,885 +1773,1107 @@ static int dispatch_builtin_(trilog_t *T, size_t goal, int *ok) {
   } else {
     return 0;
   }
+  return dispatch_table(T, f, arity, id, ok);
+}
 
-  if (arity == 0 && (id == atom_fail || id == atom_false)) {
+BUILTIN(bi_fail) {
+  *ok = 0;
+  return 1;
+}
+
+BUILTIN(bi_bang) {
+  *ok = 1;
+  return 1;
+}
+
+BUILTIN(bi_is) {
+  int aok = 1;
+  size_t v = eval_arith(T, f + 2, &aok);
+  *ok = aok && unify(T, f + 1, v);
+  return 1;
+}
+
+BUILTIN(bi_unify) {
+  *ok = unify(T, f + 1, f + 2);
+  return 1;
+}
+
+BUILTIN(bi_unify_oc) {
+  *ok = unify_with_occurs_check(T, f + 1, f + 2);
+  return 1;
+}
+
+BUILTIN(bi_arith_compare) { return arith_compare(T, f, id, ok); }
+
+BUILTIN(bi_order_compare) { return order_compare(T, f, id, ok); }
+
+BUILTIN(bi_halt) {
+  size_t d = heap_deref(T, f + 1);
+  if (T->heap[d].tag != TAG_INT) {
     *ok = 0;
     return 1;
   }
-  if (arity == 0 && id == atom_bang) {
-    *ok = 1;
-    return 1;
-  }
+  engine_halt(T, (int)T->heap[d].as.ival);
+  return 0;
+}
 
-  if (arity == 1 && id == atom_halt) {
-    size_t d = heap_deref(T, f + 1);
-    if (T->heap[d].tag != TAG_INT) {
-      *ok = 0;
-      return 1;
-    }
-    engine_halt(T, (int)T->heap[d].as.ival);
-  }
+BUILTIN(bi_flush) {
+  int kind;
+  void *h = NULL;
+  *ok = resolve_write_target(T, heap_deref(T, f + 1), &kind, &h);
+  if (*ok)
+    io_flush_target(T, kind == OUT_STDOUT   ? T->hooks.out
+                       : kind == OUT_STDERR ? T->hooks.err
+                                            : h);
+  return 1;
+}
 
-  if (arity == 2 && id == atom_is) {
-    int aok = 1;
-    size_t v = eval_arith(T, f + 2, &aok);
-    *ok = aok && unify(T, f + 1, v);
+// '$$write_vars'(+Target, @Term, +Flags, +VNs): '$$write_raw' with VNs's
+// names for its unbound variables; the first name for a variable wins.
+BUILTIN(bi_write_vars) {
+  answer_names_reset(T);
+  for (size_t l = heap_deref(T, f + 4); T->heap[l].tag == TAG_STR;) {
+    size_t lf = T->heap[l].as.ptr;
+    size_t e = heap_deref(T, lf + 1);
+    l = heap_deref(T, lf + 2);
+    if (T->heap[e].tag != TAG_STR)
+      continue;
+    size_t ef = T->heap[e].as.ptr;
+    size_t n = heap_deref(T, ef + 1), v = heap_deref(T, ef + 2);
+    if (T->heap[n].tag == TAG_ATOM && T->heap[v].tag == TAG_REF &&
+        !answer_name(T, v))
+      answer_name_claim(T, v, atom_name(T, T->heap[n].as.atom_id));
+  }
+  T->answer_naming = true;
+  T->answer_plain = true;
+  size_t args[3] = {f + 1, f + 2, f + 3};
+  size_t raw = heap_new_struct(T, atom_write_raw, 3, args);
+  int r = dispatch_builtin_(T, raw, ok);
+  T->answer_naming = false;
+  T->answer_plain = false;
+  return r;
+  return 0;
+}
+
+// '$$write_text'(+Stream, @Term, +Flags): '$$write_raw' to a standard or
+// an open text output stream; fails on anything else.
+// this is much faster!
+BUILTIN(bi_write_text) {
+  size_t s = heap_deref(T, f + 1);
+  int flags = (int)T->heap[heap_deref(T, f + 3)].as.ival;
+  int sid;
+  void *h = NULL;
+  int kind = T->heap[s].tag == TAG_ATOM
+                 ? (T->heap[s].as.atom_id == atom_user_output  ? OUT_STDOUT
+                    : T->heap[s].as.atom_id == atom_user_error ? OUT_STDERR
+                                                               : -1)
+             : T->heap[s].tag == TAG_INT
+                 ? (T->heap[s].as.ival == 0   ? OUT_STDOUT
+                    : T->heap[s].as.ival == 1 ? OUT_STDERR
+                                              : -1)
+             : resolve_stream_id(T, s, &sid) && (h = stream_text_output(T, sid))
+                 ? OUT_FILE
+                 : -1;
+  if (kind < 0) {
+    *ok = 0;
     return 1;
   }
-  if (arity == 2 && id == atom_unify_op) {
-    *ok = unify(T, f + 1, f + 2);
+  write_target(T, kind, h, f + 2, flags);
+  *ok = 1;
+  return 1;
+}
+
+BUILTIN(bi_stream_binary) {
+  int sid;
+  *ok = resolve_stream_id(T, f + 1, &sid);
+  if (*ok)
+    stream_set_binary(T, sid);
+  return 1;
+}
+
+BUILTIN(bi_write_raw) {
+  size_t target = heap_deref(T, f + 1);
+  int flags = (int)T->heap[heap_deref(T, f + 3)].as.ival;
+  int kind;
+  void *h;
+  if (!resolve_write_target(T, target, &kind, &h)) {
+    *ok = 0;
     return 1;
   }
-  if (arity == 2 && id == atom_unify_oc) {
-    *ok = unify_with_occurs_check(T, f + 1, f + 2);
+  write_target(T, kind, h, f + 2, flags);
+  *ok = 1;
+  return 1;
+}
+
+BUILTIN(bi_open) {
+  size_t path_d = heap_deref(T, f + 1);
+  size_t mode_d = heap_deref(T, f + 2);
+  if (T->heap[path_d].tag != TAG_ATOM || T->heap[mode_d].tag != TAG_ATOM) {
+    *ok = 0;
     return 1;
   }
-  if (arity == 2 &&
-      (id == atom_lt || id == atom_gt || id == atom_arith_le ||
-       id == atom_arith_ge || id == atom_arith_eq || id == atom_arith_ne)) {
-    int aok = 1;
-    size_t av = eval_arith(T, f + 1, &aok);
-    size_t bv = aok ? eval_arith(T, f + 2, &aok) : 0;
-    if (!aok) {
-      *ok = 0;
-      return 1;
+  int32_t mode_id = T->heap[mode_d].as.atom_id;
+  const char *fmode = mode_id == atom_mode_read     ? "r"
+                      : mode_id == atom_mode_write  ? "w"
+                      : mode_id == atom_mode_append ? "a"
+                                                    : NULL;
+  if (!fmode) {
+    *ok = 0;
+    return 1;
+  }
+  int stream_id =
+      stream_open(T, atom_name(T, T->heap[path_d].as.atom_id), fmode);
+  if (stream_id == -2)
+    T->pending_error_ball = make_resource_error(T, "streams");
+  if (stream_id < 0) {
+    *ok = 0;
+    return 1;
+  }
+  size_t id_arg[1] = {heap_new_int(T, stream_id)};
+  *ok = unify(T, f + 3, heap_new_struct(T, atom_stream, 1, id_arg));
+  return 1;
+}
+
+BUILTIN(bi_close) {
+  int sid;
+  if (!resolve_stream_id(T, f + 1, &sid)) {
+    *ok = 0;
+    return 1;
+  }
+  stream_close(T, sid);
+  *ok = 1;
+  return 1;
+}
+
+// '$$get_byte'(+Stream, +Peek, -Code): Code is a byte, -1 at end of file,
+// -2 for a stream that is not open, -3 for an output stream.
+BUILTIN(bi_get_byte) {
+  size_t sd = heap_deref(T, f + 1);
+  bool peek = T->heap[heap_deref(T, f + 2)].as.ival != 0;
+  int sid, c;
+  if (T->heap[sd].tag == TAG_ATOM && T->heap[sd].as.atom_id == atom_user_input)
+    c = peek ? io_peek_char(T) : io_read_char(T);
+  else if (resolve_stream_id(T, f + 1, &sid))
+    c = stream_byte(T, sid, peek);
+  else
+    c = -2;
+  *ok = unify(T, f + 3, heap_new_int(T, c));
+  return 1;
+}
+
+// '$$get_char'(+Stream, +Peek, -Code): '$$get_byte' for one UTF-8
+// character; a byte that does not start one is its own code.
+BUILTIN(bi_get_char) {
+  size_t sd = heap_deref(T, f + 1);
+  bool peek = T->heap[heap_deref(T, f + 2)].as.ival != 0;
+  int sid = -1;
+  if ((T->heap[sd].tag != TAG_ATOM ||
+       T->heap[sd].as.atom_id != atom_user_input) &&
+      !resolve_stream_id(T, f + 1, &sid)) {
+    *ok = unify(T, f + 3, heap_new_int(T, -2));
+    return 1;
+  }
+  char b[5] = {0};
+  int c = sid < 0 ? io_peek_at(T, 0) : stream_peek_at(T, sid, 0);
+  if (c >= 0) {
+    b[0] = (char)c;
+    for (int i = 1; i < utf8_len(c); i++) {
+      int d = sid < 0 ? io_peek_at(T, i) : stream_peek_at(T, sid, i);
+      if (d < 0)
+        break;
+      b[i] = (char)d;
     }
-    // exact int64 compare unless a float forces double comparison.
-    int cmp;
-    if (T->heap[av].tag == TAG_FLT || T->heap[bv].tag == TAG_FLT) {
-      double a = arith_dbl(T, av), b = arith_dbl(T, bv);
-      cmp = a < b ? -1 : a > b ? 1 : 0;
-    } else {
-      int64_t a = T->heap[av].as.ival, b = T->heap[bv].as.ival;
-      cmp = a < b ? -1 : a > b ? 1 : 0;
-    }
-    if (id == atom_lt)
-      *ok = cmp < 0;
-    else if (id == atom_gt)
-      *ok = cmp > 0;
-    else if (id == atom_arith_le)
-      *ok = cmp <= 0;
-    else if (id == atom_arith_ge)
-      *ok = cmp >= 0;
-    else if (id == atom_arith_eq)
-      *ok = cmp == 0;
-    else
-      *ok = cmp != 0;
+    int len = utf8_decode(b, &c);
+    for (int i = 0; !peek && i < len; i++)
+      (void)(sid < 0 ? io_read_char(T) : stream_byte(T, sid, false));
+  }
+  *ok = unify(T, f + 3, heap_new_int(T, c));
+  return 1;
+}
+
+BUILTIN(bi_read_line_to_atom) {
+  size_t sd = heap_deref(T, f + 1);
+  int sid = -1;
+  if ((T->heap[sd].tag != TAG_ATOM ||
+       T->heap[sd].as.atom_id != atom_user_input) &&
+      !resolve_stream_id(T, f + 1, &sid)) {
+    *ok = 0;
     return 1;
   }
-  if (arity == 2 &&
-      (id == atom_term_eq || id == atom_term_ne || id == atom_term_lt ||
-       id == atom_term_gt || id == atom_term_le || id == atom_term_ge)) {
-    int c = term_compare(T, f + 1, f + 2);
-    if (id == atom_term_eq)
-      *ok = c == 0;
-    else if (id == atom_term_ne)
-      *ok = c != 0;
-    else if (id == atom_term_lt)
-      *ok = c < 0;
-    else if (id == atom_term_gt)
-      *ok = c > 0;
-    else if (id == atom_term_le)
-      *ok = c <= 0;
-    else
-      *ok = c >= 0;
+  char *got = read_whole_line(T, sid);
+  size_t line;
+  if (!got) {
+    line = heap_new_atom(T, atom_end_of_file);
+  } else {
+    size_t len = strlen(got);
+    while (len > 0 && (got[len - 1] == '\n' || got[len - 1] == '\r'))
+      got[--len] = '\0';
+    line = heap_new_atom(T, atom_intern(T, got));
+  }
+  *ok = unify(T, f + 2, line);
+  return 1;
+}
+
+// Fragile: a directive in the consulted file runs via a nested
+// run_query while this one is still on the C stack, and sp is global.
+BUILTIN(bi_consult) {
+  size_t path_d = heap_deref(T, f + 1);
+  int32_t source;
+  if (T->heap[path_d].tag != TAG_ATOM ||
+      !consult_file(T, atom_name(T, T->heap[path_d].as.atom_id), &source)) {
+    if (T->load_error_ball != (size_t)-1) {
+      T->pending_error_ball = T->load_error_ball;
+      T->load_error_ball = (size_t)-1;
+    }
+    *ok = 0;
     return 1;
   }
-  if (arity == 1 && id == atom_flush) {
-    int kind;
-    void *h = NULL;
-    *ok = resolve_write_target(T, heap_deref(T, f + 1), &kind, &h);
-    if (*ok)
-      io_flush_target(T, kind == OUT_STDOUT   ? T->hooks.out
-                         : kind == OUT_STDERR ? T->hooks.err
-                                              : h);
+  *ok = unify(T, f + 2, heap_new_atom(T, source));
+  return 1;
+}
+
+BUILTIN(bi_source_path) {
+  size_t d = heap_deref(T, f + 1);
+  const char *path = T->heap[d].tag == TAG_ATOM
+                         ? source_path(T, atom_name(T, T->heap[d].as.atom_id))
+                         : NULL;
+  *ok = path && unify(T, f + 2, heap_new_atom(T, atom_intern(T, path)));
+  return 1;
+}
+
+BUILTIN(bi_loading_file) {
+  *ok = T->consulting_atom >= 0 &&
+        unify(T, f + 1, heap_new_atom(T, T->consulting_atom));
+  return 1;
+}
+
+BUILTIN(bi_unload) {
+  size_t d = heap_deref(T, f + 1);
+  *ok = T->heap[d].tag == TAG_ATOM;
+  if (*ok)
+    db_unload(T, T->heap[d].as.atom_id);
+  return 1;
+}
+
+// '$$module'(+Module, +Exports): the file being consulted is Module.
+BUILTIN(bi_module_set) {
+  size_t m = heap_deref(T, f + 1);
+  *ok = 1;
+  if (!T->consulting || T->heap[m].tag != TAG_ATOM)
     return 1;
+  int32_t n = 0;
+  for (size_t l = heap_deref(T, f + 2); T->heap[l].tag == TAG_STR;
+       l = heap_deref(T, T->heap[l].as.ptr + 2))
+    n++;
+  pred_decl_t *ex = mem_grow_n(T, NULL, (size_t)(n ? n : 1), sizeof *ex);
+  int32_t k = 0;
+  for (size_t l = heap_deref(T, f + 2); T->heap[l].tag == TAG_STR;
+       l = heap_deref(T, T->heap[l].as.ptr + 2)) {
+    size_t pi = heap_deref(T, T->heap[l].as.ptr + 1);
+    if (T->heap[pi].tag != TAG_STR)
+      continue;
+    size_t pf = T->heap[pi].as.ptr;
+    size_t nm = heap_deref(T, pf + 1), ar = heap_deref(T, pf + 2);
+    if (T->heap[nm].tag != TAG_ATOM || T->heap[ar].tag != TAG_INT)
+      continue;
+    int32_t a = (int32_t)T->heap[ar].as.ival;
+    if (T->heap[pf].as.func.atom_id == atom_intdiv)
+      a += 2;
+    ex[k++] = (pred_decl_t){T->heap[nm].as.atom_id, a};
   }
-  if (arity == 3 && id == atom_write_raw) {
-    size_t target = heap_deref(T, f + 1);
-    int flags = (int)T->heap[heap_deref(T, f + 3)].as.ival;
-    int kind;
-    void *h;
-    if (!resolve_write_target(T, target, &kind, &h)) {
-      *ok = 0;
-      return 1;
-    }
-    if (kind == OUT_STDOUT)
-      print_term_via(T, f + 2, flags, io_write_str);
-    else if (kind == OUT_STDERR)
-      print_term_via(T, f + 2, flags, io_write_err);
-    else {
-      T->file_target = h;
-      print_term_via(T, f + 2, flags, emit_to_file);
-    }
-    *ok = 1;
-    return 1;
+  mem_free(T, T->module_exports);
+  T->module_exports = ex;
+  T->module_nexports = k;
+  T->module_id = T->heap[m].as.atom_id;
+  return 1;
+}
+
+// '$$qualify'(+Module, +Goal, -Goal1): Module's private Goal if it has one.
+BUILTIN(bi_qualify) {
+  size_t m = heap_deref(T, f + 1), g = heap_deref(T, f + 2), out = g;
+  int32_t gname = -1, gar = 0;
+  size_t gf = 0;
+  if (T->heap[g].tag == TAG_ATOM) {
+    gname = T->heap[g].as.atom_id;
+  } else if (T->heap[g].tag == TAG_STR) {
+    gf = T->heap[g].as.ptr;
+    gname = T->heap[gf].as.func.atom_id;
+    gar = T->heap[gf].as.func.arity;
   }
-  if (arity == 3 && id == atom_open) {
-    size_t path_d = heap_deref(T, f + 1);
-    size_t mode_d = heap_deref(T, f + 2);
-    if (T->heap[path_d].tag != TAG_ATOM || T->heap[mode_d].tag != TAG_ATOM) {
-      *ok = 0;
-      return 1;
-    }
-    int32_t mode_id = T->heap[mode_d].as.atom_id;
-    const char *fmode = mode_id == atom_mode_read     ? "r"
-                        : mode_id == atom_mode_write  ? "w"
-                        : mode_id == atom_mode_append ? "a"
-                                                      : NULL;
-    if (!fmode) {
-      *ok = 0;
-      return 1;
-    }
-    int stream_id =
-        stream_open(T, atom_name(T, T->heap[path_d].as.atom_id), fmode);
-    if (stream_id < 0) {
-      *ok = 0;
-      return 1;
-    }
-    size_t id_arg[1] = {heap_new_int(T, stream_id)};
-    *ok = unify(T, f + 3, heap_new_struct(T, atom_stream, 1, id_arg));
-    return 1;
-  }
-  if (arity == 1 && id == atom_close) {
-    int id;
-    if (!resolve_stream_id(T, f + 1, &id)) {
-      *ok = 0;
-      return 1;
-    }
-    stream_close(T, id);
-    *ok = 1;
-    return 1;
-  }
-  // '$$get_byte'(+Stream, +Peek, -Code): Code is a byte, -1 at end of file,
-  // -2 for a stream that is not open, -3 for an output stream.
-  if (arity == 3 && id == atom_get_byte) {
-    size_t sd = heap_deref(T, f + 1);
-    bool peek = T->heap[heap_deref(T, f + 2)].as.ival != 0;
-    int sid, c;
-    if (T->heap[sd].tag == TAG_ATOM &&
-        T->heap[sd].as.atom_id == atom_user_input)
-      c = peek ? io_peek_char(T) : io_read_char(T);
-    else if (resolve_stream_id(T, f + 1, &sid))
-      c = stream_byte(T, sid, peek);
-    else
-      c = -2;
-    *ok = unify(T, f + 3, heap_new_int(T, c));
-    return 1;
-  }
-  if (arity == 2 && id == atom_read_line_to_atom) {
-    size_t sd = heap_deref(T, f + 1);
-    int sid = -1;
-    if ((T->heap[sd].tag != TAG_ATOM ||
-         T->heap[sd].as.atom_id != atom_user_input) &&
-        !resolve_stream_id(T, f + 1, &sid)) {
-      *ok = 0;
-      return 1;
-    }
-    char *got = read_whole_line(T, sid);
-    size_t line;
-    if (!got) {
-      line = heap_new_atom(T, atom_end_of_file);
-    } else {
-      size_t len = strlen(got);
-      while (len > 0 && (got[len - 1] == '\n' || got[len - 1] == '\r'))
-        got[--len] = '\0';
-      line = heap_new_atom(T, atom_intern(T, got));
-    }
-    *ok = unify(T, f + 2, line);
-    return 1;
-  }
-  // Fragile: a directive in the consulted file runs via a nested
-  // run_query while this one is still on the C stack, and sp is global.
-  if (arity == 2 && id == atom_consult) {
-    size_t path_d = heap_deref(T, f + 1);
-    int32_t source;
-    if (T->heap[path_d].tag != TAG_ATOM ||
-        !consult_file(T, atom_name(T, T->heap[path_d].as.atom_id), &source)) {
-      if (T->load_error_ball != (size_t)-1) {
-        T->pending_error_ball = T->load_error_ball;
-        T->load_error_ball = (size_t)-1;
+  if (gname >= 0 && T->heap[m].tag == TAG_ATOM &&
+      T->heap[m].as.atom_id != atom_user) {
+    int32_t q = module_qualified(T, T->heap[m].as.atom_id, gname, false);
+    pred_bucket_t *b = q >= 0 ? pred_bucket_find(T, q, gar) : NULL;
+    if (b && (b->count > 0 || b->dynamic)) {
+      if (gar == 0) {
+        out = heap_new_atom(T, q);
+      } else {
+        out = heap_new_struct(T, q, gar, NULL);
+        size_t base = T->heap[out].as.ptr;
+        for (int32_t i = 0; i < gar; i++)
+          T->heap[base + 1 + (size_t)i].as.ref = gf + 1 + (size_t)i;
       }
-      *ok = 0;
-      return 1;
     }
-    *ok = unify(T, f + 2, heap_new_atom(T, source));
+  }
+  *ok = unify(T, f + 3, out);
+  return 1;
+}
+
+BUILTIN(bi_dynamic) {
+  size_t d = heap_deref(T, f + 1);
+  if (T->heap[d].tag != TAG_STR) {
+    *ok = 0;
     return 1;
   }
-  if (arity == 2 && id == atom_source_path) {
-    size_t d = heap_deref(T, f + 1);
-    const char *path = T->heap[d].tag == TAG_ATOM
-                           ? source_path(T, atom_name(T, T->heap[d].as.atom_id))
-                           : NULL;
-    *ok = path && unify(T, f + 2, heap_new_atom(T, atom_intern(T, path)));
+  size_t df = T->heap[d].as.ptr;
+  if (T->heap[df].as.func.atom_id != atom_slash ||
+      T->heap[df].as.func.arity != 2) {
+    *ok = 0;
     return 1;
   }
-  if (arity == 1 && id == atom_loading_file) {
-    *ok = T->consulting_atom >= 0 &&
-          unify(T, f + 1, heap_new_atom(T, T->consulting_atom));
+  size_t name_d = heap_deref(T, df + 1);
+  size_t arity_d = heap_deref(T, df + 2);
+  if (T->heap[name_d].tag != TAG_ATOM || T->heap[arity_d].tag != TAG_INT) {
+    *ok = 0;
     return 1;
   }
-  if (arity == 1 && id == atom_unload) {
-    size_t d = heap_deref(T, f + 1);
-    *ok = T->heap[d].tag == TAG_ATOM;
-    if (*ok)
-      db_unload(T, T->heap[d].as.atom_id);
+  dynamic_declare(T, T->heap[name_d].as.atom_id,
+                  (int32_t)T->heap[arity_d].as.ival);
+  *ok = 1;
+  return 1;
+}
+
+BUILTIN(bi_undynamic) {
+  size_t name_d = heap_deref(T, f + 1);
+  size_t arity_d = heap_deref(T, f + 2);
+  if (T->heap[name_d].tag != TAG_ATOM || T->heap[arity_d].tag != TAG_INT) {
+    *ok = 0;
     return 1;
   }
-  // '$$module'(+Module, +Exports): the file being consulted is Module.
-  if (arity == 2 && id == atom_module_set) {
-    size_t m = heap_deref(T, f + 1);
-    *ok = 1;
-    if (!T->consulting || T->heap[m].tag != TAG_ATOM)
-      return 1;
-    int32_t n = 0;
-    for (size_t l = heap_deref(T, f + 2); T->heap[l].tag == TAG_STR;
-         l = heap_deref(T, T->heap[l].as.ptr + 2))
-      n++;
-    pred_decl_t *ex = mem_grow_n(T, NULL, (size_t)(n ? n : 1), sizeof *ex);
-    int32_t k = 0;
-    for (size_t l = heap_deref(T, f + 2); T->heap[l].tag == TAG_STR;
-         l = heap_deref(T, T->heap[l].as.ptr + 2)) {
-      size_t pi = heap_deref(T, T->heap[l].as.ptr + 1);
-      if (T->heap[pi].tag != TAG_STR)
-        continue;
-      size_t pf = T->heap[pi].as.ptr;
-      size_t nm = heap_deref(T, pf + 1), ar = heap_deref(T, pf + 2);
-      if (T->heap[nm].tag != TAG_ATOM || T->heap[ar].tag != TAG_INT)
-        continue;
-      int32_t a = (int32_t)T->heap[ar].as.ival;
-      if (T->heap[pf].as.func.atom_id == atom_intdiv)
-        a += 2;
-      ex[k++] = (pred_decl_t){T->heap[nm].as.atom_id, a};
-    }
-    mem_free(T, T->module_exports);
-    T->module_exports = ex;
-    T->module_nexports = k;
-    T->module_id = T->heap[m].as.atom_id;
-    return 1;
-  }
-  // '$$qualify'(+Module, +Goal, -Goal1): Module's private Goal if it has one.
-  if (arity == 3 && id == atom_qualify) {
-    size_t m = heap_deref(T, f + 1), g = heap_deref(T, f + 2), out = g;
-    int32_t gname = -1, gar = 0;
-    size_t gf = 0;
-    if (T->heap[g].tag == TAG_ATOM) {
-      gname = T->heap[g].as.atom_id;
-    } else if (T->heap[g].tag == TAG_STR) {
-      gf = T->heap[g].as.ptr;
-      gname = T->heap[gf].as.func.atom_id;
-      gar = T->heap[gf].as.func.arity;
-    }
-    if (gname >= 0 && T->heap[m].tag == TAG_ATOM &&
-        T->heap[m].as.atom_id != atom_user) {
-      int32_t q = module_qualified(T, T->heap[m].as.atom_id, gname, false);
-      pred_bucket_t *b = q >= 0 ? pred_bucket_find(T, q, gar) : NULL;
-      if (b && (b->count > 0 || b->dynamic)) {
-        if (gar == 0) {
-          out = heap_new_atom(T, q);
-        } else {
-          out = heap_new_struct(T, q, gar, NULL);
-          size_t base = T->heap[out].as.ptr;
-          for (int32_t i = 0; i < gar; i++)
-            T->heap[base + 1 + (size_t)i].as.ref = gf + 1 + (size_t)i;
-        }
-      }
-    }
-    *ok = unify(T, f + 3, out);
-    return 1;
-  }
-  if (arity == 1 && id == atom_dynamic) {
-    size_t d = heap_deref(T, f + 1);
-    if (T->heap[d].tag != TAG_STR) {
-      *ok = 0;
-      return 1;
-    }
-    size_t df = T->heap[d].as.ptr;
-    if (T->heap[df].as.func.atom_id != atom_slash ||
-        T->heap[df].as.func.arity != 2) {
-      *ok = 0;
-      return 1;
-    }
-    size_t name_d = heap_deref(T, df + 1);
-    size_t arity_d = heap_deref(T, df + 2);
-    if (T->heap[name_d].tag != TAG_ATOM || T->heap[arity_d].tag != TAG_INT) {
-      *ok = 0;
-      return 1;
-    }
-    dynamic_declare(T, T->heap[name_d].as.atom_id,
+  dynamic_undeclare(T, T->heap[name_d].as.atom_id,
                     (int32_t)T->heap[arity_d].as.ival);
-    *ok = 1;
+  *ok = 1;
+  return 1;
+}
+
+BUILTIN(bi_is_static_pred) {
+  size_t name_d = heap_deref(T, f + 1);
+  size_t arity_d = heap_deref(T, f + 2);
+  if (T->heap[name_d].tag != TAG_ATOM || T->heap[arity_d].tag != TAG_INT) {
+    *ok = 0;
     return 1;
   }
-  if (arity == 2 && id == atom_undynamic) {
-    size_t name_d = heap_deref(T, f + 1);
-    size_t arity_d = heap_deref(T, f + 2);
-    if (T->heap[name_d].tag != TAG_ATOM || T->heap[arity_d].tag != TAG_INT) {
-      *ok = 0;
-      return 1;
+  int32_t pid = T->heap[name_d].as.atom_id,
+          par = (int32_t)T->heap[arity_d].as.ival;
+  *ok = was_consulted(T, pid, par) ||
+        (is_builtin_pi(pid, par) && atom_name(T, pid)[0] != '$');
+  return 1;
+}
+
+BUILTIN(bi_prolog_flags) {
+  // real values - this engine's actual int64_t arithmetic, not borrowed
+  // numbers.
+  size_t flags[][2] = {
+      {heap_new_atom(T, atom_flag_bounded), heap_new_atom(T, atom_true)},
+      {heap_new_atom(T, atom_flag_max_integer), heap_new_int(T, INT64_MAX)},
+      {heap_new_atom(T, atom_flag_min_integer), heap_new_int(T, INT64_MIN)},
+      {heap_new_atom(T, atom_flag_integer_rounding_function),
+       heap_new_atom(T, atom_toward_zero)},
+      {heap_new_atom(T, atom_flag_max_arity),
+       heap_new_atom(T, atom_intern(T, "unbounded"))},
+      {heap_new_atom(T, atom_flag_double_quotes),
+       heap_new_atom(T, T->flag_double_quotes)},
+      {heap_new_atom(T, atom_flag_unknown), heap_new_atom(T, T->flag_unknown)},
+      {heap_new_atom(T, atom_flag_char_conversion),
+       heap_new_atom(T, T->flag_char_conversion)},
+      {heap_new_atom(T, atom_flag_debug), heap_new_atom(T, T->flag_debug)},
+  };
+  size_t list = heap_new_atom(T, atom_nil);
+  for (size_t i = sizeof flags / sizeof *flags; i-- > 0;) {
+    size_t pair = heap_new_struct(T, atom_minus, 2, flags[i]);
+    size_t cell[2] = {pair, list};
+    list = heap_new_struct(T, atom_dot, 2, cell);
+  }
+  *ok = unify(T, f + 1, list);
+  return 1;
+}
+
+// '$$set_flag'(+Flag, +Value): set_prolog_flag/2 has checked both.
+BUILTIN(bi_set_flag) {
+  int32_t flag = T->heap[heap_deref(T, f + 1)].as.atom_id;
+  int32_t value = T->heap[heap_deref(T, f + 2)].as.atom_id;
+  *ok = 1;
+  if (flag == atom_flag_double_quotes)
+    T->flag_double_quotes = value;
+  else if (flag == atom_flag_unknown)
+    T->flag_unknown = value;
+  else if (flag == atom_flag_char_conversion)
+    T->flag_char_conversion = value;
+  else if (flag == atom_flag_debug)
+    T->flag_debug = value;
+  else
+    *ok = 0;
+  return 1;
+}
+
+// with_output_to/2's C half. capture_buf is a stack arena: each nested
+// capture pops back to its own start on $$capture_stop, so nesting works.
+BUILTIN(bi_capture_start) {
+  if (T->capture_sp >= CAPTURE_STACK_MAX) {
+    *ok = 0;
+    return 1;
+  }
+  T->capture_starts[T->capture_sp++] = T->capture_pos;
+  *ok = 1;
+  return 1;
+}
+
+// '$$capture_stop'(?Text) or '$$capture_stop'(+Kind, ?Text): the text as
+// an atom, or as codes, which interns nothing.
+BUILTIN(bi_capture_stop) {
+  if (T->capture_sp <= 0) {
+    *ok = 0;
+    return 1;
+  }
+  T->capture_sp--;
+  size_t start = T->capture_starts[T->capture_sp];
+  const char *text = T->capture_buf ? T->capture_buf + start : "";
+  bool codes = arity == 2 && T->heap[heap_deref(T, f + 1)].tag == TAG_ATOM &&
+               T->heap[heap_deref(T, f + 1)].as.atom_id == atom_kw_codes;
+  size_t result =
+      codes ? codes_from_cstr(T, text) : heap_new_atom(T, atom_intern(T, text));
+  if (T->capture_buf)
+    T->capture_buf[start] = '\0';
+  T->capture_pos = start;
+  *ok = unify(T, f + arity, result);
+  return 1;
+}
+
+BUILTIN(bi_bag_open) {
+  if (T->bag_count == T->bag_cap) {
+    int32_t cap = T->bag_cap ? T->bag_cap * 2 : 4;
+    T->bags = mem_grow_n(T, T->bags, (size_t)cap, sizeof(bag_t));
+    T->bag_cap = cap;
+  }
+  T->bags[T->bag_count] = (bag_t){0};
+  *ok = unify(T, f + 1, heap_new_int(T, T->bag_count++));
+  return 1;
+}
+
+BUILTIN(bi_bag_add) {
+  size_t a = heap_deref(T, f + 1);
+  int64_t n = T->heap[a].tag == TAG_INT ? T->heap[a].as.ival : -1;
+  if (n < 0 || n >= T->bag_count) {
+    *ok = 0;
+    return 1;
+  }
+  bag_t *b = &T->bags[n];
+  *ok = 1;
+  if (id == atom_bag_add) {
+    if (b->len == b->cap) {
+      size_t cap = b->cap ? b->cap * 2 : 16;
+      b->items = mem_grow_n(T, b->items, cap, sizeof(bag_item_t));
+      b->cap = cap;
     }
-    dynamic_undeclare(T, T->heap[name_d].as.atom_id,
-                      (int32_t)T->heap[arity_d].as.ival);
-    *ok = 1;
+    int32_t nvars;
+    tterm_t *t;
+    T->arena_pending = b->chunks;
+    b->chunks = NULL;
+    int whole = pending_templates(T, &(size_t){f + 2}, 1, &t, &nvars);
+    b->chunks = T->arena_pending;
+    T->arena_pending = NULL;
+    b->items[b->len++] = (bag_item_t){t, nvars, !whole};
     return 1;
   }
-  if (arity == 2 && id == atom_is_static_pred) {
-    size_t name_d = heap_deref(T, f + 1);
-    size_t arity_d = heap_deref(T, f + 2);
-    if (T->heap[name_d].tag != TAG_ATOM || T->heap[arity_d].tag != TAG_INT) {
-      *ok = 0;
-      return 1;
-    }
-    int32_t pid = T->heap[name_d].as.atom_id,
-            par = (int32_t)T->heap[arity_d].as.ival;
-    *ok = was_consulted(T, pid, par);
-    return 1;
-  }
-  if (arity == 1 && id == atom_prolog_flags) {
-    // real values - this engine's actual int64_t arithmetic, not borrowed
-    // numbers.
-    size_t flags[][2] = {
-        {heap_new_atom(T, atom_flag_bounded), heap_new_atom(T, atom_true)},
-        {heap_new_atom(T, atom_flag_max_integer), heap_new_int(T, INT64_MAX)},
-        {heap_new_atom(T, atom_flag_min_integer), heap_new_int(T, INT64_MIN)},
-        {heap_new_atom(T, atom_flag_integer_rounding_function),
-         heap_new_atom(T, atom_toward_zero)},
-        {heap_new_atom(T, atom_flag_max_arity),
-         heap_new_atom(T, atom_intern(T, "unbounded"))},
-        {heap_new_atom(T, atom_flag_double_quotes),
-         heap_new_atom(T, atom_chars_kw)},
-        {heap_new_atom(T, atom_intern(T, "unknown")),
-         heap_new_atom(T, atom_error)},
-        {heap_new_atom(T, atom_intern(T, "char_conversion")),
-         heap_new_atom(T, atom_intern(T, "off"))},
-        {heap_new_atom(T, atom_intern(T, "debug")),
-         heap_new_atom(T, atom_intern(T, "off"))},
-    };
+  if (id == atom_bag_collect) {
     size_t list = heap_new_atom(T, atom_nil);
-    for (size_t i = sizeof flags / sizeof *flags; i-- > 0;) {
-      size_t pair = heap_new_struct(T, atom_minus, 2, flags[i]);
-      size_t cell[2] = {pair, list};
-      list = heap_new_struct(T, atom_dot, 2, cell);
-    }
-    *ok = unify(T, f + 1, list);
-    return 1;
-  }
-  // with_output_to/2's C half. capture_buf is a stack arena: each nested
-  // capture pops back to its own start on $$capture_stop, so nesting works.
-  if (arity == 0 && id == atom_capture_start) {
-    if (T->capture_sp >= CAPTURE_STACK_MAX) {
-      *ok = 0;
-      return 1;
-    }
-    T->capture_starts[T->capture_sp++] = T->capture_pos;
-    *ok = 1;
-    return 1;
-  }
-  if (arity == 1 && id == atom_capture_stop) {
-    if (T->capture_sp <= 0) {
-      *ok = 0;
-      return 1;
-    }
-    T->capture_sp--;
-    size_t start = T->capture_starts[T->capture_sp];
-    size_t result = heap_new_atom(
-        T, atom_intern(T, T->capture_buf ? T->capture_buf + start : ""));
-    if (T->capture_buf)
-      T->capture_buf[start] = '\0';
-    T->capture_pos = start;
-    *ok = unify(T, f + 1, result);
-    return 1;
-  }
-  if (arity == 1 && id == atom_bag_open) {
-    if (T->bag_count == T->bag_cap) {
-      int32_t cap = T->bag_cap ? T->bag_cap * 2 : 4;
-      T->bags = mem_grow_n(T, T->bags, (size_t)cap, sizeof(bag_t));
-      T->bag_cap = cap;
-    }
-    T->bags[T->bag_count] = (bag_t){0};
-    *ok = unify(T, f + 1, heap_new_int(T, T->bag_count++));
-    return 1;
-  }
-  if ((arity == 2 && (id == atom_bag_add || id == atom_bag_collect)) ||
-      (arity == 1 && id == atom_bag_drop)) {
-    size_t a = heap_deref(T, f + 1);
-    int64_t n = T->heap[a].tag == TAG_INT ? T->heap[a].as.ival : -1;
-    if (n < 0 || n >= T->bag_count) {
-      *ok = 0;
-      return 1;
-    }
-    bag_t *b = &T->bags[n];
-    *ok = 1;
-    if (id == atom_bag_add) {
-      if (b->len == b->cap) {
-        size_t cap = b->cap ? b->cap * 2 : 16;
-        b->items = mem_grow_n(T, b->items, cap, sizeof(bag_item_t));
-        b->cap = cap;
-      }
-      int32_t nvars;
-      tterm_t *t;
-      T->arena_pending = b->chunks;
-      b->chunks = NULL;
-      int whole = pending_templates(T, &(size_t){f + 2}, 1, &t, &nvars);
-      b->chunks = T->arena_pending;
-      T->arena_pending = NULL;
-      if (!whole) {
-        T->pending_error_ball = make_cyclic_term_error(T);
-        *ok = 0;
-        return 1;
-      }
-      b->items[b->len++] = (bag_item_t){t, nvars};
-      return 1;
-    }
-    if (id == atom_bag_collect) {
-      size_t list = heap_new_atom(T, atom_nil);
-      for (size_t i = b->len; i-- > 0;) {
-        size_t args[2] = {
-            heap_copy(T, b->items[i].t, tmp_rename(T, b->items[i].nvars), 0),
-            list};
-        list = heap_new_struct(T, atom_dot, 2, args);
-      }
-      bags_drop(T, (int32_t)n);
-      *ok = unify(T, f + 2, list);
-      return 1;
+    for (size_t i = b->len; i-- > 0;) {
+      size_t *rn = tmp_rename(T, b->items[i].nvars);
+      size_t args[2] = {b->items[i].cyclic
+                            ? heap_copy_cyclic(T, b->items[i].t, rn)
+                            : heap_copy(T, b->items[i].t, rn, 0),
+                        list};
+      list = heap_new_struct(T, atom_dot, 2, args);
     }
     bags_drop(T, (int32_t)n);
+    *ok = unify(T, f + 2, list);
     return 1;
   }
-  if (arity == 2 && id == atom_copy_term) {
-    int32_t nvars;
-    tterm_t *tmpl;
-    if (!pending_templates(T, &(size_t){f + 1}, 1, &tmpl, &nvars)) {
-      pending_free(T);
-      T->pending_error_ball = make_cyclic_term_error(T);
+  bags_drop(T, (int32_t)n);
+  return 1;
+}
+
+BUILTIN(bi_copy_term) {
+  int32_t nvars;
+  tterm_t *tmpl;
+  bool cyclic = !pending_templates(T, &(size_t){f + 1}, 1, &tmpl, &nvars);
+  size_t *rn = tmp_rename(T, nvars);
+  size_t copy =
+      cyclic ? heap_copy_cyclic(T, tmpl, rn) : heap_copy(T, tmpl, rn, 0);
+  pending_free(T);
+  *ok = unify(T, f + 2, copy);
+  return 1;
+}
+
+BUILTIN(bi_acyclic_term) {
+  *ok = heap_acyclic(T, f + 1);
+  return 1;
+}
+
+BUILTIN(bi_term_variables) {
+  *ok = unify(T, f + 2, heap_term_variables(T, f + 1));
+  return 1;
+}
+
+BUILTIN(bi_nb_setarg) {
+  // no trail entry, so the value survives backtracking; an atomic value has
+  // no cells to be released.
+  size_t n = heap_deref(T, f + 1), c = heap_deref(T, f + 2),
+         v = heap_deref(T, f + 3);
+  tag_t vt = T->heap[v].tag;
+  *ok = T->heap[n].tag == TAG_INT && T->heap[c].tag == TAG_STR &&
+        (vt == TAG_INT || vt == TAG_ATOM || vt == TAG_FLT);
+  if (*ok) {
+    size_t cf = T->heap[c].as.ptr;
+    int64_t i = T->heap[n].as.ival;
+    *ok = i >= 1 && i <= T->heap[cf].as.func.arity;
+    if (*ok)
+      T->heap[cf + (size_t)i] = T->heap[v];
+  }
+  return 1;
+}
+
+BUILTIN(bi_predicates) {
+  size_t list = heap_new_atom(T, atom_nil);
+  for (int i = 0; i < PRED_HASH_SIZE; i++)
+    for (pred_bucket_t *b = T->pred_hash[i]; b; b = b->next) {
+      if (!bucket_has_alive(T, b->pred_id, b->pred_arity))
+        continue;
+      int32_t source = T->db[b->indices[0]].source;
+      size_t pi[2] = {heap_new_atom(T, b->pred_id),
+                      heap_new_int(T, b->pred_arity)};
+      size_t entry[2] = {heap_new_struct(T, atom_slash, 2, pi),
+                         heap_new_atom(T, source >= 0 ? source : atom_nil)};
+      size_t cell[2] = {heap_new_struct(T, atom_minus, 2, entry), list};
+      list = heap_new_struct(T, atom_dot, 2, cell);
+    }
+  *ok = unify(T, f + 1, list);
+  return 1;
+}
+
+BUILTIN(bi_erase_clause) {
+  idx_key_t want = key_of_goal(T, f + 1);
+  size_t born_d = heap_deref(T, f + 2);
+  pred_bucket_t *bucket = pred_bucket_find(T, want.pred_id, want.pred_arity);
+  *ok = 0;
+  if (T->heap[born_d].tag != TAG_INT)
+    return 1;
+  for (int32_t bi = 0; bucket && bi < bucket->count; bi++) {
+    int32_t ci = bucket->indices[bi];
+    if (clause_alive(&T->db[ci]) &&
+        T->db[ci].born == (uint32_t)T->heap[born_d].as.ival) {
+      db_remove_at(T, ci);
+      *ok = 1;
+      break;
+    }
+  }
+  return 1;
+}
+
+BUILTIN(bi_clause_candidates) {
+  idx_key_t want = key_of_goal(T, f + 1);
+  size_t list = heap_new_atom(T, atom_nil);
+  // These 15 stay purely native - a stray same-name assertz must never
+  // silently shadow real unification/comparison.
+  int32_t pid = want.pred_id, par = want.pred_arity;
+  if ((par == 2 &&
+       (pid == atom_unify_op || pid == atom_is || pid == atom_lt ||
+        pid == atom_gt || pid == atom_arith_le || pid == atom_arith_ge ||
+        pid == atom_arith_eq || pid == atom_arith_ne || pid == atom_term_eq ||
+        pid == atom_term_ne || pid == atom_term_lt || pid == atom_term_gt ||
+        pid == atom_term_le || pid == atom_term_ge || pid == atom_univ))) {
+    *ok = unify(T, f + 2, list);
+    return 1;
+  }
+  pred_bucket_t *bucket = pred_bucket_find(T, want.pred_id, want.pred_arity);
+  arg_key_t want_arg = arg_key_of(want);
+  for (int32_t bi = bucket ? bucket->count - 1 : -1; bi >= 0; bi--) {
+    clause_t *c = &T->db[bucket->indices[bi]];
+    if (!clause_alive(c) || first_arg_conflicts(want_arg, c))
+      continue;
+    size_t h2, b2;
+    fresh_copy_clause(T, c, &h2, &b2);
+    size_t pair_args[2] = {h2, b2};
+    size_t pair = heap_new_struct(T, atom_minus, 2, pair_args);
+    if (id == atom_clause_refs) {
+      size_t ref_args[2] = {heap_new_int(T, (int64_t)c->born), pair};
+      pair = heap_new_struct(T, atom_minus, 2, ref_args);
+    }
+    size_t cons_args[2] = {pair, list};
+    list = heap_new_struct(T, atom_dot, 2, cons_args);
+  }
+  *ok = unify(T, f + 2, list);
+  return 1;
+}
+
+BUILTIN(bi_choice_mark) {
+  *ok = unify(T, f + 1, heap_new_int(T, (int64_t)T->sp));
+  return 1;
+}
+
+BUILTIN(bi_cut_to) {
+  size_t mark_d = heap_deref(T, f + 1);
+  if (T->heap[mark_d].tag != TAG_INT) {
+    *ok = 0;
+    return 1;
+  }
+  T->sp = (size_t)T->heap[mark_d].as.ival;
+  *ok = 1;
+  return 1;
+}
+
+BUILTIN(bi_term_to_atom) {
+  size_t term_arg = heap_deref(T, f + 1);
+  size_t atom_arg = heap_deref(T, f + 2);
+  if (T->heap[term_arg].tag != TAG_REF) {
+    T->tta_pos = 0;
+    mem_reserve(T, &T->scratch, &T->scratch_cap, 1);
+    ((char *)T->scratch)[0] = '\0';
+    print_term_via(T, term_arg, PRINT_QUOTED,
+                   tta_emit); // quoted, so it round-trips
+    *ok = unify(T, atom_arg, heap_new_atom(T, atom_intern(T, T->scratch)));
+    return 1;
+  }
+  if (T->heap[atom_arg].tag != TAG_ATOM) {
+    *ok = 0;
+    return 1;
+  }
+  int32_t nvars;
+  const char **names;
+  tterm_t *t;
+  if (!parse_term_from_string(T, atom_name(T, T->heap[atom_arg].as.atom_id), &t,
+                              &nvars, &names)) {
+    arena_temp_reset(T);
+    T->pending_error_ball = make_syntax_error(T);
+    *ok = 0;
+    return 1;
+  }
+  *ok = unify(T, term_arg, copy_parsed(T, t, nvars, names, NULL));
+  return 1;
+}
+
+BUILTIN(bi_atom_to_term) {
+  size_t atom_arg = heap_deref(T, f + 1);
+  if (T->heap[atom_arg].tag != TAG_ATOM) {
+    *ok = 0;
+    return 1;
+  }
+  int32_t nvars;
+  const char **names;
+  tterm_t *t;
+  if (!parse_term_from_string(T, atom_name(T, T->heap[atom_arg].as.atom_id), &t,
+                              &nvars, &names)) {
+    arena_temp_reset(T);
+    T->pending_error_ball = make_syntax_error(T);
+    *ok = 0;
+    return 1;
+  }
+  size_t namevars;
+  size_t term_copy = copy_parsed(T, t, nvars, names, &namevars);
+  *ok = unify(T, f + 2, term_copy) && unify(T, f + 3, namevars);
+  return 1;
+}
+
+// '$$read_term'(+Stream, -Term, -NameVars): the next term from user_input or
+// a stream, end_of_file at its end, with 'Name'=Var for its named variables.
+BUILTIN(bi_read_term) {
+  size_t sd = heap_deref(T, f + 1);
+  int sid = -1;
+  if ((T->heap[sd].tag != TAG_ATOM ||
+       T->heap[sd].as.atom_id != atom_user_input) &&
+      !resolve_stream_id(T, f + 1, &sid)) {
+    *ok = 0;
+    return 1;
+  }
+  int got = read_term_text(T, sid);
+  if (got != TEXT_TERM) {
+    if (got == TEXT_CUT_OFF) {
+      fmt(T->err_msg, sizeof T->err_msg, "end of file inside a term");
+      T->pending_error_ball = make_syntax_error(T);
       *ok = 0;
       return 1;
     }
-    size_t copy = heap_copy(T, tmpl, tmp_rename(T, nvars), 0);
-    pending_free(T);
-    *ok = unify(T, f + 2, copy);
+    *ok = unify(T, f + 2, heap_new_atom(T, atom_end_of_file)) &&
+          unify(T, f + 3, heap_new_atom(T, atom_nil));
     return 1;
   }
-  if (arity == 1 && id == atom_acyclic_term) {
-    *ok = heap_acyclic(T, f + 1);
+  int32_t nvars;
+  const char **names;
+  tterm_t *t;
+  if (!parse_term_from_string(T, T->read_buf, &t, &nvars, &names)) {
+    arena_temp_reset(T);
+    T->pending_error_ball = make_syntax_error(T);
+    *ok = 0;
     return 1;
   }
-  if (arity == 3 && id == atom_nb_setarg) {
-    // no trail entry, so the value survives backtracking; an atomic value has
-    // no cells to be released.
-    size_t n = heap_deref(T, f + 1), c = heap_deref(T, f + 2),
-           v = heap_deref(T, f + 3);
-    tag_t vt = T->heap[v].tag;
-    *ok = T->heap[n].tag == TAG_INT && T->heap[c].tag == TAG_STR &&
-          (vt == TAG_INT || vt == TAG_ATOM || vt == TAG_FLT);
-    if (*ok) {
-      size_t cf = T->heap[c].as.ptr;
-      int64_t i = T->heap[n].as.ival;
-      *ok = i >= 1 && i <= T->heap[cf].as.func.arity;
-      if (*ok)
-        T->heap[cf + (size_t)i] = T->heap[v];
+  size_t namevars;
+  size_t term_copy = copy_parsed(T, t, nvars, names, &namevars);
+  *ok = unify(T, f + 2, term_copy) && unify(T, f + 3, namevars);
+  return 1;
+}
+
+BUILTIN(bi_var) {
+  tag_t t = T->heap[heap_deref(T, f + 1)].tag;
+  if (id == atom_var)
+    *ok = t == TAG_REF;
+  else if (id == atom_nonvar)
+    *ok = t != TAG_REF;
+  else if (id == atom_kw_atom)
+    *ok = t == TAG_ATOM;
+  else if (id == atom_integer)
+    *ok = t == TAG_INT;
+  else if (id == atom_kw_float)
+    *ok = t == TAG_FLT;
+  else if (id == atom_number)
+    *ok = t == TAG_INT || t == TAG_FLT;
+  else if (id == atom_atomic)
+    *ok = t == TAG_ATOM || t == TAG_INT || t == TAG_FLT;
+  else if (id == atom_callable)
+    *ok = t == TAG_ATOM || t == TAG_STR;
+  else
+    *ok = t == TAG_STR; // compound
+  return 1;
+}
+
+BUILTIN(bi_functor) {
+  size_t term = heap_deref(T, f + 1);
+  if (T->heap[term].tag != TAG_REF) {
+    size_t name_val, arity_val;
+    if (T->heap[term].tag == TAG_STR) {
+      size_t tf = T->heap[term].as.ptr;
+      name_val = heap_new_atom(T, T->heap[tf].as.func.atom_id);
+      arity_val = heap_new_int(T, T->heap[tf].as.func.arity);
+    } else {
+      name_val = term;
+      arity_val = heap_new_int(T, 0);
     }
+    *ok = unify(T, f + 2, name_val) && unify(T, f + 3, arity_val);
     return 1;
   }
-  if (arity == 1 && id == atom_predicates) {
+  size_t name_d = heap_deref(T, f + 2);
+  size_t arity_d = heap_deref(T, f + 3);
+  if (T->heap[name_d].tag == TAG_REF || T->heap[arity_d].tag == TAG_REF) {
+    T->pending_error_ball = make_instantiation_error(T);
+    *ok = 0;
+    return 1;
+  }
+  int64_t ar = T->heap[arity_d].tag == TAG_INT ? T->heap[arity_d].as.ival : -1;
+  if (T->heap[arity_d].tag != TAG_INT)
+    T->pending_error_ball = make_type_error(T, "integer", arity_d);
+  else if (ar < 0)
+    T->pending_error_ball = make_domain_error(T, "not_less_than_zero", arity_d);
+  else if (T->heap[name_d].tag == TAG_STR)
+    T->pending_error_ball = make_type_error(T, "atomic", name_d);
+  else if (ar > 0 && T->heap[name_d].tag != TAG_ATOM)
+    T->pending_error_ball = make_type_error(T, "atom", name_d);
+  else if ((uint64_t)ar > gc_max_live(T) || ar > INT32_MAX)
+    T->pending_error_ball = make_resource_error(T, "memory");
+  if (T->pending_error_ball != (size_t)-1) {
+    *ok = 0;
+    return 1;
+  }
+  if (ar == 0) {
+    *ok = unify(T, term, name_d);
+    return 1;
+  }
+  mem_reserve(T, &T->scratch, &T->scratch_cap, (size_t)ar * sizeof(size_t));
+  size_t *args = T->scratch;
+  for (int64_t i = 0; i < ar; i++)
+    args[i] = heap_new_var(T);
+  *ok =
+      unify(T, term,
+            heap_new_struct(T, T->heap[name_d].as.atom_id, (int32_t)ar, args));
+  return 1;
+}
+
+BUILTIN(bi_arg) {
+  size_t n_d = heap_deref(T, f + 1);
+  size_t term = heap_deref(T, f + 2);
+  if (T->heap[n_d].tag == TAG_REF || T->heap[term].tag == TAG_REF) {
+    T->pending_error_ball = make_instantiation_error(T);
+    *ok = 0;
+    return 1;
+  }
+  if (T->heap[n_d].tag != TAG_INT)
+    T->pending_error_ball = make_type_error(T, "integer", n_d);
+  else if (T->heap[term].tag != TAG_STR)
+    T->pending_error_ball = make_type_error(T, "compound", term);
+  if (T->pending_error_ball != (size_t)-1) {
+    *ok = 0;
+    return 1;
+  }
+  int64_t n = T->heap[n_d].as.ival;
+  size_t tf = T->heap[term].as.ptr;
+  if (n < 1 || n > T->heap[tf].as.func.arity) {
+    *ok = 0;
+    return 1;
+  }
+  *ok = unify(T, f + 3, tf + (size_t)n);
+  return 1;
+}
+
+BUILTIN(bi_skip_list) {
+  size_t cell = heap_deref(T, f + 1);
+  size_t tortoise = (size_t)-1;
+  int64_t n = 0, power = 1, lam = 0;
+  while (T->heap[cell].tag == TAG_STR) {
+    size_t cf = T->heap[cell].as.ptr;
+    if (T->heap[cf].as.func.arity != 2 ||
+        T->heap[cf].as.func.atom_id != atom_dot)
+      break;
+    if (cf == tortoise)
+      break; // cyclic: Tail is a list cell on the cycle
+    if (lam == power) {
+      tortoise = cf;
+      power *= 2;
+      lam = 0;
+    }
+    lam++;
+    n++;
+    cell = heap_deref(T, cf + 2);
+  }
+  *ok = unify(T, f + 2, heap_new_int(T, n)) && unify(T, f + 3, cell);
+  return 1;
+}
+
+BUILTIN(bi_univ) {
+  size_t term = heap_deref(T, f + 1);
+  if (T->heap[term].tag != TAG_REF) {
     size_t list = heap_new_atom(T, atom_nil);
-    for (int i = 0; i < PRED_HASH_SIZE; i++)
-      for (pred_bucket_t *b = T->pred_hash[i]; b; b = b->next) {
-        if (b->count == 0)
-          continue;
-        int32_t source = T->db[b->indices[0]].source;
-        size_t pi[2] = {heap_new_atom(T, b->pred_id),
-                        heap_new_int(T, b->pred_arity)};
-        size_t entry[2] = {heap_new_struct(T, atom_slash, 2, pi),
-                           heap_new_atom(T, source >= 0 ? source : atom_nil)};
-        size_t cell[2] = {heap_new_struct(T, atom_minus, 2, entry), list};
-        list = heap_new_struct(T, atom_dot, 2, cell);
+    if (T->heap[term].tag == TAG_STR) {
+      size_t tf = T->heap[term].as.ptr;
+      int32_t tarity = T->heap[tf].as.func.arity;
+      for (int32_t i = tarity; i >= 1; i--) {
+        size_t args2[2] = {tf + (size_t)i, list};
+        list = heap_new_struct(T, atom_dot, 2, args2);
       }
-    *ok = unify(T, f + 1, list);
-    return 1;
-  }
-  if (arity == 2 && id == atom_clause_candidates) {
-    idx_key_t want = key_of_goal(T, f + 1);
-    size_t list = heap_new_atom(T, atom_nil);
-    // These 15 stay purely native - a stray same-name assertz must never
-    // silently shadow real unification/comparison.
-    int32_t pid = want.pred_id, par = want.pred_arity;
-    if ((par == 2 &&
-         (pid == atom_unify_op || pid == atom_is || pid == atom_lt ||
-          pid == atom_gt || pid == atom_arith_le || pid == atom_arith_ge ||
-          pid == atom_arith_eq || pid == atom_arith_ne || pid == atom_term_eq ||
-          pid == atom_term_ne || pid == atom_term_lt || pid == atom_term_gt ||
-          pid == atom_term_le || pid == atom_term_ge || pid == atom_univ))) {
-      *ok = unify(T, f + 2, list);
-      return 1;
-    }
-    pred_bucket_t *bucket = pred_bucket_find(T, want.pred_id, want.pred_arity);
-    arg_key_t want_arg = arg_key_of(want);
-    for (int32_t bi = bucket ? bucket->count - 1 : -1; bi >= 0; bi--) {
-      clause_t *c = &T->db[bucket->indices[bi]];
-      if (first_arg_conflicts(want_arg, c))
-        continue;
-      size_t h2, b2;
-      fresh_copy_clause(T, c, &h2, &b2);
-      size_t pair_args[2] = {h2, b2};
-      size_t pair = heap_new_struct(T, atom_minus, 2, pair_args);
-      size_t cons_args[2] = {pair, list};
-      list = heap_new_struct(T, atom_dot, 2, cons_args);
+      size_t head_args[2] = {heap_new_atom(T, T->heap[tf].as.func.atom_id),
+                             list};
+      list = heap_new_struct(T, atom_dot, 2, head_args);
+    } else {
+      size_t args2[2] = {term, list};
+      list = heap_new_struct(T, atom_dot, 2, args2);
     }
     *ok = unify(T, f + 2, list);
     return 1;
   }
-  if (arity == 1 && id == atom_choice_mark) {
-    *ok = unify(T, f + 1, heap_new_int(T, (int64_t)T->sp));
+  size_t d = heap_deref(T, f + 2);
+  *ok = 0;
+  if (T->heap[d].tag == TAG_REF) {
+    T->pending_error_ball = make_instantiation_error(T);
     return 1;
   }
-  if (arity == 1 && id == atom_cut_to) {
-    size_t mark_d = heap_deref(T, f + 1);
-    if (T->heap[mark_d].tag != TAG_INT) {
-      *ok = 0;
-      return 1;
-    }
-    T->sp = (size_t)T->heap[mark_d].as.ival;
-    *ok = 1;
+  if (T->heap[d].tag == TAG_ATOM && T->heap[d].as.atom_id == atom_nil) {
+    T->pending_error_ball = make_domain_error(T, "non_empty_list", d);
     return 1;
   }
-  if (arity == 2 && id == atom_term_to_atom) {
-    size_t term_arg = heap_deref(T, f + 1);
-    size_t atom_arg = heap_deref(T, f + 2);
-    if (T->heap[term_arg].tag != TAG_REF) {
-      T->tta_pos = 0;
-      mem_reserve(T, &T->scratch, &T->scratch_cap, 1);
-      ((char *)T->scratch)[0] = '\0';
-      print_term_via(T, term_arg, PRINT_QUOTED,
-                     tta_emit); // quoted, so it round-trips
-      *ok = unify(T, atom_arg, heap_new_atom(T, atom_intern(T, T->scratch)));
-      return 1;
-    }
-    if (T->heap[atom_arg].tag != TAG_ATOM) {
-      *ok = 0;
-      return 1;
-    }
-    int32_t nvars;
-    const char **names;
-    tterm_t *t;
-    if (!parse_term_from_string(T, atom_name(T, T->heap[atom_arg].as.atom_id),
-                                &t, &nvars, &names)) {
-      arena_temp_reset(T);
-      T->pending_error_ball = make_syntax_error(T);
-      *ok = 0;
-      return 1;
-    }
-    *ok = unify(T, term_arg, copy_parsed(T, t, nvars, names, NULL));
+  if (T->heap[d].tag != TAG_STR ||
+      T->heap[T->heap[d].as.ptr].as.func.atom_id != atom_dot ||
+      T->heap[T->heap[d].as.ptr].as.func.arity != 2) {
+    T->pending_error_ball = make_type_error(T, "list", d);
     return 1;
   }
-  if (arity == 3 && id == atom_atom_to_term) {
-    size_t atom_arg = heap_deref(T, f + 1);
-    if (T->heap[atom_arg].tag != TAG_ATOM) {
-      *ok = 0;
-      return 1;
-    }
-    int32_t nvars;
-    const char **names;
-    tterm_t *t;
-    if (!parse_term_from_string(T, atom_name(T, T->heap[atom_arg].as.atom_id),
-                                &t, &nvars, &names)) {
-      arena_temp_reset(T);
-      T->pending_error_ball = make_syntax_error(T);
-      *ok = 0;
-      return 1;
-    }
-    size_t namevars;
-    size_t term_copy = copy_parsed(T, t, nvars, names, &namevars);
-    *ok = unify(T, f + 2, term_copy) && unify(T, f + 3, namevars);
-    return 1;
-  }
-  // '$$read_term'(+Stream, -Term, -NameVars): the next term from user_input or
-  // a stream, end_of_file at its end, with 'Name'=Var for its named variables.
-  if (arity == 3 && id == atom_read_term) {
-    size_t sd = heap_deref(T, f + 1);
-    int sid = -1;
-    if ((T->heap[sd].tag != TAG_ATOM ||
-         T->heap[sd].as.atom_id != atom_user_input) &&
-        !resolve_stream_id(T, f + 1, &sid)) {
-      *ok = 0;
-      return 1;
-    }
-    int got = read_term_text(T, sid);
-    if (got != TEXT_TERM) {
-      if (got == TEXT_CUT_OFF) {
-        fmt(T->err_msg, sizeof T->err_msg, "end of file inside a term");
-        T->pending_error_ball = make_syntax_error(T);
-        *ok = 0;
-        return 1;
-      }
-      *ok = unify(T, f + 2, heap_new_atom(T, atom_end_of_file)) &&
-            unify(T, f + 3, heap_new_atom(T, atom_nil));
-      return 1;
-    }
-    int32_t nvars;
-    const char **names;
-    tterm_t *t;
-    if (!parse_term_from_string(T, T->read_buf, &t, &nvars, &names)) {
-      arena_temp_reset(T);
-      T->pending_error_ball = make_syntax_error(T);
-      *ok = 0;
-      return 1;
-    }
-    size_t namevars;
-    size_t term_copy = copy_parsed(T, t, nvars, names, &namevars);
-    *ok = unify(T, f + 2, term_copy) && unify(T, f + 3, namevars);
-    return 1;
-  }
-
-  if (arity == 1 &&
-      (id == atom_var || id == atom_kw_atom || id == atom_integer ||
-       id == atom_kw_float || id == atom_compound)) {
-    tag_t t = T->heap[heap_deref(T, f + 1)].tag;
-    if (id == atom_var)
-      *ok = t == TAG_REF;
-    else if (id == atom_kw_atom)
-      *ok = t == TAG_ATOM;
-    else if (id == atom_integer)
-      *ok = t == TAG_INT;
-    else if (id == atom_kw_float)
-      *ok = t == TAG_FLT;
-    else
-      *ok = t == TAG_STR; // compound
-    return 1;
-  }
-
-  if (arity == 3 && id == atom_functor) {
-    size_t term = heap_deref(T, f + 1);
-    if (T->heap[term].tag != TAG_REF) {
-      size_t name_val, arity_val;
-      if (T->heap[term].tag == TAG_STR) {
-        size_t tf = T->heap[term].as.ptr;
-        name_val = heap_new_atom(T, T->heap[tf].as.func.atom_id);
-        arity_val = heap_new_int(T, T->heap[tf].as.func.arity);
-      } else {
-        name_val = term;
-        arity_val = heap_new_int(T, 0);
-      }
-      *ok = unify(T, f + 2, name_val) && unify(T, f + 3, arity_val);
-      return 1;
-    }
-    size_t name_d = heap_deref(T, f + 2);
-    size_t arity_d = heap_deref(T, f + 3);
-    if (T->heap[name_d].tag == TAG_REF || T->heap[arity_d].tag == TAG_REF) {
-      T->pending_error_ball = make_instantiation_error(T);
-      *ok = 0;
-      return 1;
-    }
-    int64_t ar =
-        T->heap[arity_d].tag == TAG_INT ? T->heap[arity_d].as.ival : -1;
-    if (T->heap[arity_d].tag != TAG_INT)
-      T->pending_error_ball = make_type_error(T, "integer", arity_d);
-    else if (ar < 0)
-      T->pending_error_ball =
-          make_domain_error(T, "not_less_than_zero", arity_d);
-    else if (T->heap[name_d].tag == TAG_STR)
-      T->pending_error_ball = make_type_error(T, "atomic", name_d);
-    else if (ar > 0 && T->heap[name_d].tag != TAG_ATOM)
-      T->pending_error_ball = make_type_error(T, "atom", name_d);
-    else if ((uint64_t)ar > gc_max_live(T) || ar > INT32_MAX)
+  size_t head = heap_deref(T, T->heap[d].as.ptr + 1);
+  size_t cur = heap_deref(T, T->heap[d].as.ptr + 2);
+  size_t *elems = NULL;
+  int32_t ne = 0;
+  while (T->heap[cur].tag == TAG_STR &&
+         T->heap[T->heap[cur].as.ptr].as.func.atom_id == atom_dot &&
+         T->heap[T->heap[cur].as.ptr].as.func.arity == 2) {
+    if (ne == INT32_MAX) {
       T->pending_error_ball = make_resource_error(T, "memory");
-    if (T->pending_error_ball != (size_t)-1) {
-      *ok = 0;
       return 1;
     }
-    if (ar == 0) {
-      *ok = unify(T, term, name_d);
-      return 1;
-    }
-    mem_reserve(T, &T->scratch, &T->scratch_cap, (size_t)ar * sizeof(size_t));
-    size_t *args = T->scratch;
-    for (int64_t i = 0; i < ar; i++)
-      args[i] = heap_new_var(T);
-    *ok = unify(
-        T, term,
-        heap_new_struct(T, T->heap[name_d].as.atom_id, (int32_t)ar, args));
+    mem_reserve(T, &T->scratch, &T->scratch_cap, (ne + 1) * sizeof(size_t));
+    elems = T->scratch;
+    elems[ne++] = heap_deref(T, T->heap[cur].as.ptr + 1);
+    cur = heap_deref(T, T->heap[cur].as.ptr + 2);
+  }
+  if (T->heap[cur].tag == TAG_REF || T->heap[head].tag == TAG_REF)
+    T->pending_error_ball = make_instantiation_error(T);
+  else if (T->heap[cur].tag != TAG_ATOM || T->heap[cur].as.atom_id != atom_nil)
+    T->pending_error_ball = make_type_error(T, "list", d);
+  else if (ne == 0 && T->heap[head].tag == TAG_STR)
+    T->pending_error_ball = make_type_error(T, "atomic", head);
+  else if (ne > 0 && T->heap[head].tag != TAG_ATOM)
+    T->pending_error_ball = make_type_error(T, "atom", head);
+  if (T->pending_error_ball != (size_t)-1)
+    return 1;
+  size_t built =
+      ne == 0 ? head : heap_new_struct(T, T->heap[head].as.atom_id, ne, elems);
+  *ok = unify(T, term, built);
+  return 1;
+}
+
+BUILTIN(bi_atom_codes) {
+  size_t a = heap_deref(T, f + 1);
+  if (T->heap[a].tag == TAG_ATOM) {
+    *ok = unify(T, f + 2,
+                codes_from_cstr(T, atom_name(T, T->heap[a].as.atom_id)));
     return 1;
   }
-  if (arity == 3 && id == atom_arg) {
-    size_t n_d = heap_deref(T, f + 1);
-    size_t term = heap_deref(T, f + 2);
-    if (T->heap[n_d].tag == TAG_REF || T->heap[term].tag == TAG_REF) {
+  int incomplete = 0;
+  char *text = codes_text(T, f + 2, SIZE_MAX, &incomplete);
+  if (!text) {
+    if (incomplete)
       T->pending_error_ball = make_instantiation_error(T);
-      *ok = 0;
-      return 1;
-    }
-    if (T->heap[n_d].tag != TAG_INT)
-      T->pending_error_ball = make_type_error(T, "integer", n_d);
-    else if (T->heap[term].tag != TAG_STR)
-      T->pending_error_ball = make_type_error(T, "compound", term);
-    if (T->pending_error_ball != (size_t)-1) {
-      *ok = 0;
-      return 1;
-    }
-    int64_t n = T->heap[n_d].as.ival;
-    size_t tf = T->heap[term].as.ptr;
-    if (n < 1 || n > T->heap[tf].as.func.arity) {
-      *ok = 0;
-      return 1;
-    }
-    *ok = unify(T, f + 3, tf + (size_t)n);
-    return 1;
-  }
-  if (arity == 3 && id == atom_skip_list) {
-    size_t cell = heap_deref(T, f + 1);
-    size_t tortoise = (size_t)-1;
-    int64_t n = 0, power = 1, lam = 0;
-    while (T->heap[cell].tag == TAG_STR) {
-      size_t cf = T->heap[cell].as.ptr;
-      if (T->heap[cf].as.func.arity != 2 ||
-          T->heap[cf].as.func.atom_id != atom_dot)
-        break;
-      if (cf == tortoise)
-        break; // cyclic: Tail is a list cell on the cycle
-      if (lam == power) {
-        tortoise = cf;
-        power *= 2;
-        lam = 0;
-      }
-      lam++;
-      n++;
-      cell = heap_deref(T, cf + 2);
-    }
-    *ok = unify(T, f + 2, heap_new_int(T, n)) && unify(T, f + 3, cell);
-    return 1;
-  }
-  if (arity == 2 && id == atom_univ) {
-    size_t term = heap_deref(T, f + 1);
-    if (T->heap[term].tag != TAG_REF) {
-      size_t list = heap_new_atom(T, atom_nil);
-      if (T->heap[term].tag == TAG_STR) {
-        size_t tf = T->heap[term].as.ptr;
-        int32_t tarity = T->heap[tf].as.func.arity;
-        for (int32_t i = tarity; i >= 1; i--) {
-          size_t args2[2] = {tf + (size_t)i, list};
-          list = heap_new_struct(T, atom_dot, 2, args2);
-        }
-        size_t head_args[2] = {heap_new_atom(T, T->heap[tf].as.func.atom_id),
-                               list};
-        list = heap_new_struct(T, atom_dot, 2, head_args);
-      } else {
-        size_t args2[2] = {term, list};
-        list = heap_new_struct(T, atom_dot, 2, args2);
-      }
-      *ok = unify(T, f + 2, list);
-      return 1;
-    }
-    size_t d = heap_deref(T, f + 2);
     *ok = 0;
-    if (T->heap[d].tag == TAG_REF) {
-      T->pending_error_ball = make_instantiation_error(T);
-      return 1;
-    }
-    if (T->heap[d].tag == TAG_ATOM && T->heap[d].as.atom_id == atom_nil) {
-      T->pending_error_ball = make_domain_error(T, "non_empty_list", d);
-      return 1;
-    }
-    if (T->heap[d].tag != TAG_STR ||
-        T->heap[T->heap[d].as.ptr].as.func.atom_id != atom_dot ||
-        T->heap[T->heap[d].as.ptr].as.func.arity != 2) {
-      T->pending_error_ball = make_type_error(T, "list", d);
-      return 1;
-    }
-    size_t head = heap_deref(T, T->heap[d].as.ptr + 1);
-    size_t cur = heap_deref(T, T->heap[d].as.ptr + 2);
-    size_t *elems = NULL;
-    int32_t ne = 0;
-    while (T->heap[cur].tag == TAG_STR &&
-           T->heap[T->heap[cur].as.ptr].as.func.atom_id == atom_dot &&
-           T->heap[T->heap[cur].as.ptr].as.func.arity == 2) {
-      if (ne == INT32_MAX) {
-        T->pending_error_ball = make_resource_error(T, "memory");
-        return 1;
-      }
-      mem_reserve(T, &T->scratch, &T->scratch_cap, (ne + 1) * sizeof(size_t));
-      elems = T->scratch;
-      elems[ne++] = heap_deref(T, T->heap[cur].as.ptr + 1);
-      cur = heap_deref(T, T->heap[cur].as.ptr + 2);
-    }
-    if (T->heap[cur].tag == TAG_REF || T->heap[head].tag == TAG_REF)
-      T->pending_error_ball = make_instantiation_error(T);
-    else if (T->heap[cur].tag != TAG_ATOM ||
-             T->heap[cur].as.atom_id != atom_nil)
-      T->pending_error_ball = make_type_error(T, "list", d);
-    else if (ne == 0 && T->heap[head].tag == TAG_STR)
-      T->pending_error_ball = make_type_error(T, "atomic", head);
-    else if (ne > 0 && T->heap[head].tag != TAG_ATOM)
-      T->pending_error_ball = make_type_error(T, "atom", head);
-    if (T->pending_error_ball != (size_t)-1)
-      return 1;
-    size_t built =
-        ne == 0 ? head
-                : heap_new_struct(T, T->heap[head].as.atom_id, ne, elems);
-    *ok = unify(T, term, built);
     return 1;
   }
-  if (arity == 2 && id == atom_atom_codes) {
-    size_t a = heap_deref(T, f + 1);
-    if (T->heap[a].tag == TAG_ATOM) {
-      *ok = unify(T, f + 2,
-                  codes_from_cstr(T, atom_name(T, T->heap[a].as.atom_id)));
-      return 1;
-    }
-    int incomplete = 0;
-    char *text = codes_text(T, f + 2, SIZE_MAX, &incomplete);
-    if (!text) {
-      if (incomplete)
-        T->pending_error_ball = make_instantiation_error(T);
-      *ok = 0;
-      return 1;
-    }
-    *ok = unify(T, f + 1, heap_new_atom(T, atom_intern(T, text)));
+  *ok = unify(T, f + 1, heap_new_atom(T, atom_intern(T, text)));
+  return 1;
+}
+
+BUILTIN(bi_number_codes) {
+  size_t a = heap_deref(T, f + 1);
+  if (T->heap[a].tag == TAG_INT) {
+    char buf[32];
+    fmt(buf, sizeof buf, "%lld", (long long)T->heap[a].as.ival);
+    *ok = unify(T, f + 2, codes_from_cstr(T, buf));
     return 1;
   }
-  if (arity == 2 && id == atom_number_codes) {
-    size_t a = heap_deref(T, f + 1);
-    if (T->heap[a].tag == TAG_INT) {
-      char buf[32];
-      fmt(buf, sizeof buf, "%lld", (long long)T->heap[a].as.ival);
-      *ok = unify(T, f + 2, codes_from_cstr(T, buf));
-      return 1;
-    }
-    if (T->heap[a].tag == TAG_FLT) {
-      char buf[64];
-      float_text(buf, sizeof buf, T->heap[a].as.fval);
-      *ok = unify(T, f + 2, codes_from_cstr(T, buf));
-      return 1;
-    }
-    int incomplete = 0;
-    char *buf = codes_text(T, f + 2, SIZE_MAX, &incomplete);
-    if (!buf) {
-      if (incomplete)
-        T->pending_error_ball = make_instantiation_error(T);
-      *ok = 0;
-      return 1;
-    }
-    tterm_t *num;
-    number_text_t got = parse_number_text(T, buf, &num);
-    if (got != NUMBER_TEXT_OK && got != NUMBER_TEXT_BAD) {
-      arena_temp_reset(T);
-      size_t args[1] = {heap_new_atom(
-          T, atom_intern(T, got == NUMBER_TEXT_TOO_BIG     ? "max_integer"
-                            : got == NUMBER_TEXT_TOO_SMALL ? "min_integer"
-                                                           : "max_float"))};
-      T->pending_error_ball = make_error(
-          T,
-          heap_new_struct(T, atom_intern(T, "representation_error"), 1, args));
-      *ok = 0;
-      return 1;
-    }
-    size_t v = got != NUMBER_TEXT_OK ? 0
-               : num->tag == T_INT   ? heap_new_int(T, num->as.ival)
-                                     : heap_new_flt(T, num->as.fval);
+  if (T->heap[a].tag == TAG_FLT) {
+    char buf[64];
+    float_text(buf, sizeof buf, T->heap[a].as.fval);
+    *ok = unify(T, f + 2, codes_from_cstr(T, buf));
+    return 1;
+  }
+  int incomplete = 0;
+  char *buf = codes_text(T, f + 2, SIZE_MAX, &incomplete);
+  if (!buf) {
+    if (incomplete)
+      T->pending_error_ball = make_instantiation_error(T);
+    *ok = 0;
+    return 1;
+  }
+  tterm_t *num;
+  number_text_t got = parse_number_text(T, buf, &num);
+  if (got != NUMBER_TEXT_OK && got != NUMBER_TEXT_BAD) {
     arena_temp_reset(T);
-    *ok = got == NUMBER_TEXT_OK && unify(T, f + 1, v);
+    size_t args[1] = {heap_new_atom(
+        T, atom_intern(T, got == NUMBER_TEXT_TOO_BIG     ? "max_integer"
+                          : got == NUMBER_TEXT_TOO_SMALL ? "min_integer"
+                                                         : "max_float"))};
+    T->pending_error_ball = make_error(
+        T, heap_new_struct(T, atom_intern(T, "representation_error"), 1, args));
+    *ok = 0;
     return 1;
   }
-  return 0;
+  size_t v = got != NUMBER_TEXT_OK ? 0
+             : num->tag == T_INT   ? heap_new_int(T, num->as.ival)
+                                   : heap_new_flt(T, num->as.fval);
+  arena_temp_reset(T);
+  *ok = got == NUMBER_TEXT_OK && unify(T, f + 1, v);
+  return 1;
+}
+
+// Every predicate the engine runs itself, with the arities it runs it at.
+// The control constructs have no handler: run_query_body runs them.
+static const builtin_t builtins[WELL_KNOWN_ATOM_COUNT] = {
+    [atom_fail] = {bi_fail, B(0)},
+    [atom_false] = {bi_fail, B(0)},
+    [atom_bang] = {bi_bang, B(0)},
+    [atom_is] = {bi_is, B(2)},
+    [atom_unify_op] = {bi_unify, B(2)},
+    [atom_unify_oc] = {bi_unify_oc, B(2)},
+    [atom_lt] = {bi_arith_compare, B(2)},
+    [atom_gt] = {bi_arith_compare, B(2)},
+    [atom_arith_le] = {bi_arith_compare, B(2)},
+    [atom_arith_ge] = {bi_arith_compare, B(2)},
+    [atom_arith_eq] = {bi_arith_compare, B(2)},
+    [atom_arith_ne] = {bi_arith_compare, B(2)},
+    [atom_term_eq] = {bi_order_compare, B(2)},
+    [atom_term_ne] = {bi_order_compare, B(2)},
+    [atom_term_lt] = {bi_order_compare, B(2)},
+    [atom_term_gt] = {bi_order_compare, B(2)},
+    [atom_term_le] = {bi_order_compare, B(2)},
+    [atom_term_ge] = {bi_order_compare, B(2)},
+    [atom_halt] = {bi_halt, B(1)},
+    [atom_flush] = {bi_flush, B(1)},
+    [atom_write_vars] = {bi_write_vars, B(4)},
+    [atom_write_text] = {bi_write_text, B(3)},
+    [atom_stream_binary] = {bi_stream_binary, B(1)},
+    [atom_write_raw] = {bi_write_raw, B(3)},
+    [atom_open] = {bi_open, B(3)},
+    [atom_close] = {bi_close, B(1)},
+    [atom_get_byte] = {bi_get_byte, B(3)},
+    [atom_get_char] = {bi_get_char, B(3)},
+    [atom_read_line_to_atom] = {bi_read_line_to_atom, B(2)},
+    [atom_consult] = {bi_consult, B(2)},
+    [atom_source_path] = {bi_source_path, B(2)},
+    [atom_loading_file] = {bi_loading_file, B(1)},
+    [atom_unload] = {bi_unload, B(1)},
+    [atom_module_set] = {bi_module_set, B(2)},
+    [atom_qualify] = {bi_qualify, B(3)},
+    [atom_dynamic] = {bi_dynamic, B(1)},
+    [atom_undynamic] = {bi_undynamic, B(2)},
+    [atom_is_static_pred] = {bi_is_static_pred, B(2)},
+    [atom_prolog_flags] = {bi_prolog_flags, B(1)},
+    [atom_set_flag] = {bi_set_flag, B(2)},
+    [atom_capture_start] = {bi_capture_start, B(0)},
+    [atom_capture_stop] = {bi_capture_stop, B(1) | B(2)},
+    [atom_bag_open] = {bi_bag_open, B(1)},
+    [atom_bag_add] = {bi_bag_add, B(2)},
+    [atom_bag_collect] = {bi_bag_add, B(2)},
+    [atom_bag_drop] = {bi_bag_add, B(1)},
+    [atom_copy_term] = {bi_copy_term, B(2)},
+    [atom_acyclic_term] = {bi_acyclic_term, B(1)},
+    [atom_term_variables] = {bi_term_variables, B(2)},
+    [atom_nb_setarg] = {bi_nb_setarg, B(3)},
+    [atom_predicates] = {bi_predicates, B(1)},
+    [atom_erase_clause] = {bi_erase_clause, B(2)},
+    [atom_clause_candidates] = {bi_clause_candidates, B(2)},
+    [atom_clause_refs] = {bi_clause_candidates, B(2)},
+    [atom_choice_mark] = {bi_choice_mark, B(1)},
+    [atom_cut_to] = {bi_cut_to, B(1)},
+    [atom_term_to_atom] = {bi_term_to_atom, B(2)},
+    [atom_atom_to_term] = {bi_atom_to_term, B(3)},
+    [atom_read_term] = {bi_read_term, B(3)},
+    [atom_var] = {bi_var, B(1)},
+    [atom_kw_atom] = {bi_var, B(1)},
+    [atom_integer] = {bi_var, B(1)},
+    [atom_kw_float] = {bi_var, B(1)},
+    [atom_compound] = {bi_var, B(1)},
+    [atom_nonvar] = {bi_var, B(1)},
+    [atom_number] = {bi_var, B(1)},
+    [atom_atomic] = {bi_var, B(1)},
+    [atom_callable] = {bi_var, B(1)},
+    [atom_functor] = {bi_functor, B(3)},
+    [atom_arg] = {bi_arg, B(3)},
+    [atom_skip_list] = {bi_skip_list, B(3)},
+    [atom_univ] = {bi_univ, B(2)},
+    [atom_atom_codes] = {bi_atom_codes, B(2)},
+    [atom_number_codes] = {bi_number_codes, B(2)},
+    [atom_true] = {NULL, B(0)},
+    [atom_comma] = {NULL, B(2)},
+    [atom_semicolon] = {NULL, B(2)},
+    [atom_arrow] = {NULL, B(2)},
+    [atom_call] = {NULL, B(1)},
+    [atom_catch] = {NULL, B(3)},
+    [atom_throw] = {NULL, B(1)},
+};
+
+static bool is_builtin_pi(int32_t pred_id, int32_t pred_arity) {
+  return pred_id >= 0 && pred_id < WELL_KNOWN_ATOM_COUNT && pred_arity >= 0 &&
+         pred_arity < 32 && (builtins[pred_id].arities >> pred_arity & 1u);
+}
+
+static int dispatch_table(trilog_t *T, size_t f, int32_t arity, int32_t id,
+                          int *ok) {
+  const builtin_t *b = &builtins[id];
+  if (!b->fn || arity >= 32 || !(b->arities >> arity & 1u))
+    return 0;
+  return b->fn(T, f, arity, id, ok);
 }
 
 static void rename_init(size_t *rename, int32_t n) {
@@ -2444,11 +2889,7 @@ static int do_throw(trilog_t *T, size_t ball, size_t *cn_out,
                     size_t *active_catch_ptr) {
   int32_t nballvars;
   tterm_t *ball_template;
-  if (!pending_templates(T, &ball, 1, &ball_template, &nballvars)) {
-    pending_free(T);
-    size_t cyclic = make_cyclic_term_error(T);
-    pending_templates(T, &cyclic, 1, &ball_template, &nballvars);
-  }
+  bool cyclic = !pending_templates(T, &ball, 1, &ball_template, &nballvars);
   size_t idx = *active_catch_ptr;
   for (;;) {
     if (idx == (size_t)-1) {
@@ -2460,9 +2901,12 @@ static int do_throw(trilog_t *T, size_t ball, size_t *cn_out,
     heap_release(T, entry.heap_mark);
     trail_release(T, entry.trail_mark);
     T->sp = entry.sp_at_entry;
-    size_t ball_copy = fresh_copy_term(T, ball_template, nballvars);
+    size_t *rn = tmp_rename(T, nballvars);
+    size_t ball_copy = cyclic ? heap_copy_cyclic(T, ball_template, rn)
+                              : heap_copy(T, ball_template, rn, 0);
     if (unify(T, entry.catcher, ball_copy)) {
       pending_free(T);
+      T->catch_sp = idx;
       *active_catch_ptr = entry.outer_active_catch;
       *cn_out = build_conj_tail(T, &entry.recovery, 1, entry.continuation);
       return 1;
@@ -2480,20 +2924,61 @@ query_result_t run_query(trilog_t *T, tterm_t **goals, int32_t ngoals,
   size_t saved_base = T->query_sp_base;
   size_t saved_heap_base = T->query_heap_base;
   size_t saved_catch_base = T->query_catch_base;
+  size_t saved_trail_base = T->query_trail_base;
   size_t *saved_rename = T->solution_rename;
   T->query_sp_base = T->sp;
   T->query_depth++;
   T->query_heap_base = T->query_depth == 1 ? 0 : heap_mark(T);
   T->query_catch_base = T->query_depth == 1 ? 0 : T->catch_sp;
+  T->query_trail_base = trail_mark(T);
+  size_t saved_catch_sp = T->catch_sp;
   T->uncaught_ball = (size_t)-1;
+  size_t *saved_cn = T->query_cn;
   query_result_t r = run_query_body(T, goals, ngoals, nvars, on_solution, ud);
+  T->query_cn = saved_cn;
   T->query_depth--;
   T->sp = T->query_sp_base;
+  T->catch_sp = saved_catch_sp;
+  db_reclaim(T);
   T->query_sp_base = saved_base;
   T->query_heap_base = saved_heap_base;
   T->query_catch_base = saved_catch_base;
+  T->query_trail_base = saved_trail_base;
   T->solution_rename = saved_rename;
   return r;
+}
+
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(atom_comma < atom_call && atom_semicolon < atom_call &&
+                   atom_arrow < atom_call && atom_cut < atom_call &&
+                   atom_catch < atom_call && atom_throw < atom_call &&
+                   atom_uncatch < atom_call,
+               "run_query_body skips control constructs above atom_call");
+#endif
+
+// A body call/1 can run: no number among its ',', ';' and '->' parts. A
+// variable is fine; it is called as call(V).
+static bool body_callable(trilog_t *T, size_t g) {
+  size_t wbase = T->wsp;
+  wstack_push(T, g);
+  while (T->wsp > wbase) {
+    size_t r = heap_deref(T, T->wstack[--T->wsp]);
+    tag_t t = T->heap[r].tag;
+    if (t == TAG_INT || t == TAG_FLT) {
+      T->wsp = wbase;
+      return false;
+    }
+    if (t != TAG_STR)
+      continue;
+    size_t f = T->heap[r].as.ptr;
+    int32_t id = T->heap[f].as.func.atom_id;
+    if (T->heap[f].as.func.arity == 2 &&
+        (id == atom_comma || id == atom_semicolon || id == atom_arrow)) {
+      wstack_push(T, f + 1);
+      wstack_push(T, f + 2);
+    }
+  }
+  return true;
 }
 
 static query_result_t run_query_body(trilog_t *T, tterm_t **goals,
@@ -2521,11 +3006,16 @@ static query_result_t run_query_body(trilog_t *T, tterm_t **goals,
   for (int32_t i = 0; i < ngoals; i++)
     qgoals[i] = heap_copy_goal(T, goals[i], rename, cut_barrier);
   size_t cn = build_conj_tail(T, qgoals, ngoals, heap_new_atom(T, atom_true));
+  T->query_cn = &cn;
 
   size_t first, rest;
   int32_t clause_idx = 0;
   int32_t next_match = -1; // the db index after clause_idx that matches, or -1
+  uint32_t call_gen = 0;
   idx_key_t caller_key = {.kind = IDX_ANY};
+  pred_bucket_t *call_bk = NULL;
+  arg_key_t call_arg = {.kind = IDX_ANY};
+  int32_t call_pos = -1, next_pos = -1;
   size_t active_catch = (size_t)-1;
   int predicate_known = 0;
 
@@ -2535,16 +3025,17 @@ A:
     if (!T->yield_fn(T, T->sp, T->yield_ud))
       engine_abort(T);
   }
-  gc_maybe_run(T, &cn, T->stack, T->sp, rename, nvars, &active_catch);
+  if (T->heap_top >= T->gc_threshold)
+    gc_maybe_run(T, &cn, T->stack, T->sp, rename, nvars, &active_catch);
   if (gc_heap_exhausted(T)) {
     if (do_throw(T, make_resource_error(T, "memory"), &cn, &active_catch))
       goto A;
     return QUERY_ERROR;
   }
+  // check cn == true before decompose, or a mid-clause true goal
+  // wrongly ends the query.
+  size_t cnd = heap_deref(T, cn);
   {
-    // check cn == true before decompose, or a mid-clause true goal
-    // wrongly ends the query.
-    size_t cnd = heap_deref(T, cn);
     if (T->heap[cnd].tag == TAG_ATOM && T->heap[cnd].as.atom_id == atom_true) {
       any_found = 1;
       T->solution_rename = rename;
@@ -2553,9 +3044,9 @@ A:
       goto C;
     }
   }
-  decompose(T, cn, &first, &rest);
+  decompose(T, cnd, &first, &rest);
   {
-    size_t fd = heap_deref(T, first);
+    size_t fd = first;
     if (T->heap[fd].tag == TAG_ATOM && T->heap[fd].as.atom_id == atom_true) {
       cn = rest;
       goto A;
@@ -2564,53 +3055,107 @@ A:
       size_t cf = T->heap[fd].as.ptr;
       int32_t fd_arity = T->heap[cf].as.func.arity;
       int32_t fd_id = T->heap[cf].as.func.atom_id;
-      if (fd_arity == 2 && fd_id == atom_comma) {
-        size_t inner_first = heap_deref(T, cf + 1);
-        size_t inner_rest = heap_deref(T, cf + 2);
-        size_t new_rest = build_conj_tail(T, &inner_rest, 1, rest);
-        cn = build_conj_tail(T, &inner_first, 1, new_rest);
-        goto A;
-      }
-      if (fd_arity == 1 && fd_id == atom_call) {
-        size_t goal = heap_rebake_cuts(T, heap_deref(T, cf + 1), T->sp);
-        cn = build_conj_tail(T, &goal, 1, rest);
-        goto A;
-      }
-      if (fd_arity == 1 && fd_id == atom_cut) {
-        T->sp = (size_t)T->heap[heap_deref(T, cf + 1)].as.ival;
-        cn = rest;
-        goto A;
-      }
-      if (fd_arity == 3 && fd_id == atom_catch) {
-        size_t goal = heap_rebake_cuts(T, heap_deref(T, cf + 1), T->sp);
-        size_t catcher = heap_deref(T, cf + 2);
-        size_t recovery = heap_deref(T, cf + 3);
-        size_t idx = catch_stack_push(
-            T, (catch_frame_t){.heap_mark = heap_mark(T),
-                               .trail_mark = trail_mark(T),
-                               .sp_at_entry = T->sp,
-                               .catcher = catcher,
-                               .recovery = recovery,
-                               .continuation = rest,
-                               .outer_active_catch = active_catch});
-        active_catch = idx;
-        size_t uncatch_arg[1] = {heap_new_int(T, (int64_t)idx)};
-        size_t uncatch_term = heap_new_struct(T, atom_uncatch, 1, uncatch_arg);
-        size_t after_goal = build_conj_tail(T, &uncatch_term, 1, rest);
-        cn = build_conj_tail(T, &goal, 1, after_goal);
-        goto A;
-      }
-      if (fd_arity == 1 && fd_id == atom_uncatch) {
-        size_t idx = (size_t)T->heap[heap_deref(T, cf + 1)].as.ival;
-        active_catch = T->catch_stack[idx].outer_active_catch;
-        cn = rest;
-        goto A;
-      }
-      if (fd_arity == 1 && fd_id == atom_throw) {
-        size_t ball = heap_deref(T, cf + 1);
-        if (do_throw(T, ball, &cn, &active_catch))
+      // Control constructs have the lowest atom ids, so other goals skip them.
+      if (fd_id <= atom_call) {
+        if (fd_arity == 2 && fd_id == atom_comma) {
+          size_t inner_first = heap_deref(T, cf + 1);
+          size_t inner_rest = heap_deref(T, cf + 2);
+          size_t new_rest = build_conj_tail(T, &inner_rest, 1, rest);
+          cn = build_conj_tail(T, &inner_first, 1, new_rest);
           goto A;
-        return QUERY_ERROR;
+        }
+        // ;/2 and ->/2 run natively; the frame keeps the other branch's goals,
+        // so backtracking into it copies no clause. An unbound left side falls
+        // through to boot/core.pl's clauses.
+        if (fd_arity == 2 && fd_id == atom_semicolon &&
+            T->heap[heap_deref(T, cf + 1)].tag != TAG_REF) {
+          size_t lhs = heap_deref(T, cf + 1);
+          size_t rhs = heap_deref(T, cf + 2);
+          size_t sp0 = T->sp;
+          size_t lf = T->heap[lhs].tag == TAG_STR ? T->heap[lhs].as.ptr : 0;
+          int ite = lf && T->heap[lf].as.func.arity == 2 &&
+                    T->heap[lf].as.func.atom_id == atom_arrow;
+          size_t other = build_conj_tail(T, &rhs, 1, rest);
+          stack_push(T, (frame_t){.goals = other,
+                                  .clause_idx = FRAME_GOALS,
+                                  .heap_mark = heap_mark(T),
+                                  .trail_mark = trail_mark(T),
+                                  .cut_barrier = sp0,
+                                  .active_catch = active_catch,
+                                  .catch_sp = T->catch_sp});
+          if (ite) {
+            size_t barrier_arg[1] = {heap_new_int(T, (int64_t)sp0)};
+            size_t goals[3] = {heap_rebake_cuts(T, lf + 1, T->sp),
+                               heap_new_struct(T, atom_cut, 1, barrier_arg),
+                               heap_deref(T, lf + 2)};
+            cn = build_conj_tail(T, goals, 3, rest);
+          } else {
+            cn = build_conj_tail(T, &lhs, 1, rest);
+          }
+          goto A;
+        }
+        if (fd_arity == 2 && fd_id == atom_arrow) {
+          size_t barrier_arg[1] = {heap_new_int(T, (int64_t)T->sp)};
+          size_t goals[3] = {heap_rebake_cuts(T, cf + 1, T->sp),
+                             heap_new_struct(T, atom_cut, 1, barrier_arg),
+                             heap_deref(T, cf + 2)};
+          cn = build_conj_tail(T, goals, 3, rest);
+          goto A;
+        }
+        if (fd_arity == 1 && fd_id == atom_call) {
+          size_t g = heap_deref(T, cf + 1);
+          if (!body_callable(T, g)) {
+            if (do_throw(T, make_type_error(T, "callable", g), &cn,
+                         &active_catch))
+              goto A;
+            return QUERY_ERROR;
+          }
+          size_t goal = heap_rebake_cuts(T, g, T->sp);
+          cn = build_conj_tail(T, &goal, 1, rest);
+          goto A;
+        }
+        if (fd_arity == 1 && fd_id == atom_cut) {
+          T->sp = (size_t)T->heap[heap_deref(T, cf + 1)].as.ival;
+          cn = rest;
+          goto A;
+        }
+        if (fd_arity == 3 && fd_id == atom_catch) {
+          size_t goal = heap_rebake_cuts(T, heap_deref(T, cf + 1), T->sp);
+          size_t catcher = heap_deref(T, cf + 2);
+          size_t recovery = heap_deref(T, cf + 3);
+          size_t idx = catch_stack_push(
+              T, (catch_frame_t){.heap_mark = heap_mark(T),
+                                 .trail_mark = trail_mark(T),
+                                 .sp_at_entry = T->sp,
+                                 .catcher = catcher,
+                                 .recovery = recovery,
+                                 .continuation = rest,
+                                 .outer_active_catch = active_catch});
+          active_catch = idx;
+          size_t uncatch_arg[1] = {heap_new_int(T, (int64_t)idx)};
+          T->catch_stack[idx].uncatch_cell = uncatch_arg[0];
+          size_t uncatch_term =
+              heap_new_struct(T, atom_uncatch, 1, uncatch_arg);
+          size_t after_goal = build_conj_tail(T, &uncatch_term, 1, rest);
+          cn = build_conj_tail(T, &goal, 1, after_goal);
+          goto A;
+        }
+        if (fd_arity == 1 && fd_id == atom_uncatch) {
+          size_t idx = (size_t)T->heap[heap_deref(T, cf + 1)].as.ival;
+          active_catch = T->catch_stack[idx].outer_active_catch;
+          // A goal that left no choice point cannot come back to its catch.
+          if (idx + 1 == T->catch_sp &&
+              T->sp == T->catch_stack[idx].sp_at_entry)
+            T->catch_sp = idx;
+          cn = rest;
+          goto A;
+        }
+        if (fd_arity == 1 && fd_id == atom_throw) {
+          size_t ball = heap_deref(T, cf + 1);
+          if (do_throw(T, ball, &cn, &active_catch))
+            goto A;
+          return QUERY_ERROR;
+        }
       }
       // $$-prefixed: raw, unprotected primitives; boot/core.pl's public
       // assertz/asserta/retract check staticity first, then delegate here.
@@ -2664,7 +3209,8 @@ A:
         int found = 0;
         for (int32_t bi = 0; bucket && bi < bucket->count; bi++) {
           int32_t ci = bucket->indices[bi];
-          if (first_arg_conflicts(want_arg, &T->db[ci]))
+          if (!clause_alive(&T->db[ci]) ||
+              first_arg_conflicts(want_arg, &T->db[ci]))
             continue;
           trail_release(T, rtmark);
           heap_release(T, rmark);
@@ -2708,12 +3254,12 @@ A:
       goto C;
     }
   }
+  caller_key = key_of_goal(T, first);
+  call_bk = pred_bucket_find(T, caller_key.pred_id, caller_key.pred_arity);
   {
-    idx_key_t dk = key_of_goal(T, first);
-    pred_bucket_t *dbk = pred_bucket_find(T, dk.pred_id, dk.pred_arity);
-    if (dbk && dbk->foreign) {
+    if (call_bk && call_bk->foreign) {
       size_t ball;
-      int r = call_foreign(T, &T->foreign[dbk->foreign - 1], first, &ball);
+      int r = call_foreign(T, &T->foreign[call_bk->foreign - 1], first, &ball);
       if (r > 0) {
         cn = rest;
         goto A;
@@ -2724,26 +3270,27 @@ A:
         goto A;
       return QUERY_ERROR;
     }
-    if (dbk && dbk->dynamic) {
-      size_t args[1] = {first};
-      size_t dyn_goal = heap_new_struct(T, atom_dyn_call, 1, args);
-      cn = build_conj_tail(T, &dyn_goal, 1, rest);
-      goto A;
-    }
   }
   clause_idx = 0;
+  call_gen = T->db_gen;
   tmark = trail_mark(T);
   hmark = heap_mark(T);
   cut_barrier = T->sp;
-  caller_key = key_of_goal(T, first);
-  predicate_known = 0;
+  call_arg = arg_key_of(caller_key);
+  call_pos = call_bk ? bucket_match(T, call_bk, 0, call_arg, call_gen) : -1;
+  goto B_at;
 
-B: {
-  pred_bucket_t *bk =
-      pred_bucket_find(T, caller_key.pred_id, caller_key.pred_arity);
+B:
+  call_bk = pred_bucket_find(T, caller_key.pred_id, caller_key.pred_arity);
+  call_arg = arg_key_of(caller_key);
+  call_pos = call_bk
+                 ? bucket_match(T, call_bk, bucket_seek(call_bk, clause_idx),
+                                call_arg, call_gen)
+                 : -1;
+B_at: {
+  pred_bucket_t *bk = call_bk;
+  int32_t pos = call_pos;
   predicate_known = bk && bk->count > 0;
-  arg_key_t arg = arg_key_of(caller_key);
-  int32_t pos = bk ? bucket_match(T, bk, bucket_seek(bk, clause_idx), arg) : -1;
   if (pos < 0) {
     if (clause_idx > 0)
       goto C; // resuming a call that already matched: out of clauses is a
@@ -2758,6 +3305,15 @@ B: {
       // heap_new_atom(-1) and later corrupt the heap.
       size_t first_d = heap_deref(T, first);
       size_t ball;
+      if (caller_key.pred_id != -1 && T->flag_unknown != atom_error) {
+        if (T->flag_unknown == atom_warning) {
+          char msg[256];
+          fmt(msg, sizeof msg, "%% Warning: unknown procedure %s/%d\n",
+              atom_name(T, caller_key.pred_id), (int)caller_key.pred_arity);
+          io_write_err(T, msg);
+        }
+        goto C;
+      }
       if (caller_key.pred_id != -1)
         ball = make_existence_error(T, "procedure", caller_key.pred_id,
                                     caller_key.pred_arity);
@@ -2772,8 +3328,8 @@ B: {
     goto C;
   }
   clause_idx = bk->indices[pos];
-  int32_t after = bucket_match(T, bk, pos + 1, arg);
-  next_match = after < 0 ? -1 : bk->indices[after];
+  next_pos = bucket_match(T, bk, pos + 1, call_arg, call_gen);
+  next_match = next_pos < 0 ? -1 : bk->indices[next_pos];
 }
   {
     clause_t *c = &T->db[clause_idx];
@@ -2784,8 +3340,8 @@ B: {
     if (!unify_template(T, c->head, first, r2)) {
       if (next_match < 0)
         goto C;
-      clause_idx = next_match;
-      goto B;
+      call_pos = next_pos;
+      goto B_at;
     }
 
     size_t *bodies = tmp_goals(T, c->nbody);
@@ -2799,7 +3355,9 @@ B: {
                               .heap_mark = hmark,
                               .trail_mark = tmark,
                               .cut_barrier = cut_barrier,
-                              .active_catch = active_catch});
+                              .active_catch = active_catch,
+                              .catch_sp = T->catch_sp,
+                              .gen = call_gen});
     cn = newcn;
     goto A;
   }
@@ -2815,6 +3373,13 @@ C:
     tmark = f.trail_mark;
     cut_barrier = f.cut_barrier;
     active_catch = f.active_catch;
+    T->catch_sp = f.catch_sp;
+    call_gen = f.gen;
+    if (clause_idx == FRAME_GOALS) {
+      trail_release(T, tmark);
+      heap_release(T, hmark);
+      goto A;
+    }
     decompose(T, cn, &first, &rest);
     // release before keying, or a stale binding from the last clause
     // tried wrongly indexes out every other clause.
@@ -2840,11 +3405,31 @@ static int op_type_code(int32_t tid) {
 }
 
 // Later '$$op' clauses win, as the clause order of op/3 says.
+static struct atom_ops *ops_slot(trilog_t *T, int32_t atom) {
+  uint32_t mask = (uint32_t)T->ops_len - 1;
+  for (uint32_t i = ((uint32_t)atom * 2654435761u) & mask;; i = (i + 1) & mask)
+    if (T->ops[i].atom == atom || T->ops[i].atom < 0)
+      return &T->ops[i];
+}
+
 static void ops_rebuild(trilog_t *T, pred_bucket_t *b) {
-  T->ops = mem_grow_n(T, T->ops, (size_t)T->atom_count, sizeof *T->ops);
-  T->ops_len = T->atom_count;
+  int32_t live = 0;
+  for (int32_t i = 0; b && i < b->count; i++)
+    live += clause_alive(&T->db[b->indices[i]]);
+  int32_t need = 16;
+  while (need < 2 * live)
+    need *= 2;
+  if (need != T->ops_len) {
+    mem_free(T, T->ops);
+    T->ops = mem_grow_n(T, NULL, (size_t)need, sizeof *T->ops);
+    T->ops_len = need;
+  }
   memset(T->ops, 0, (size_t)T->ops_len * sizeof *T->ops);
+  for (int32_t i = 0; i < T->ops_len; i++)
+    T->ops[i].atom = -1;
   for (int32_t i = 0; b && i < b->count; i++) {
+    if (!clause_alive(&T->db[b->indices[i]]))
+      continue;
     tterm_t *head = T->db[b->indices[i]].head;
     tterm_t *pri_t = head->as.str.args[0];
     tterm_t *type_t = head->as.str.args[1];
@@ -2852,12 +3437,13 @@ static void ops_rebuild(trilog_t *T, pred_bucket_t *b) {
     if (name_t->tag != T_ATOM || pri_t->tag != T_INT || type_t->tag != T_ATOM)
       continue;
     int code = op_type_code(type_t->as.atom_id);
-    if (code < 0 || name_t->as.atom_id >= T->ops_len)
+    if (code < 0)
       continue;
     int class = code <= 2   ? OP_CLASS_INFIX
                 : code <= 4 ? OP_CLASS_PREFIX
                             : OP_CLASS_POSTFIX;
-    struct atom_ops *o = &T->ops[name_t->as.atom_id];
+    struct atom_ops *o = ops_slot(T, name_t->as.atom_id);
+    o->atom = name_t->as.atom_id;
     o->pri[class] = (int16_t)pri_t->as.ival;
     o->assoc[class] = (int8_t)code;
   }
@@ -2868,10 +3454,10 @@ static int op_lookup(trilog_t *T, int32_t name_atom_id, int want, int *pri,
                      int *assoc_code) {
   if (T->ops_gen != T->op_gen)
     ops_rebuild(T, pred_bucket_find(T, atom_op_pred, 3));
-  if (name_atom_id < 0 || name_atom_id >= T->ops_len)
+  if (name_atom_id < 0)
     return 0;
-  const struct atom_ops *o = &T->ops[name_atom_id];
-  if (o->pri[want] == 0)
+  const struct atom_ops *o = ops_slot(T, name_atom_id);
+  if (o->atom < 0 || o->pri[want] == 0)
     return 0;
   *pri = o->pri[want];
   *assoc_code = o->assoc[want];
