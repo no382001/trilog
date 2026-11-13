@@ -35,11 +35,11 @@ REL_CLI_OBJS = $(patsubst %.c,$(REL)/%.o,$(CLI_SRCS))
 
 $(DEV)/cli/%.o $(REL)/cli/%.o: CPPFLAGS = -Iinclude -Icli -MMD -MP
 
-$(DEV)/%.o: %.c | format
+$(DEV)/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) -DTRILOG_IMAGE_DUMP $(CFLAGS) -c $< -o $@
 
-$(REL)/%.o: %.c | format
+$(REL)/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) -DTRILOG_EMBEDDED $(CFLAGS) -flto=auto -c $< -o $@
 
