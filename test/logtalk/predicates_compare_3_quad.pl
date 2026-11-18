@@ -4,25 +4,25 @@
 :- consult('test/logtalk/lgtunit.pl').
 
 % iso_compare_3_01
-?- lgt_run((once(compare(Order, 3, 5)), Order == (<))).
+?- once(compare(Order, 3, 5)), Order == (<).
    true.
 
 % iso_compare_3_02
-?- lgt_run((once(compare(Order, d, d)), Order == (=))).
+?- once(compare(Order, d, d)), Order == (=).
    true.
 
 % iso_compare_3_03
-?- lgt_run((once(compare(Order, Order, <)), Order == (<))).
+?- once(compare(Order, Order, <)), Order == (<).
    true.
 
 % iso_compare_3_04
-?- lgt_run(compare(<, <, <)).
+?- compare(<, <, <).
    false.
 
 % iso_compare_3_05
-?- lgt_run(compare(1+2, 3, 3.0)).
+?- compare(1+2, 3, 3.0).
    error(type_error(atom,1+2)).
 
 % iso_compare_3_06
-?- lgt_run(compare(>=, 3, 3.0)).
+?- compare(>=, 3, 3.0).
    error(domain_error(order,>=)).

@@ -355,6 +355,11 @@ query_text(Raw, Query) :-
 quad_now(T) :-
     catch(get_time_ms(T), error(existence_error(procedure, _), _), T = 0).
 
+% A file that asserts quad_wrap(W) has each of its queries Q run as call(W, Q).
+:- dynamic(quad_wrap/1).
+
+quad_goal(Q, G) :- ( quad_wrap(W) -> G = call(W, Q) ; G = Q ).
+
 run_one_test(QueryRaw, AnswerRaw, Pass) :-
     query_text(QueryRaw, Query),
     (   quad_alternatives(AnswerRaw, Alts) -> Expect = Alts
@@ -367,7 +372,8 @@ run_one_test(QueryRaw, AnswerRaw, Pass) :-
     expect_answers(Expect, Exps),
     ( catch(atom_to_term(Query, QueryTerm, NameVars), error(syntax_error(_), _), fail)
     -> ( catch(
-             ( collect_solutions(QueryTerm, NameVars, 64, Exps, Got, Snaps), Error = none ),
+             ( quad_goal(QueryTerm, Goal),
+               collect_solutions(Goal, NameVars, 64, Exps, Got, Snaps), Error = none ),
              Ball,
              ( Got = [], Snaps = [], quad_error_type(Ball, Error) )
          )
@@ -664,6 +670,7 @@ run_quad_file(File) :- run_quad_file(File, 0).
 
 % Skip: how many tests to read but not run (directives and clauses still run).
 run_quad_file(File, Skip) :-
+    retractall(quad_wrap(_)),
     retractall(quad_stat(_, _, _, _)),
     assertz(quad_stat(0, 0, 0, 0)),
     retractall(quad_record(_, _, _, _, _)),

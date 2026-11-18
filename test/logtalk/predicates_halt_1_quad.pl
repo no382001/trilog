@@ -4,9 +4,9 @@
 :- consult('test/logtalk/lgtunit.pl').
 
 % iso_halt_1_01
-?- lgt_run(halt(a)).
+?- halt(a).
    error(type_error(integer,a)).
 
 % eddbali_halt_1_02
-?- lgt_run(halt(_)).
+?- halt(_).
    error(instantiation_error).

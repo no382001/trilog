@@ -9,11 +9,11 @@ foo(1, foo(1)).
 foo(2, foo(1,2)).
 
 % iso_xor_2_01
-?- lgt_run((once(X is xor(10, 12)), X == 6)).
+?- once(X is xor(10, 12)), X == 6.
    true.
 
 % iso_xor_2_02
-?- lgt_run((once(X is xor(125, 255)), X == 130)).
+?- once(X is xor(125, 255)), X == 130.
    true.
 
 % not converted:

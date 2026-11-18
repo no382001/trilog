@@ -9,19 +9,19 @@ foo(1, foo(1)).
 foo(2, foo(1,2)).
 
 % iso_bitwise_complement_1_01
-?- lgt_run((once(X is '\\'('\\'(10))), X == 10)).
+?- once(X is '\\'('\\'(10))), X == 10.
    true.
 
 % iso_bitwise_complement_1_02
-?- lgt_run((once(X is \(\(10))), X == 10)).
+?- once(X is \(\(10))), X == 10.
    true.
 
 % iso_bitwise_complement_1_04
-?- lgt_run((variable(N), _X is '\\'(N))).
+?- variable(N), _X is '\\'(N).
    error(instantiation_error).
 
 % sics_bitwise_complement_1_05
-?- lgt_run(_X is '\\'(2.5)).
+?- _X is '\\'(2.5).
    error(type_error(integer,2.5)).
 
 % not converted:

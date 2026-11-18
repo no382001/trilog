@@ -11,133 +11,133 @@ max_depth_option_supported :- current_logtalk_flag(prolog_dialect, Dialect), Dia
 portrayed_option_supported :- current_logtalk_flag(prolog_dialect, Dialect), Dialect \== b, Dialect \== cx, Dialect \== ji, Dialect \== tau, Dialect \== yap.
 
 % iso_write_term_3_001
-?- lgt_run((once((set_text_output(out, ''), write_term(out, [1,2,3], []), text_output_assertion(out, '[1,2,3]', Assertion))), Assertion)).
+?- once((set_text_output(out, ''), write_term(out, [1,2,3], []), text_output_assertion(out, '[1,2,3]', Assertion))), Assertion.
    true.
 
 % iso_write_term_3_002
-?- lgt_run((once((set_text_output(out, ''), write_canonical(out, [1,2,3]), text_output_assertion(out, '\'.\'(1,\'.\'(2,\'.\'(3,[])))', Assertion))), Assertion)).
+?- once((set_text_output(out, ''), write_canonical(out, [1,2,3]), text_output_assertion(out, '\'.\'(1,\'.\'(2,\'.\'(3,[])))', Assertion))), Assertion.
    true.
 
 % iso_write_term_3_003
-?- lgt_run((once((set_text_output(out, ''), write_term(out, '1<2', []), text_output_assertion(out, '1<2', Assertion))), Assertion)).
+?- once((set_text_output(out, ''), write_term(out, '1<2', []), text_output_assertion(out, '1<2', Assertion))), Assertion.
    true.
 
 % iso_write_term_3_004
-?- lgt_run((once((set_text_output(out, ''), writeq(out, '1<2'), text_output_assertion(out, '\'1<2\'', Assertion))), Assertion)).
+?- once((set_text_output(out, ''), writeq(out, '1<2'), text_output_assertion(out, '\'1<2\'', Assertion))), Assertion.
    true.
 
 % iso_write_term_3_005
-?- lgt_run((once((set_text_output(out, ''), writeq(out, '$VAR'(0)), text_output_assertion(out, 'A', Assertion))), Assertion)).
+?- once((set_text_output(out, ''), writeq(out, '$VAR'(0)), text_output_assertion(out, 'A', Assertion))), Assertion.
    true.
 
 % iso_write_term_3_006
-?- lgt_run((once((set_text_output(out, ''), write_term(out, '$VAR'(1), [numbervars(false)]), text_output_assertion(out, '$VAR(1)', Assertion))), Assertion)).
+?- once((set_text_output(out, ''), write_term(out, '$VAR'(1), [numbervars(false)]), text_output_assertion(out, '$VAR(1)', Assertion))), Assertion.
    true.
 
 % iso_write_term_3_007
-?- lgt_run((once((set_text_output(out, ''), write_term(out, '$VAR'(51), [numbervars(true)]), text_output_assertion(out, 'Z1', Assertion))), Assertion)).
+?- once((set_text_output(out, ''), write_term(out, '$VAR'(51), [numbervars(true)]), text_output_assertion(out, 'Z1', Assertion))), Assertion.
    true.
 
 % sics_write_term_3_008
-?- lgt_run(write(_S, foo)).
+?- write(_S, foo).
    error(instantiation_error).
 
 % sics_write_term_3_009
-?- lgt_run(write_term(foo, _Opts)).
+?- write_term(foo, _Opts).
    error(instantiation_error).
 
 % sics_write_term_3_010
-?- lgt_run(write_term(user_output, foo, _Opts)).
+?- write_term(user_output, foo, _Opts).
    error(instantiation_error).
 
 % sics_write_term_3_011
-?- lgt_run(write_term(foo, [quoted(true)|_Opts])).
+?- write_term(foo, [quoted(true)|_Opts]).
    error(instantiation_error).
 
 % sics_write_term_3_012
-?- lgt_run(write_term(user_output, foo, [quoted(true)|_Opts])).
+?- write_term(user_output, foo, [quoted(true)|_Opts]).
    error(instantiation_error).
 
 % sics_write_term_3_013
-?- lgt_run(write_term(foo, [quoted(true),_Opts])).
+?- write_term(foo, [quoted(true),_Opts]).
    error(instantiation_error).
 
 % sics_write_term_3_014
-?- lgt_run(write_term(user_output, foo, [quoted(true),_Opts])).
+?- write_term(user_output, foo, [quoted(true),_Opts]).
    error(instantiation_error).
 
 % sics_write_term_3_015
-?- lgt_run(write_term(user_output, 1, 2)).
+?- write_term(user_output, 1, 2).
    error(type_error(list,2)).
 
 % sics_write_term_3_016
-?- lgt_run(write_term('', [quoted(true)|foo])).
+?- write_term('', [quoted(true)|foo]).
    error(type_error(list,[quoted(true)|foo]))
 |  error(type_error(list,foo)).
 
 % sics_write_term_3_017
-?- lgt_run(write(foo, 1)).
+?- write(foo, 1).
    error(domain_error(stream_or_alias,foo))
 |  error(existence_error(stream,foo)).
 
 % sics_write_term_3_018
-?- lgt_run(write_term(1, [quoted(true),foo])).
+?- write_term(1, [quoted(true),foo]).
    error(domain_error(write_option,foo)).
 
 % sics_write_term_3_019
-?- lgt_run((closed_input_stream(S, []), write(S, a))).
+?- closed_input_stream(S, []), write(S, a).
    error(existence_error(stream,S)).
 
 % sics_write_term_3_020
-?- lgt_run((closed_output_stream(S, []), write(S, a))).
+?- closed_output_stream(S, []), write(S, a).
    error(existence_error(stream,S)).
 
 % sics_write_term_3_021
-?- lgt_run((current_input(S), write(S, a))).
+?- current_input(S), write(S, a).
    error(permission_error(output,stream,S)).
 
 % sics_write_term_3_022
-?- lgt_run((set_binary_output([]), current_output(S), write(a))).
+?- set_binary_output([]), current_output(S), write(a).
    error(permission_error(output,binary_stream,S)).
 
 % sics_write_term_3_103
-?- lgt_run((suppress_text_output, write_term(1, [quoted(_)]))).
+?- suppress_text_output, write_term(1, [quoted(_)]).
    error(instantiation_error).
 
 % sics_write_term_3_104
-?- lgt_run((suppress_text_output, write_term(1, [quoted(fail)]))).
+?- suppress_text_output, write_term(1, [quoted(fail)]).
    error(domain_error(write_option,quoted(fail))).
 
 % sics_write_term_3_105
-?- lgt_run((suppress_text_output, write_term(1, [ignore_ops(_)]))).
+?- suppress_text_output, write_term(1, [ignore_ops(_)]).
    error(instantiation_error).
 
 % sics_write_term_3_106
-?- lgt_run((suppress_text_output, write_term(1, [ignore_ops(fail)]))).
+?- suppress_text_output, write_term(1, [ignore_ops(fail)]).
    error(domain_error(write_option,ignore_ops(fail))).
 
 % sics_write_term_3_107
-?- lgt_run((suppress_text_output, write_term(1, [numbervars(_)]))).
+?- suppress_text_output, write_term(1, [numbervars(_)]).
    error(instantiation_error).
 
 % sics_write_term_3_108
-?- lgt_run((suppress_text_output, write_term(1, [numbervars(fail)]))).
+?- suppress_text_output, write_term(1, [numbervars(fail)]).
    error(domain_error(write_option,numbervars(fail))).
 
 % sics_write_term_3_109
-?- lgt_run((suppress_text_output, write_term(1, [variable_names(_)]))).
+?- suppress_text_output, write_term(1, [variable_names(_)]).
    error(instantiation_error).
 
 % sics_write_term_3_110
-?- lgt_run((suppress_text_output, write_term(1, [variable_names(a)]))).
+?- suppress_text_output, write_term(1, [variable_names(a)]).
    error(domain_error(write_option,variable_names(a))).
 
 % sics_write_term_3_111
-?- lgt_run((suppress_text_output, write_term(1, [variable_names([_='A'])]))).
+?- suppress_text_output, write_term(1, [variable_names([_='A'])]).
    error(instantiation_error).
 
 % sics_write_term_3_112
-?- lgt_run((suppress_text_output, write_term(1, [variable_names(['A'=_|_])]))).
+?- suppress_text_output, write_term(1, [variable_names(['A'=_|_])]).
    error(instantiation_error).
 
 :- clean_binary_output, clean_text_output, clean_text_input.

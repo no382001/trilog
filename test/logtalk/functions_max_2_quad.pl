@@ -9,17 +9,17 @@ foo(1, foo(1)).
 foo(2, foo(1,2)).
 
 % iso_max_2_01
-?- lgt_run((once(X is max(2, 3)), X == 3)).
+?- once(X is max(2, 3)), X == 3.
    true.
 
 % iso_max_2_02
-?- lgt_run(catch((X is max(2.0, 3), (X == 3; X == 3.0)),Error,Error = error(evaluation_error(undefined), _))).
+?- catch((X is max(2.0, 3), (X == 3; X == 3.0)),Error,Error = error(evaluation_error(undefined), _)).
    true.
 
 % iso_max_2_03
-?- lgt_run(catch((X is max(2, 3.0), X == 3.0),Error,Error = error(evaluation_error(undefined), _))).
+?- catch((X is max(2, 3.0), X == 3.0),Error,Error = error(evaluation_error(undefined), _)).
    true.
 
 % iso_max_2_04
-?- lgt_run(catch((X is max(0, 0.0), (X == 0; X == 0.0)),Error,Error = error(evaluation_error(undefined), _))).
+?- catch((X is max(0, 0.0), (X == 0; X == 0.0)),Error,Error = error(evaluation_error(undefined), _)).
    true.

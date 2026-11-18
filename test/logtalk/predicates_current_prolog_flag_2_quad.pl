@@ -5,61 +5,61 @@
 :- discontiguous([ succeeds/1, fails/1, throws/2 ]).
 
 % iso_current_prolog_flag_2_01
-?- lgt_run(current_prolog_flag(debug, off)).
+?- current_prolog_flag(debug, off).
    true.
 
 % iso_current_prolog_flag_2_02
-?- lgt_run((once(current_prolog_flag(bounded, Bounded)), (Bounded == true ; Bounded == false))).
+?- once(current_prolog_flag(bounded, Bounded)), (Bounded == true ; Bounded == false).
    true.
 
 % iso_current_prolog_flag_2_03
-?- lgt_run((current_prolog_flag(bounded, true) -> current_prolog_flag(max_integer, MaxInteger), integer(MaxInteger) ; true)).
+?- current_prolog_flag(bounded, true) -> current_prolog_flag(max_integer, MaxInteger), integer(MaxInteger) ; true.
    true.
 
 % iso_current_prolog_flag_2_04
-?- lgt_run((current_prolog_flag(bounded, true) -> current_prolog_flag(min_integer, MinInteger), integer(MinInteger) ; true)).
+?- current_prolog_flag(bounded, true) -> current_prolog_flag(min_integer, MinInteger), integer(MinInteger) ; true.
    true.
 
 % iso_current_prolog_flag_2_05
-?- lgt_run((once(current_prolog_flag(integer_rounding_function, IntegerRoundingFunction)), (IntegerRoundingFunction == down ; IntegerRoundingFunction == toward_zero))).
+?- once(current_prolog_flag(integer_rounding_function, IntegerRoundingFunction)), (IntegerRoundingFunction == down ; IntegerRoundingFunction == toward_zero).
    true.
 
 % iso_current_prolog_flag_2_06
-?- lgt_run((once(current_prolog_flag(char_conversion, CharConversion)), (CharConversion == on ; CharConversion == off))).
+?- once(current_prolog_flag(char_conversion, CharConversion)), (CharConversion == on ; CharConversion == off).
    true.
 
 % iso_current_prolog_flag_2_07
-?- lgt_run((once(current_prolog_flag(debug, Debug)), (Debug == on ; Debug == off))).
+?- once(current_prolog_flag(debug, Debug)), (Debug == on ; Debug == off).
    true.
 
 % iso_current_prolog_flag_2_08
-?- lgt_run((current_prolog_flag(max_arity, MaxArity), (MaxArity == unbounded -> true ; integer(MaxArity), MaxArity > 0))).
+?- current_prolog_flag(max_arity, MaxArity), (MaxArity == unbounded -> true ; integer(MaxArity), MaxArity > 0).
    true.
 
 % iso_current_prolog_flag_2_09
-?- lgt_run((once(current_prolog_flag(unknown, Unknown)), (Unknown == error ; Unknown == fail ; Unknown == warning))).
+?- once(current_prolog_flag(unknown, Unknown)), (Unknown == error ; Unknown == fail ; Unknown == warning).
    true.
 
 % iso_current_prolog_flag_2_10
-?- lgt_run((once(current_prolog_flag(double_quotes, DoubleQuotes)), (DoubleQuotes == chars ; DoubleQuotes == codes ; DoubleQuotes == atom))).
+?- once(current_prolog_flag(double_quotes, DoubleQuotes)), (DoubleQuotes == chars ; DoubleQuotes == codes ; DoubleQuotes == atom).
    true.
 
 % iso_current_prolog_flag_2_11
-?- lgt_run(current_prolog_flag(5, _V)).
+?- current_prolog_flag(5, _V).
    error(type_error(atom,5)).
 
 % eddbali_current_prolog_flag_2_12
-?- lgt_run((set_prolog_flag(unknown, warning), current_prolog_flag(unknown, warning))).
+?- set_prolog_flag(unknown, warning), current_prolog_flag(unknown, warning).
    true.
 
 % eddbali_current_prolog_flag_2_13
-?- lgt_run((set_prolog_flag(unknown, warning), current_prolog_flag(unknown,error))).
+?- set_prolog_flag(unknown, warning), current_prolog_flag(unknown,error).
    false.
 
 % eddbali_current_prolog_flag_2_14
-?- lgt_run(current_prolog_flag(warning,_)).
+?- current_prolog_flag(warning,_).
    error(domain_error(prolog_flag,warning)).
 
 % eddbali_current_prolog_flag_2_15
-?- lgt_run(current_prolog_flag(1+2, flag)).
+?- current_prolog_flag(1+2, flag).
    error(type_error(atom,1+2)).

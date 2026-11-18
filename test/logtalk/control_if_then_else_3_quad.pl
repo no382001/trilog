@@ -6,37 +6,37 @@
 three(3).
 
 % iso_if_then_else_3_01
-?- lgt_run(';'('->'(true, true), fail)).
+?- ';'('->'(true, true), fail).
    true.
 
 % iso_if_then_else_3_02
-?- lgt_run(';'('->'(fail, true), true)).
+?- ';'('->'(fail, true), true).
    true.
 
 % iso_if_then_else_3_03
-?- lgt_run(';'('->'(true, fail), fail)).
+?- ';'('->'(true, fail), fail).
    false.
 
 % iso_if_then_else_3_04
-?- lgt_run(';'('->'(fail, true), fail)).
+?- ';'('->'(fail, true), fail).
    false.
 
 % iso_if_then_else_3_05
-?- lgt_run((once(';'('->'(true, X=1), X=2)), X == 1)).
+?- once(';'('->'(true, X=1), X=2)), X == 1.
    true.
 
 % iso_if_then_else_3_06
-?- lgt_run((once(';'('->'(fail, X=1), X=2)), X == 2)).
+?- once(';'('->'(fail, X=1), X=2)), X == 2.
    true.
 
 % iso_if_then_else_3_07
-?- lgt_run((once(findall(X,';'('->'(true, ';'(X=1, X=2)), true),L)), L == [1,2])).
+?- once(findall(X,';'('->'(true, ';'(X=1, X=2)), true),L)), L == [1,2].
    true.
 
 % iso_if_then_else_3_08
-?- lgt_run((once(';'('->'(';'(X=1, X=2), true), true)), X == 1)).
+?- once(';'('->'(';'(X=1, X=2), true), true)), X == 1.
    true.
 
 % iso_if_then_else_3_09
-?- lgt_run(';'(('->'(!,fail), true), true)).
+?- ';'(('->'(!,fail), true), true).
    true.

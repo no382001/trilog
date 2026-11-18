@@ -8,5 +8,5 @@ foo(0, foo).
 foo(1, foo(1)).
 
 % iso_ceiling_1_01
-?- lgt_run((once(X is ceiling(-0.5)), X == 0)).
+?- once(X is ceiling(-0.5)), X == 0.
    true.

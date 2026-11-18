@@ -4,11 +4,11 @@
 :- consult('test/logtalk/lgtunit.pl').
 
 % iso_curly_bracketed_term_01
-?- lgt_run((once((set_text_input('{a}. '), read(T))), T == '{}'(a))).
+?- once((set_text_input('{a}. '), read(T))), T == '{}'(a).
    true.
 
 % iso_curly_bracketed_term_02
-?- lgt_run((once((set_text_input('{a,b}. '), read(T))), T == '{}'(','(a,b)))).
+?- once((set_text_input('{a,b}. '), read(T))), T == '{}'(','(a,b)).
    true.
 
 :- clean_text_input, clean_text_output.

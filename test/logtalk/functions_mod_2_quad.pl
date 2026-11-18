@@ -8,29 +8,29 @@ foo(0, foo).
 foo(1, foo(1)).
 
 % iso_mod_2_01
-?- lgt_run((once(X is mod(5, 2)), X == 1)).
+?- once(X is mod(5, 2)), X == 1.
    true.
 
 % iso_mod_2_02
-?- lgt_run((once(X is mod(0, 3+11)), X == 0)).
+?- once(X is mod(0, 3+11)), X == 0.
    true.
 
 % iso_mod_2_03
-?- lgt_run((once(X is mod(5,-2)), X == -1)).
+?- once(X is mod(5,-2)), X == -1.
    true.
 
 % iso_mod_2_04
-?- lgt_run((variable(N), _X is mod(77, N))).
+?- variable(N), _X is mod(77, N).
    error(instantiation_error).
 
 % iso_mod_2_05
-?- lgt_run((foo(0, Foo), _X is mod(Foo, 77))).
+?- foo(0, Foo), _X is mod(Foo, 77).
    error(type_error(evaluable,foo/0)).
 
 % iso_mod_2_06
-?- lgt_run((G = (_X is mod(7.5, 2)), call(G))).
+?- G = (_X is mod(7.5, 2)), call(G).
    error(type_error(integer,7.5)).
 
 % iso_mod_2_07
-?- lgt_run((G = (_X is mod(7, 0)), call(G))).
+?- G = (_X is mod(7, 0)), call(G).
    error(evaluation_error(zero_divisor)).

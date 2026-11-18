@@ -25,26 +25,26 @@ throws(lgt_retractall_1_07, error(instantiation_error,_)) :- retractall(_).
 three(3).
 
 % iso_retractall_1_01
-?- lgt_run((once(retractall(foo(_))), current_predicate(foo/1))).
+?- once(retractall(foo(_))), current_predicate(foo/1).
    true.
 
 % iso_retractall_1_02
-?- lgt_run(retractall(insect(bee))).
+?- retractall(insect(bee)).
    true.
 
 % iso_retractall_1_03
-?- lgt_run(retractall(insect(_))).
+?- retractall(insect(_)).
    true.
 
 % iso_retractall_1_04
-?- lgt_run(retractall(insect(spider))).
+?- retractall(insect(spider)).
    true.
 
 % iso_retractall_1_05
-?- lgt_run((three(Three), retractall(Three))).
+?- three(Three), retractall(Three).
    error(type_error(callable,3)).
 
 % iso_retractall_1_06
-?- lgt_run(retractall(retractall(_))).
+?- retractall(retractall(_)).
    error(permission_error(modify,static_procedure,retractall/1))
 |  error(permission_error(modify,static_procedure,':'(user,retractall/1))).

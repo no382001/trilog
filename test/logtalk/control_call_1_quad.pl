@@ -14,67 +14,67 @@ goal(two(_)).
 one(1).
 
 % iso_call_1_01
-?- lgt_run(call(!)).
+?- call(!).
    true.
 
 % iso_call_1_02
-?- lgt_run(call(fail)).
+?- call(fail).
    false.
 
 % iso_call_1_03
-?- lgt_run(call((fail, _X))).
+?- call((fail, _X)).
    false.
 
 % iso_call_1_04
-?- lgt_run((one(One), call((fail, call(One))))).
+?- one(One), call((fail, call(One))).
    false.
 
 % iso_call_1_05
-?- lgt_run((suppress_text_output, b(_))).
+?- suppress_text_output, b(_).
    error(instantiation_error).
 
 % iso_call_1_06
-?- lgt_run((suppress_text_output, b(3))).
+?- suppress_text_output, b(3).
    error(type_error(callable,(write(3),3)))
 |  error(type_error(callable,3)).
 
 % iso_call_1_07
-?- lgt_run((once((Z = !, call((Z=!, a(X), Z)))), Z-X == !-1)).
+?- once((Z = !, call((Z=!, a(X), Z)))), Z-X == !-1.
    true.
 
 % iso_call_1_08
-?- lgt_run((once(findall(Z-X,call((Z=!, a(X), Z)),L)), L == [!-1, !-2])).
+?- once(findall(Z-X,call((Z=!, a(X), Z)),L)), L == [!-1, !-2].
    true.
 
 % iso_call_1_09
-?- lgt_run((suppress_text_output, call((write(3), _X)))).
+?- suppress_text_output, call((write(3), _X)).
    error(instantiation_error).
 
 % iso_call_1_10
-?- lgt_run((suppress_text_output, one(One), call((write(3), call(One))))).
+?- suppress_text_output, one(One), call((write(3), call(One))).
    error(type_error(callable,1))
 |  error(type_error(callable,':'(user,1))).
 
 % iso_call_1_11
-?- lgt_run(call(_X)).
+?- call(_X).
    error(instantiation_error).
 
 % iso_call_1_12
-?- lgt_run((one(One), call(One))).
+?- one(One), call(One).
    error(type_error(callable,1))
 |  error(type_error(callable,':'(user,1))).
 
 % iso_call_1_13
-?- lgt_run((one(One), call((fail, One)))).
+?- one(One), call((fail, One)).
    error(type_error(callable,(fail,1)))
 |  error(type_error(callable,1)).
 
 % iso_call_1_14
-?- lgt_run((suppress_text_output, one(One), call((write(3), One)))).
+?- suppress_text_output, one(One), call((write(3), One)).
    error(type_error(callable,(write(3),1)))
 |  error(type_error(callable,1)).
 
 % iso_call_1_15
-?- lgt_run((one(One), call((One; true)))).
+?- one(One), call((One; true)).
    error(type_error(callable,(1;true)))
 |  error(type_error(callable,1)).

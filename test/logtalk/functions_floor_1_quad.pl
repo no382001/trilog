@@ -8,9 +8,9 @@ foo(0, foo).
 foo(1, foo(1)).
 
 % iso_floor_1_01
-?- lgt_run((once(X is floor(7.4)), X == 7)).
+?- once(X is floor(7.4)), X == 7.
    true.
 
 % iso_floor_1_02
-?- lgt_run((once(X is floor(-0.4)), X == -1)).
+?- once(X is floor(-0.4)), X == -1.
    true.

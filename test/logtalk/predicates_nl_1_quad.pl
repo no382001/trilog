@@ -4,11 +4,11 @@
 :- consult('test/logtalk/lgtunit.pl').
 
 % iso_nl_1_01
-?- lgt_run(nl(_)).
+?- nl(_).
    error(instantiation_error).
 
 % iso_nl_1_03
-?- lgt_run(nl(user_input)).
+?- nl(user_input).
    error(permission_error(output, stream, user_input)).
 
 :- clean_binary_output.

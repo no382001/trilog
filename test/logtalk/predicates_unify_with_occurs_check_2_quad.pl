@@ -4,65 +4,65 @@
 :- consult('test/logtalk/lgtunit.pl').
 
 % iso_unify_with_occurs_check_2_01
-?- lgt_run(unify_with_occurs_check(1, 1)).
+?- unify_with_occurs_check(1, 1).
    true.
 
 % iso_unify_with_occurs_check_2_02
-?- lgt_run((once(unify_with_occurs_check(X, 1)), X == 1)).
+?- once(unify_with_occurs_check(X, 1)), X == 1.
    true.
 
 % iso_unify_with_occurs_check_2_03
-?- lgt_run((once(unify_with_occurs_check(X, Y)), X == Y)).
+?- once(unify_with_occurs_check(X, Y)), X == Y.
    true.
 
 % iso_unify_with_occurs_check_2_04
-?- lgt_run(unify_with_occurs_check(_, _)).
+?- unify_with_occurs_check(_, _).
    true.
 
 % iso_unify_with_occurs_check_2_05
-?- lgt_run((once((unify_with_occurs_check(X, Y), unify_with_occurs_check(X, abc))), X-Y == abc-abc)).
+?- once((unify_with_occurs_check(X, Y), unify_with_occurs_check(X, abc))), X-Y == abc-abc.
    true.
 
 % iso_unify_with_occurs_check_2_06
-?- lgt_run((once(unify_with_occurs_check(f(X,def), f(def,Y))), X-Y == def-def)).
+?- once(unify_with_occurs_check(f(X,def), f(def,Y))), X-Y == def-def.
    true.
 
 % iso_unify_with_occurs_check_2_07
-?- lgt_run(unify_with_occurs_check(1, 2)).
+?- unify_with_occurs_check(1, 2).
    false.
 
 % iso_unify_with_occurs_check_2_08
-?- lgt_run(unify_with_occurs_check(1, 1.0)).
+?- unify_with_occurs_check(1, 1.0).
    false.
 
 % iso_unify_with_occurs_check_2_09
-?- lgt_run(unify_with_occurs_check(g(X), f(f(X)))).
+?- unify_with_occurs_check(g(X), f(f(X))).
    false.
 
 % iso_unify_with_occurs_check_2_10
-?- lgt_run(unify_with_occurs_check(f(X,1), f(a(X)))).
+?- unify_with_occurs_check(f(X,1), f(a(X))).
    false.
 
 % iso_unify_with_occurs_check_2_11
-?- lgt_run(unify_with_occurs_check(f(X,Y,X), f(a(X),a(Y),Y,2))).
+?- unify_with_occurs_check(f(X,Y,X), f(a(X),a(Y),Y,2)).
    false.
 
 % iso_unify_with_occurs_check_2_12
-?- lgt_run(unify_with_occurs_check(X, a(X))).
+?- unify_with_occurs_check(X, a(X)).
    false.
 
 % iso_unify_with_occurs_check_2_13
-?- lgt_run(unify_with_occurs_check(f(X,1), f(a(X),2))).
+?- unify_with_occurs_check(f(X,1), f(a(X),2)).
    false.
 
 % iso_unify_with_occurs_check_2_14
-?- lgt_run(unify_with_occurs_check(f(1,X,1), f(2,a(X),2))).
+?- unify_with_occurs_check(f(1,X,1), f(2,a(X),2)).
    false.
 
 % iso_unify_with_occurs_check_2_15
-?- lgt_run(unify_with_occurs_check(f(1,X), f(2,a(X)))).
+?- unify_with_occurs_check(f(1,X), f(2,a(X))).
    false.
 
 % iso_unify_with_occurs_check_2_16
-?- lgt_run(unify_with_occurs_check(f(X,Y,X,1), f(a(X),a(Y),Y,2))).
+?- unify_with_occurs_check(f(X,Y,X,1), f(a(X),a(Y),Y,2)).
    false.

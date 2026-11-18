@@ -4,51 +4,51 @@
 :- consult('test/logtalk/lgtunit.pl').
 
 % iso_put_code_2_01
-?- lgt_run((once((set_text_output('qwer'), put_code(0't), text_output_assertion('qwert', Assertion))), Assertion)).
+?- once((set_text_output('qwer'), put_code(0't), text_output_assertion('qwert', Assertion))), Assertion.
    true.
 
 % iso_put_code_2_02
-?- lgt_run((once((set_text_output(st_o, 'qwer'), put_code(st_o, 0't), text_output_assertion(st_o, 'qwert', Assertion))), Assertion)).
+?- once((set_text_output(st_o, 'qwer'), put_code(st_o, 0't), text_output_assertion(st_o, 'qwert', Assertion))), Assertion.
    true.
 
 % iso_put_code_2_03
-?- lgt_run((set_text_output(my_file, ''), put_code(my_file, _C), check_text_output(my_file, ''))).
+?- set_text_output(my_file, ''), put_code(my_file, _C), check_text_output(my_file, '').
    error(instantiation_error).
 
 % iso_put_code_2_04
-?- lgt_run((set_text_output(st_o, ''), put_code(st_o, 'ty'), check_text_output(st_o, ''))).
+?- set_text_output(st_o, ''), put_code(st_o, 'ty'), check_text_output(st_o, '').
    error(type_error(integer,ty)).
 
 % sics_put_code_2_05
-?- lgt_run(put_code(_, 0't)).
+?- put_code(_, 0't).
    error(instantiation_error).
 
 % sics_put_code_2_06
-?- lgt_run(put_code(_)).
+?- put_code(_).
    error(instantiation_error).
 
 % iso_put_code_2_07
-?- lgt_run((closed_input_stream(S, []), put_code(S, 0'a))).
+?- closed_input_stream(S, []), put_code(S, 0'a).
    error(existence_error(stream,S)).
 
 % iso_put_code_2_08
-?- lgt_run((closed_output_stream(S, []), put_code(S, 0'a))).
+?- closed_output_stream(S, []), put_code(S, 0'a).
    error(existence_error(stream,S)).
 
 % iso_put_code_2_09
-?- lgt_run((current_input(S), put_code(S, 0'a))).
+?- current_input(S), put_code(S, 0'a).
    error(permission_error(output,stream,S)).
 
 % iso_put_code_2_10
-?- lgt_run((file_path(t, Path), open(Path, write, S, [type(binary)]), put_code(S, 0'a))).
+?- file_path(t, Path), open(Path, write, S, [type(binary)]), put_code(S, 0'a).
    error(permission_error(output,binary_stream,S)).
 
 % sics_put_code_2_11
-?- lgt_run(put_code(-1)).
+?- put_code(-1).
    error(representation_error(character_code)).
 
 % sics_put_code_2_12
-?- lgt_run(put_code(foo, 1)).
+?- put_code(foo, 1).
    error(domain_error(stream_or_alias,foo))
 |  error(existence_error(stream,foo)).
 

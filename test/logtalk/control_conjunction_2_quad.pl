@@ -6,13 +6,13 @@
 three(3).
 
 % iso_conjunction_2_01
-?- lgt_run(','(X=1, var(X))).
+?- ','(X=1, var(X)).
    false.
 
 % iso_conjunction_2_02
-?- lgt_run((once(','(var(X), X=1)), X == 1)).
+?- once(','(var(X), X=1)), X == 1.
    true.
 
 % iso_conjunction_2_03
-?- lgt_run((once(','(X = true, call(X))), X == true)).
+?- once(','(X = true, call(X))), X == true.
    true.

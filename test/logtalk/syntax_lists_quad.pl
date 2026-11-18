@@ -4,15 +4,15 @@
 :- consult('test/logtalk/lgtunit.pl').
 
 % iso_list_01
-?- lgt_run((once((set_text_input('[a]. '), read(T))), T == .(a, []))).
+?- once((set_text_input('[a]. '), read(T))), T == .(a, []).
    true.
 
 % iso_list_02
-?- lgt_run((once((set_text_input('[a,b]. '), read(T))), T == .(a, .(b, [])))).
+?- once((set_text_input('[a,b]. '), read(T))), T == .(a, .(b, [])).
    true.
 
 % iso_list_03
-?- lgt_run((once((set_text_input('[a|b]. '), read(T))), T == .(a, b))).
+?- once((set_text_input('[a|b]. '), read(T))), T == .(a, b).
    true.
 
 :- clean_text_input.

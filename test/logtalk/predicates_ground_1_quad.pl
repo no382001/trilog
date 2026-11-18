@@ -4,9 +4,9 @@
 :- consult('test/logtalk/lgtunit.pl').
 
 % iso_ground_1_01
-?- lgt_run(ground(3)).
+?- ground(3).
    true.
 
 % iso_ground_1_02
-?- lgt_run(ground(a(1, _))).
+?- ground(a(1, _)).
    false.

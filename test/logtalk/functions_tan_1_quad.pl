@@ -9,5 +9,5 @@ foo(1, foo(1)).
 foo(2, foo(1,2)).
 
 % iso_tan_1_01
-?- lgt_run((once(X is tan(0.5)), X =~= 0.5463)).
+?- once(X is tan(0.5)), X =~= 0.5463.
    true.

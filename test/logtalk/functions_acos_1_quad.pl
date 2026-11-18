@@ -9,13 +9,13 @@ foo(1, foo(1)).
 foo(2, foo(1,2)).
 
 % iso_acos_1_01
-?- lgt_run((once(X is acos(-1)), X =~= 3.1415927)).
+?- once(X is acos(-1)), X =~= 3.1415927.
    true.
 
 % iso_acos_1_02
-?- lgt_run((once(X is acos(0.5)), X =~= 1.0471976)).
+?- once(X is acos(0.5)), X =~= 1.0471976.
    true.
 
 % iso_acos_1_03
-?- lgt_run(_X is acos(1.5)).
+?- _X is acos(1.5).
    error(evaluation_error(undefined)).

@@ -6,5 +6,5 @@
 succeeds(iso_acyclic_term_1_01) :- acyclic_term(a(1, _)).
 
 % iso_acyclic_term_1_02
-?- lgt_run((X = f(X), acyclic_term(X))).
+?- X = f(X), acyclic_term(X).
    false.

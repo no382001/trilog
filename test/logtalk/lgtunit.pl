@@ -1,11 +1,15 @@
 % The lgtunit predicates that Logtalk's Prolog tests call, as plain ISO
 % Prolog for the quad files in test/logtalk/.
 %
+% Consulting it makes quad run every query of the file through lgt_run/1.
+%
 % lgt_run(Goal): runs Goal once without binding its variables, then restores
 % the current input and output and closes the streams the helpers opened.
 % It succeeds, fails or throws as Goal does.
 
 :- dynamic(lgt_stream/1).
+
+:- assertz(quad_wrap(lgt_run)).
 
 lgt_run(Goal) :-
     current_input(In),

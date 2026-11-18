@@ -10,21 +10,21 @@ foo(2, foo(1,2)).
 large(123456789).
 
 % iso_exp_1_01
-?- lgt_run((once(X is exp(0.0)), X == 1.0)).
+?- once(X is exp(0.0)), X == 1.0.
    true.
 
 % iso_exp_1_02
-?- lgt_run((once(X is exp(1.0)), X =~= 2.71828)).
+?- once(X is exp(1.0)), X =~= 2.71828.
    true.
 
 % iso_exp_1_03
-?- lgt_run((variable(X), _X is exp(X))).
+?- variable(X), _X is exp(X).
    error(instantiation_error).
 
 % iso_exp_1_04
-?- lgt_run((once(X is exp(0)), X == 1.0)).
+?- once(X is exp(0)), X == 1.0.
    true.
 
 % iso_exp_1_05
-?- lgt_run((foo(0, Foo), _X is exp(Foo))).
+?- foo(0, Foo), _X is exp(Foo).
    error(type_error(evaluable,foo/0)).

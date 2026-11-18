@@ -4,5 +4,5 @@
 :- consult('test/logtalk/lgtunit.pl').
 
 % iso_pi_0_01
-?- lgt_run((once(X is pi), X =~= 3.1415927)).
+?- once(X is pi), X =~= 3.1415927.
    true.

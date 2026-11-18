@@ -15,35 +15,35 @@ r(1).
 one(1).
 
 % iso_catch_3_01
-?- lgt_run((once(catch(foo(5), test(Y), true)), Y == 10)).
+?- once(catch(foo(5), test(Y), true)), Y == 10.
    true.
 
 % iso_catch_3_02
-?- lgt_run((once(catch(bar(3), Z, true)), Z == 3)).
+?- once(catch(bar(3), Z, true)), Z == 3.
    true.
 
 % iso_catch_3_03
-?- lgt_run(catch(true, _, 3)).
+?- catch(true, _, 3).
    true.
 
 % iso_catch_3_04
-?- lgt_run((catch(((catch(true, _C, write(demoen)), throw(bla)), fail), LgtBall, true), subsumes_term(bla, LgtBall))).
+?- catch(((catch(true, _C, write(demoen)), throw(bla)), fail), LgtBall, true), subsumes_term(bla, LgtBall).
    true.
 
 % iso_catch_3_05
-?- lgt_run((once(catch(car(_X), Y, true)), Y == 1)).
+?- once(catch(car(_X), Y, true)), Y == 1.
    true.
 
 % iso_catch_3_06
-?- lgt_run(catch(number_chars(_X,['1',a,'0']), error(syntax_error(_),_), fail)).
+?- catch(number_chars(_X,['1',a,'0']), error(syntax_error(_),_), fail).
    false.
 
 % iso_catch_3_07
-?- lgt_run((once((suppress_text_output, (catch(g, C, write(h1)), nl))), C == c)).
+?- once((suppress_text_output, (catch(g, C, write(h1)), nl))), C == c.
    true.
 
 % iso_catch_3_08
-?- lgt_run((once(catch(coo(_X), Y, true)), subsumes_term(error(instantiation_error,_), Y))).
+?- once(catch(coo(_X), Y, true)), subsumes_term(error(instantiation_error,_), Y).
    true.
 
 :- clean_text_output.

@@ -7,21 +7,21 @@
 three(3).
 
 % iso_disjunction_2_01
-?- lgt_run(';'(true, fail)).
+?- ';'(true, fail).
    true.
 
 % iso_disjunction_2_02
-?- lgt_run(';'((!, fail), true)).
+?- ';'((!, fail), true).
    false.
 
 % iso_disjunction_2_03
-?- lgt_run((three(Three), ';'(!, call(Three)))).
+?- three(Three), ';'(!, call(Three)).
    true.
 
 % iso_disjunction_2_04
-?- lgt_run((once(';'((X=1, !), X=2)), X == 1)).
+?- once(';'((X=1, !), X=2)), X == 1.
    true.
 
 % iso_disjunction_2_05
-?- lgt_run((once(findall(X,';'(X=1, X=2),L)), L == [1,2])).
+?- once(findall(X,';'(X=1, X=2),L)), L == [1,2].
    true.

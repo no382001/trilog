@@ -4,51 +4,51 @@
 :- consult('test/logtalk/lgtunit.pl').
 
 % iso_put_char_2_01
-?- lgt_run((once((set_text_output('qwer'), put_char(t), text_output_assertion('qwert', Assertion))), Assertion)).
+?- once((set_text_output('qwer'), put_char(t), text_output_assertion('qwert', Assertion))), Assertion.
    true.
 
 % iso_put_char_2_02
-?- lgt_run((once((set_text_output(st_o, 'qwer'), put_char(st_o, 'A'), text_output_assertion(st_o, 'qwerA', Assertion))), Assertion)).
+?- once((set_text_output(st_o, 'qwer'), put_char(st_o, 'A'), text_output_assertion(st_o, 'qwerA', Assertion))), Assertion.
    true.
 
 % iso_put_char_2_03
-?- lgt_run((once((set_text_output('qwer'), (nl, put_char(a)), text_output_assertion('qwer\na', Assertion))), Assertion)).
+?- once((set_text_output('qwer'), (nl, put_char(a)), text_output_assertion('qwer\na', Assertion))), Assertion.
    true.
 
 % iso_put_char_2_04
-?- lgt_run((once((set_text_output(st_o, 'qwer'), (nl(st_o), put_char(st_o, a)), text_output_assertion(st_o, 'qwer\na', Assertion))), Assertion)).
+?- once((set_text_output(st_o, 'qwer'), (nl(st_o), put_char(st_o, a)), text_output_assertion(st_o, 'qwer\na', Assertion))), Assertion.
    true.
 
 % iso_put_char_2_05
-?- lgt_run((set_text_output(my_file, ''), put_char(my_file, _C))).
+?- set_text_output(my_file, ''), put_char(my_file, _C).
    error(instantiation_error).
 
 % iso_put_char_2_06
-?- lgt_run((set_text_output(st_o, ''), put_char(st_o, 'ty'))).
+?- set_text_output(st_o, ''), put_char(st_o, 'ty').
    error(type_error(character, ty)).
 
 % sics_put_char_2_07
-?- lgt_run(put_char(_, t)).
+?- put_char(_, t).
    error(instantiation_error).
 
 % sics_put_char_2_08
-?- lgt_run(put_char(_)).
+?- put_char(_).
    error(instantiation_error).
 
 % sics_put_char_2_09
-?- lgt_run((closed_input_stream(S, []), put_char(S, a))).
+?- closed_input_stream(S, []), put_char(S, a).
    error(existence_error(stream,S)).
 
 % sics_put_char_2_10
-?- lgt_run((closed_output_stream(S, []), put_char(S, a))).
+?- closed_output_stream(S, []), put_char(S, a).
    error(existence_error(stream,S)).
 
 % sics_put_char_2_11
-?- lgt_run((current_input(S), put_char(S, a))).
+?- current_input(S), put_char(S, a).
    error(permission_error(output,stream,S)).
 
 % sics_put_char_2_12
-?- lgt_run((set_binary_output([]), current_output(S), put_char(a))).
+?- set_binary_output([]), current_output(S), put_char(a).
    error(permission_error(output,binary_stream,S)).
 
 :- clean_text_output, clean_binary_output, clean_text_input.

@@ -9,23 +9,23 @@ foo(1, foo(1)).
 foo(2, foo(1,2)).
 
 % iso_bitwise_left_shift_2_01
-?- lgt_run((once(X is '<<'(16, 2)), X == 64)).
+?- once(X is '<<'(16, 2)), X == 64.
    true.
 
 % iso_bitwise_left_shift_2_02
-?- lgt_run((once(X is '<<'(19, 2)), X == 76)).
+?- once(X is '<<'(19, 2)), X == 76.
    true.
 
 % iso_bitwise_left_shift_1_04
-?- lgt_run((variable(N), _X is '<<'(77, N))).
+?- variable(N), _X is '<<'(77, N).
    error(instantiation_error).
 
 % iso_bitwise_left_shift_2_05
-?- lgt_run((foo(0, Foo), _X is '<<'(Foo, 2))).
+?- foo(0, Foo), _X is '<<'(Foo, 2).
    error(type_error(evaluable,foo/0)).
 
 % iso_bitwise_left_shift_2_06
-?- lgt_run(_X is '<<'(1.0, 2)).
+?- _X is '<<'(1.0, 2).
    error(type_error(integer,1.0)).
 
 % not converted:

@@ -8,17 +8,17 @@ foo(0, foo).
 foo(1, foo(1)).
 
 % iso_round_1_01
-?- lgt_run((once(X is round(7.5)), X == 8)).
+?- once(X is round(7.5)), X == 8.
    true.
 
 % iso_round_1_02
-?- lgt_run((once(X is round(7.6)), X == 8)).
+?- once(X is round(7.6)), X == 8.
    true.
 
 % iso_round_1_03
-?- lgt_run((once(X is round(-0.6)), X == -1)).
+?- once(X is round(-0.6)), X == -1.
    true.
 
 % iso_round_1_04
-?- lgt_run((variable(N), _X is round(N))).
+?- variable(N), _X is round(N).
    error(instantiation_error).
