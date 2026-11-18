@@ -9,6 +9,7 @@ The "tri" is for three: the three states of the ABC algorithm, which trilog's so
 ## Contents
 
 - [Goals](#goals)
+- [Conformance](#conformance)
 - [Build](#build)
 - [Embedding](#embedding)
 - [Libraries](#libraries)
@@ -28,6 +29,20 @@ The "tri" is for three: the three states of the ABC algorithm, which trilog's so
 - **Conformity beyond syntax.** The aim is builtins and errors that follow ISO 13211-1. Modules, `char_conversion/2` and `set_stream_position/2` are still open. Where the standard leaves room, as in how the toplevel prints answers or which error a library predicate throws, trilog follows [Scryer Prolog](https://codeberg.org/mthom/scryer-prolog).
 - **A ZIP VM.** It runs compiled bytecode instead of interpreting every goal at run time, and the first numbers show it about 4x faster. It will probably join trilog as a runtime on Linux. See [Next: the ZIP VM](#next-the-zip-vm).
 
+## Conformance
+
+trilog runs three ISO 13211-1 test suites written outside the project. It passes all of them, and CI fails on any new failure.
+
+| Suite | Covers | Tests | Run by |
+| --- | --- | --- | --- |
+| [Ulrich Neumerkel's conformity table](https://www.complang.tuwien.ac.at/ulrich/iso-prolog/conformity_testing) | reading and writing terms | 366 | `make conformity` |
+| [Ulrich Neumerkel's `number_chars/2` table](https://www.complang.tuwien.ac.at/ulrich/iso-prolog/number_chars_cont) | `number_chars/2`, including the cases of the [first table](https://www.complang.tuwien.ac.at/ulrich/iso-prolog/number_chars) | 92 | `make quad` |
+| Péter Szabó and Péter Szeredi's ISO suite, in part | control constructs, type checks, term inspection, arithmetic, all-solutions, the database and atoms | 462 | `make quad` |
+
+[`test/quad/iso_quad.pl`](test/quad/iso_quad.pl) has the Szabó and Szeredi tests for 44 builtins. The rest of their suite, including streams, character and byte I/O, `read_term/3`, `write_term/3` and `op/3`, comes in through [Logtalk's Prolog tests](https://github.com/LogtalkDotOrg/logtalk3/tree/master/tests/prolog), which rewrite it.
+
+`make logtalk` runs the 981 Logtalk tests that come from the standard or from Szabó and Szeredi. trilog passes 930 of them. They are quad files in [`test/logtalk/`](test/logtalk/), converted from Logtalk 67f768e. CI runs them on the posix build, and the ones that fail are listed in [`test/known_failures.txt`](test/known_failures.txt).
+
 ## Build
 
 You need `build-essential` and `clang-format` 21.1.8 (`pipx install clang-format==21.1.8`). Every build formats the C sources first, and an older `clang-format` rewrites some of them.
@@ -44,6 +59,7 @@ The release build has the Prolog core and libraries built in, so it runs without
 | `make test` | the system tests in `test/e2e/` and the C API tests |
 | `make quad` | the Prolog tests in `test/quad/` |
 | `make conformity` | the ISO conformity tests in `test/conformity/` |
+| `make logtalk` | the ISO tests from Logtalk in `test/logtalk/` |
 | `make check` | every suite, as CI does; fails on a failure not in `test/known_failures.txt` |
 | `make format` | `clang-format` on every C source |
 
