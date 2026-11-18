@@ -45,7 +45,7 @@ trilog runs three ISO 13211-1 test suites written outside the project. It passes
 
 ## Build
 
-You need `build-essential` and `clang-format` 21.1.8 (`pipx install clang-format==21.1.8`). Every build formats the C sources first, and an older `clang-format` rewrites some of them.
+You need `build-essential`. `make format` also needs `clang-format` 21.1.8 (`pipx install clang-format==21.1.8`), because other versions format some sources differently.
 
 ```sh
 make           # debug build: ./trilog
@@ -60,7 +60,7 @@ The release build has the Prolog core and libraries built in, so it runs without
 | `make quad` | the Prolog tests in `test/quad/` |
 | `make conformity` | the ISO conformity tests in `test/conformity/` |
 | `make logtalk` | the ISO tests from Logtalk in `test/logtalk/` |
-| `make check` | every suite, as CI does; fails on a failure not in `test/known_failures.txt` |
+| `make check` | every suite, as CI does; fails on a failure not in `test/known_failures.txt`; `TRILOG_PLATFORM=freestanding` skips the API and Logtalk tests |
 | `make format` | `clang-format` on every C source |
 
 ## Embedding
@@ -254,4 +254,4 @@ The ZIP VM will probably join trilog as a runtime on Linux. Later, I plan to rel
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE). The tests in [`test/logtalk/`](test/logtalk/) come from Logtalk and are Apache-2.0, see [`test/logtalk/LICENSE.txt`](test/logtalk/LICENSE.txt).

@@ -33,9 +33,12 @@ api-junit: $(API_TEST_BINS) examples/embed
 
 # What CI runs: every suite into RESULTS, then fails on a failure that is not
 # in test/known_failures.txt.
+# The API and Logtalk tests need the POSIX platform, as in CI.
+TRILOG_PLATFORM ?= posix
+
 check: trilog
 	rm -rf $(RESULTS)
-	$(MAKE) quad-junit syscheck-junit conformity-junit api-junit logtalk-junit
+	$(MAKE) quad-junit syscheck-junit conformity-junit $(if $(filter posix,$(TRILOG_PLATFORM)),api-junit logtalk-junit)
 	test/regressions.py $(RESULTS)
 
 # Run every suite into RESULTS first.
