@@ -2608,6 +2608,8 @@ BUILTIN(bi_arg) {
     T->pending_error_ball = make_type_error(T, "integer", n_d);
   else if (T->heap[term].tag != TAG_STR)
     T->pending_error_ball = make_type_error(T, "compound", term);
+  else if (T->heap[n_d].as.ival < 0)
+    T->pending_error_ball = make_domain_error(T, "not_less_than_zero", n_d);
   if (T->pending_error_ball != (size_t)-1) {
     *ok = 0;
     return 1;

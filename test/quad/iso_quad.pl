@@ -547,6 +547,9 @@ a(2).
 ?- arg(1,3,_A).
    error(type_error(compound,3)).
 
+?- arg(-1,foo(a,b),_X).
+   error(domain_error(not_less_than_zero,-1)).
+
 % --- (=..)/2 ---
 
 ?- '=..'(foo(a,b), [foo,a,b]).
