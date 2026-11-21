@@ -58,10 +58,12 @@ $(REL)/libtrilog.a: $(REL_LIB_OBJS)
 
 GIT_DESCRIBE := $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+GIT_TAG := $(shell git describe --tags --exact-match --dirty 2>/dev/null)
+BUILD_VERSION := $(or $(GIT_TAG),$(GIT_DESCRIBE) ($(GIT_BRANCH)))
 
 _build/version.h: FORCE
 	@mkdir -p _build
-	@printf '#define TRILOG_BUILD_VERSION "%s (%s)"\n' '$(GIT_DESCRIBE)' '$(GIT_BRANCH)' > $@.tmp
+	@printf '#define TRILOG_BUILD_VERSION "%s"\n' '$(BUILD_VERSION)' > $@.tmp
 	@if cmp -s $@.tmp $@; then rm $@.tmp; else mv $@.tmp $@; fi
 
 $(DEV)/src/trilog.o $(REL)/src/trilog.o: _build/version.h
