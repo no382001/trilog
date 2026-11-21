@@ -31,17 +31,14 @@ The "tri" is for three: the three states of the ABC algorithm, which trilog's so
 
 ## Conformance
 
-trilog runs three ISO 13211-1 test suites written outside the project. It passes all of them, and CI fails on any new failure.
+trilog runs four ISO 13211-1 test suites written outside the project. CI fails on any new failure.
 
-| Suite | Covers | Tests | Run by |
-| --- | --- | --- | --- |
-| [Ulrich Neumerkel's conformity table](https://www.complang.tuwien.ac.at/ulrich/iso-prolog/conformity_testing) | reading and writing terms | 366 | `make conformity` |
-| [Ulrich Neumerkel's `number_chars/2` table](https://www.complang.tuwien.ac.at/ulrich/iso-prolog/number_chars_cont) | `number_chars/2`, including the cases of the [first table](https://www.complang.tuwien.ac.at/ulrich/iso-prolog/number_chars) | 92 | `make quad` |
-| Péter Szabó and Péter Szeredi's ISO suite, in part | control constructs, type checks, term inspection, arithmetic, all-solutions, the database and atoms | 462 | `make quad` |
-
-[`test/quad/iso_quad.pl`](test/quad/iso_quad.pl) has the Szabó and Szeredi tests for 44 builtins. The rest of their suite, including streams, character and byte I/O, `read_term/3`, `write_term/3` and `op/3`, comes in through [Logtalk's Prolog tests](https://github.com/LogtalkDotOrg/logtalk3/tree/master/tests/prolog), which rewrite it.
-
-`make logtalk` runs the 981 Logtalk tests that come from the standard or from Szabó and Szeredi. trilog passes 930 of them. They are quad files in [`test/logtalk/`](test/logtalk/), converted from Logtalk 67f768e. CI runs them on the posix build, and the ones that fail are listed in [`test/known_failures.txt`](test/known_failures.txt).
+| Suite | Covers | Passed |
+| --- | --- | --- |
+| [Ulrich Neumerkel's conformity table](https://www.complang.tuwien.ac.at/ulrich/iso-prolog/conformity_testing) | reading and writing terms | 366/366 |
+| [Ulrich Neumerkel's `number_chars/2` table](https://www.complang.tuwien.ac.at/ulrich/iso-prolog/number_chars_cont) | `number_chars/2`, including the cases of the [first table](https://www.complang.tuwien.ac.at/ulrich/iso-prolog/number_chars) | 97/97 |
+| Péter Szabó and Péter Szeredi's ISO suite, in part | control constructs, type checks, term inspection, arithmetic, all-solutions, the database and atoms | 463/463 |
+| [Logtalk's Prolog tests](https://github.com/LogtalkDotOrg/logtalk3/tree/master/tests/prolog), from the standard and from Szabó and Szeredi | the rest of Szabó and Szeredi, including streams, character and byte I/O, `read_term/3`, `write_term/3` and `op/3` | 931/981 |
 
 ## Build
 
@@ -138,20 +135,15 @@ The freestanding build has no default allocator or I/O, so `trilog_new` needs bo
 
 The core holds the built-in predicates. Everything else is a library in [`lib/`](lib/), loaded with `use_module(library(Name))` or `ensure_loaded(library(Name))`.
 
-A file that starts with `:- module(Name, Exports).` is a module. Its exported predicates are visible everywhere, and the rest are private to it. `Module:Goal` calls a module's predicate, private or not, and `meta_predicate/1` makes goals passed into a module run in the caller's module. `lists` is a module. The module system is new and may still change: private predicates are renamed when the file loads, so there is one global predicate table rather than one per module.
+A file that starts with `:- module(Name, Exports).` is a module. `Module:Goal` calls a module's predicate, private or not, and `meta_predicate/1` makes goals passed into a module run in the caller's module. The module system is new: every export is still visible everywhere, as there is one global predicate table.
 
 | Library | Contents | Loaded by |
 | --- | --- | --- |
-| `lists` | `append/3`, `member/2`, `length/2`, `nth0/3`, `reverse/2`, `select/3`, … | the core |
-| `error` | `must_be/2`, `can_be/2` | the core |
-| `misc` | `forall/2`, `with_output_to/2`, `numbervars/3`, `writeln/1` | the core |
-| `apply` | `maplist/2..`, `foldl/4`, `include/3`, `exclude/3` | the core |
-| `dcgs` | DCG translation, `phrase/2,3` | the CLI |
-| `between` | `between/3`, `succ/2`, `plus/3` | the CLI |
-| `charsio` | `read_term_from_chars/3`, `write_term_to_chars/3` | the CLI |
-| `make` | `make/0`, `consulted/1`, `unconsult/1` | the CLI |
+| `lists`, `apply`, `error`, `misc` | `append/3`, `member/2`, `maplist/2..`, `foldl/4`, `must_be/2`, `forall/2`, `with_output_to/2`, ... | the core |
+| `dcgs`, `between`, `charsio`, `make` | `phrase/2,3`, `between/3`, `succ/2`, `read_term_from_chars/3`, `make/0`, ... | the CLI |
+| `toplevel`, `trace`, `editline` | the REPL, `trace_goal/1,2`, line editing | the REPL |
 
-`trilog_new` loads only the core. The CLI also loads the four marked "the CLI"; `./trilog -n` skips them.
+`trilog_new` loads only the core. `./trilog -n` skips the CLI's libraries.
 
 ## How the solver works
 
