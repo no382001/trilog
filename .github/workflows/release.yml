@@ -9,30 +9,39 @@ permissions:
 jobs:
   linux:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 75
     steps:
       - name: checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: install build deps
+      - name: install build and test deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential
+          sudo apt-get install -y build-essential bats
+          pipx install clang-format==21.1.8
 
       - name: build
-        run: make release "CFLAGS=-Wall -Wextra -std=c11 -O2 -static"
+        run: |
+          make release "CFLAGS=-Wall -Wextra -std=c11 -O2 -static"
+          mkdir -p _dist
+          cp _build/trilog _build/release-posix/libtrilog.a _dist/
 
       - name: check the version is the tag
-        run: test "$(_build/trilog -V)" = "trilog ${GITHUB_REF_NAME}"
+        run: test "$(_dist/trilog -V)" = "trilog ${GITHUB_REF_NAME}"
+
+      # The build tests rebuild _build/trilog, so the tests run the copy in _dist.
+      - name: test the release binary
+        timeout-minutes: 60
+        run: make check TRILOG="$PWD/_dist/trilog"
 
       - name: package
         run: |
           d=trilog-${GITHUB_REF_NAME}-linux-x86_64
           mkdir -p $d/bin $d/lib $d/include
-          cp _build/trilog $d/bin/
-          cp _build/release-posix/libtrilog.a $d/lib/
+          cp _dist/trilog $d/bin/
+          cp _dist/libtrilog.a $d/lib/
           cp include/*.h $d/include/
           cp LICENSE README.md $d/
           tar -czf $d.tar.gz $d

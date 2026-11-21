@@ -15,7 +15,7 @@ freestanding_symbols() {
   [ "$status" -eq 0 ]
   dir=$(mktemp -d)
   cp "$BATS_TEST_DIRNAME/../../_build/trilog" "$dir/"
-  run bash -c "cd '$dir' && ./trilog -f -e \"append(X, [c], [a,b,c]), maplist(atom, X), phrase([a], [a]), consult('lib/meta.pl'), findall(Y, solve(member(Y, [1, 2])), L), write(done(L)), nl.\""
+  run bash -c "cd '$dir' && ./trilog -f -e \"use_module(library(dcgs)), append(X, [c], [a,b,c]), maplist(atom, X), phrase([a], [a]), consult('lib/meta.pl'), findall(Y, solve(member(Y, [1, 2])), L), write(done(L)), nl.\""
   rm -rf "$dir"
   [ "$status" -eq 0 ]
   [[ "$output" == *"done([1,2])"* ]]
@@ -31,7 +31,7 @@ freestanding_symbols() {
   [ "$status" -ne 0 ]
   dir=$(mktemp -d)
   cp "$bin" "$dir/"
-  run bash -c "cd '$dir' && ./trilog -f -e \"append(X, [bb], [aa,bb]), write(ok(X)), nl, catch(get_time_ms(_), error(E1, _), true), catch(make, error(E2, _), true).\""
+  run bash -c "cd '$dir' && ./trilog -f -e \"append(X, [bb], [aa,bb]), write(ok(X)), nl, catch(get_time_ms(_), error(E1, _), true), use_module(library(make)), catch(make, error(E2, _), true).\""
   rm -rf "$dir"
   make -s -C "$BATS_TEST_DIRNAME/../.." release
   [[ "$output" == *"ok([aa])"* ]]

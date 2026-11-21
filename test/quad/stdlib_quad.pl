@@ -1,3 +1,5 @@
+:- use_module(library(between)).
+
 % stdlib tests
 
 % --- between/3 ---

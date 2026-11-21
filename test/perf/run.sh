@@ -1,11 +1,12 @@
 #!/bin/sh
 # usage: test/perf/run.sh [TRILOG]   (default: _build/trilog, a release build)
-# FLAGS (default -f -n) is passed before each program; -n loads only the core.
+# FLAGS (default -f) is passed before each program; -f skips ~/.trilog. Builds
+# before the CLI stopped loading libraries need FLAGS="-f -n" for the same start.
 # One Markdown table row per workload: the median task-clock, user-space
 # instructions and peak RSS over the runs. Needs perf and a C compiler.
 set -eu
 T=${1:-_build/trilog}
-F=${FLAGS:--f -n}
+F=${FLAGS:--f}
 D=$(dirname "$0")
 P=_build/perf-peak
 mkdir -p _build

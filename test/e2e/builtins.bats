@@ -51,7 +51,7 @@ load common
 @test "get_time_ms/1 returns a non-negative integer, monotonic across two calls" {
   posix_only
   run "$TRILOG" -e "
-    get_time_ms(T0),
+    use_module(library(between)), get_time_ms(T0),
     (between(1,200000,_), fail; true),
     get_time_ms(T1),
     (T1 >= T0 -> write(ok) ; write(bad)),
@@ -516,7 +516,7 @@ load common
 
 @test "between enumerates and checks, forall, succ, plus" {
   run "$TRILOG" -e "
-    findall(X, between(1,5,X), L),
+    use_module(library(between)), findall(X, between(1,5,X), L),
     between(1,5,3),
     \\+ between(1,5,9),
     forall(member(Y,[1,2,3]),Y>0),
@@ -532,7 +532,7 @@ load common
 
 @test "call/2,3,4 dispatch through univ, including partial application" {
   run "$TRILOG" -e "
-    call(=,1,1),
+    use_module(library(between)), call(=,1,1),
     call(is,X,1+2),
     maplist(plus(10),[1,2,3],L).
   "
@@ -541,7 +541,7 @@ load common
 }
 
 @test "maplist/2,3,4, foldl, include, exclude, partition" {
-  run "$TRILOG" test/e2e/files/family.pl -e "
+  run "$TRILOG" test/e2e/files/family.pl -e "use_module(library(between)), 
     maplist(integer,[1,2,3]),
     \\+ maplist(integer,[1,foo,3]),
     maplist(succ,[1,2,3],L1),
@@ -613,7 +613,7 @@ load common
 ab([]).
 ab([X|Xs]) :- ( X = a ; X = b ), ab(Xs).
 PLEOF
-  run bash -c "ulimit -v 24576; '$TRILOG' '$BATS_TEST_TMPDIR/ab.pl' -e 'forall(( between(0, 15, N), length(L, N), ab(L) ), catch(number_chars(_, L), error(syntax_error(_), _), true)), write(done), nl, halt.'"
+  run bash -c "ulimit -v 24576; '$TRILOG' '$BATS_TEST_TMPDIR/ab.pl' -e 'use_module(library(between)), forall(( between(0, 15, N), length(L, N), ab(L) ), catch(number_chars(_, L), error(syntax_error(_), _), true)), write(done), nl, halt.'"
   [ "$status" -eq 0 ]
   [[ "$output" == *"done"* ]]
 }
@@ -632,7 +632,7 @@ PLEOF
 
 @test "findall/3 nests, copies fresh variables per solution and keeps cyclic solutions" {
   run "$TRILOG" -e "
-    findall(X-Ys, (member(X, [1,2]), findall(Y, between(1, X, Y), Ys)), L1),
+    use_module(library(between)), findall(X-Ys, (member(X, [1,2]), findall(Y, between(1, X, Y), Ys)), L1),
     findall(X, fail, L2),
     findall(f(A, B, A), member(B, [x,y]), [f(P, x, Q), f(R, y, S)]),
     ( P == Q, R == S, P \\== R -> Fresh = yes ; Fresh = no ),
@@ -645,7 +645,7 @@ PLEOF
 
 @test "findall/3 collects 400000 solutions in linear time (regression)" {
   # regression: collecting retracted one fact at a time and shifted the predicate's index each time, quadratic in the number of solutions.
-  run timeout 10 "$TRILOG" -e "findall(X, between(1, 400000, X), L), length(L, N)."
+  run timeout 10 "$TRILOG" -e "use_module(library(between)), findall(X, between(1, 400000, X), L), length(L, N)."
   [ "$status" -eq 0 ]
   [[ "$output" == *"N = 400000"* ]]
 }
@@ -711,7 +711,7 @@ q(X, 4) :- X == a.' >"$BATS_TEST_TMPDIR/q.pl"
 @test "retract/1 frees an asserted clause, so assert and retract in a loop runs in bounded memory (regression)" {
   # regression: asserted clauses lived in the arena, which never frees, so every round leaked the clause.
   for op in assertz asserta; do
-    run bash -c "ulimit -v 65536; timeout 60 $TRILOG -f -e \"numlist(1, 50, L), ( between(1, 60000, _), $op(t(L)), retract(t(_)), fail ; true ), write(done), nl.\""
+    run bash -c "ulimit -v 65536; timeout 60 $TRILOG -f -e \"use_module(library(between)), numlist(1, 50, L), ( between(1, 60000, _), $op(t(L)), retract(t(_)), fail ; true ), write(done), nl.\""
     [ "$status" -eq 0 ]
     [[ "$output" == *"done"* ]]
   done
@@ -720,7 +720,7 @@ q(X, 4) :- X == a.' >"$BATS_TEST_TMPDIR/q.pl"
 @test "copy_term/2 and throw/1 free their intermediate copy, so they run in bounded memory in a loop (regression)" {
   # regression: both copied the term into the arena, which never frees, so every call leaked the copy.
   for goal in "copy_term(f(L, _), _)" "catch(throw(e(L)), _, true)"; do
-    run bash -c "ulimit -v 65536; timeout 60 $TRILOG -f -e \"numlist(1, 50, L), ( between(1, 60000, _), $goal, fail ; true ), write(done), nl.\""
+    run bash -c "ulimit -v 65536; timeout 60 $TRILOG -f -e \"use_module(library(between)), numlist(1, 50, L), ( between(1, 60000, _), $goal, fail ; true ), write(done), nl.\""
     [ "$status" -eq 0 ]
     [[ "$output" == *"done"* ]]
   done
@@ -834,7 +834,7 @@ q(X, 4) :- X == a.' >"$BATS_TEST_TMPDIR/q.pl"
 
 @test "atoms with the same text are the same atom, across many atoms" {
   run "$TRILOG" -f -e "
-    findall(A, (between(1, 5000, I), number_codes(I, Cs), atom_codes(A, [0'a|Cs])), As),
+    use_module(library(between)), findall(A, (between(1, 5000, I), number_codes(I, Cs), atom_codes(A, [0'a|Cs])), As),
     findall(B, (between(1, 5000, I), number_codes(I, Cs), atom_codes(B, [0'a|Cs])), Bs),
     ( As == Bs -> R1 = same ; R1 = different ),
     sort(As, S),
@@ -880,7 +880,7 @@ q(X, 4) :- X == a.' >"$BATS_TEST_TMPDIR/q.pl"
 }
 
 @test "between generates integer range" {
-  result=$(printf "findall(X, between(1,5,X), L), write(L).\n" | "$TRILOG" 2>&1)
+  result=$(printf "use_module(library(between)), findall(X, between(1,5,X), L), write(L).\n" | "$TRILOG" 2>&1)
   [[ "$result" == *"[1,2,3,4,5]"* ]]
 }
 
@@ -890,21 +890,21 @@ q(X, 4) :- X == a.' >"$BATS_TEST_TMPDIR/q.pl"
 }
 
 @test "integer text: number_codes/2, printing and '\$VAR' names match the saved output" {
-  run "$TRILOG" -n test/e2e/files/number_text.pl -e "main."
+  run "$TRILOG" test/e2e/files/number_text.pl -e "main."
   [ "$output" == "$(cat test/e2e/files/number_text.expected)" ]
 }
 
 @test "a parse error quotes at most 20 characters of the rest of the input" {
-  run bash -c "printf 'X = f(99999999999999999999, abcdefghijklmnopqrstuvwxyz).\n' | $TRILOG -n"
+  run bash -c "printf 'X = f(99999999999999999999, abcdefghijklmnopqrstuvwxyz).\n' | $TRILOG"
   [[ "$output" == *'integer literal out of range near ", abcdefghijklmnopqr"'* ]]
 }
 
 @test "peek_char/1 and peek_code/1 leave user_input unread for get_char/1 and get_code/1" {
-  run bash -c "printf 'xy' | $TRILOG -n -f -e 'peek_char(A), get_char(B), peek_code(C), get_code(D), get_char(E), peek_char(F).'"
+  run bash -c "printf 'xy' | $TRILOG -f -e 'peek_char(A), get_char(B), peek_code(C), get_code(D), get_char(E), peek_char(F).'"
   [[ "$output" == *"A = x, B = x, C = 121, D = 121, E = end_of_file, F = end_of_file."* ]]
 }
 
 @test "a peeked user_input char is the start of read_line_to_atom/2's line" {
-  run bash -c "printf 'ab\ncd\n' | $TRILOG -n -f -e 'peek_char(A), read_line_to_atom(user_input, L).'"
+  run bash -c "printf 'ab\ncd\n' | $TRILOG -f -e 'peek_char(A), read_line_to_atom(user_input, L).'"
   [[ "$output" == *"A = a, L = ab."* ]]
 }

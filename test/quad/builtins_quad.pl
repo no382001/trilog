@@ -1,3 +1,5 @@
+:- use_module(library(charsio)).
+
 % builtins tests
 
 % --- is/2 basic arithmetic ---

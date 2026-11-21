@@ -104,7 +104,7 @@ PLEOF
 @test "unconsult/1 removes only the file's clauses and fails when not loaded" {
   printf ":- dynamic(p/1).\np(1).\n" > "$BATS_TEST_TMPDIR/u.pl"
   run "$TRILOG" -f -e "
-    consult('$BATS_TEST_TMPDIR/u.pl'),
+    use_module(library(make)), consult('$BATS_TEST_TMPDIR/u.pl'),
     assertz(p(2)),
     unconsult('$BATS_TEST_TMPDIR/u.pl'),
     findall(X, p(X), L),
@@ -116,7 +116,7 @@ PLEOF
 @test "consulted/1 lists loaded files, including ones from the command line" {
   printf "q(1).\n" > "$BATS_TEST_TMPDIR/from_command_line.pl"
   run "$TRILOG" -f "$BATS_TEST_TMPDIR/from_command_line.pl" -e "
-    consulted(L),
+    use_module(library(make)), consulted(L),
     member(F, L),
     atom_concat(_, '/from_command_line.pl', F).
   "
@@ -129,7 +129,7 @@ PLEOF
   printf "v(old).\n" > "$BATS_TEST_TMPDIR/m.pl"
   touch -t 202001010000 "$BATS_TEST_TMPDIR/m.pl"
   run "$TRILOG" -f "$BATS_TEST_TMPDIR/m.pl" -e "
-    open('$BATS_TEST_TMPDIR/m.pl', write, S),
+    use_module(library(make)), open('$BATS_TEST_TMPDIR/m.pl', write, S),
     write(S, 'v(new).'),
     nl(S),
     close(S),
@@ -187,7 +187,7 @@ PLEOF
   bin="$(cd "$(dirname "$TRILOG")" && pwd)/$(basename "$TRILOG")"
   cd "$dir"
   run "$bin" -f -e "
-    consult('sub/f.pl'),
+    use_module(library(make)), consult('sub/f.pl'),
     consult('./sub/../sub/f.pl'),
     findall(X, v(X), L1),
     unconsult('sub/f.pl'),

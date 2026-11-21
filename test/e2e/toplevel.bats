@@ -129,13 +129,17 @@ load common
   [[ "$output" == *"loaded"* ]]
 }
 
-@test "-v echoes the core.pl and init file consult" {
+@test "-v echoes each startup consult: core.pl unless the build boots from its image, and the init file" {
   fake_home="$(mktemp -d)"
   echo "init_marker(loaded)." > "$fake_home/.trilog"
   run env HOME="$fake_home" "$TRILOG" -v -e "init_marker(X), write(X)."
   rm -rf "$fake_home"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"?- consult('"*"core.pl')."* ]]
+  if [ -f "$(dirname "$TRILOG")/boot/core.pl" ]; then
+    [[ "$output" == *"?- consult('"*"core.pl')."* ]]
+  else
+    [[ "$output" != *"core.pl"* ]]
+  fi
   [[ "$output" == *"?- consult('"*".trilog')."* ]]
   [[ "$output" == *"loaded"* ]]
 }

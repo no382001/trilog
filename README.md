@@ -145,10 +145,10 @@ A file that starts with `:- module(Name, Exports).` is a module. `Module:Goal` c
 | Library | Contents | Loaded by |
 | --- | --- | --- |
 | `lists`, `apply`, `error`, `misc` | `append/3`, `member/2`, `maplist/2..`, `foldl/4`, `must_be/2`, `forall/2`, `with_output_to/2`, ... | the core |
-| `dcgs`, `between`, `charsio`, `make` | `phrase/2,3`, `between/3`, `succ/2`, `read_term_from_chars/3`, `make/0`, ... | the CLI |
+| `dcgs`, `between`, `charsio`, `make` | `phrase/2,3`, `between/3`, `succ/2`, `read_term_from_chars/3`, `make/0`, ... | you, with `use_module/1` |
 | `toplevel`, `trace`, `editline` | the REPL, `trace_goal/1,2`, line editing | the REPL |
 
-`trilog_new` loads only the core. `./trilog -n` skips the CLI's libraries.
+`trilog_new` and the CLI load only the core. A release build has every library built in, so `use_module(library(Name))` works without the source tree.
 
 ## How the solver works
 
@@ -209,7 +209,7 @@ The first engine is on [`a3536a4`](https://github.com/no382001/trilog/commit/a35
 
 ### How the versions are measured
 
-Every version was measured on the same machine, an AMD Ryzen 5 5600, with [`test/perf/run.sh`](test/perf/run.sh): v0.2.0 and v0.2.1 as release builds, the first engine with `-O2` and no sanitizer. v0.2.0 was measured again beside v0.2.1 and came within 0.2 ms of its first figures. Each figure is the median of 7 runs (63 for start-up). Times are CPU time (`task-clock`). Instructions are user-space instructions retired, which barely change between runs. Peak memory is the peak resident set size. v0.2.0 and v0.2.1 run `_build/trilog -f -n`, which loads only the core; the benchmarks need nothing else. `fib/2` cuts on `N < 2`, because the first engine runs out of stack on the version without the cut.
+Every version was measured on the same machine, an AMD Ryzen 5 5600, with [`test/perf/run.sh`](test/perf/run.sh): v0.2.0 and v0.2.1 as release builds, the first engine with `-O2` and no sanitizer. v0.2.0 was measured again beside v0.2.1 and came within 0.2 ms of its first figures. Each figure is the median of 7 runs (63 for start-up). Times are CPU time (`task-clock`). Instructions are user-space instructions retired, which barely change between runs. Peak memory is the peak resident set size. v0.2.0 runs `_build/trilog -f -n` and v0.2.1 runs `_build/trilog -f`, which both load only the core; the benchmarks need nothing else. `fib/2` cuts on `N < 2`, because the first engine runs out of stack on the version without the cut.
 
 ### v0.2.0
 
@@ -239,7 +239,7 @@ v0.2.1 is faster again:
 
 On average (geometric mean) v0.2.1 is 1.29x faster than v0.2.0, runs 1.25x fewer instructions and uses 1.04x less memory. Start-up is the exception: it is 0.05 ms slower and runs 0.2M more instructions. Against the first engine it is 21.8x faster, runs 21.9x fewer instructions and uses 11.9x less memory.
 
-Without `-n`, the CLI also loads its four libraries, and start-up takes 0.97 ms, 4.6M instructions and 2.6 MB in v0.2.1 (1.1 ms, 5.3M instructions and 2.9 MB in v0.2.0).
+v0.2.0's CLI also loaded four libraries by default, and started in 1.1 ms, 5.3M instructions and 2.9 MB. v0.2.1's CLI loads only the core.
 
 v0.2.1 passes all 366 conformity tests.
 

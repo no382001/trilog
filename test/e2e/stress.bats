@@ -8,7 +8,9 @@ setup() {
   # measure baseline (just core.pl loaded, no user clauses)
   echo 'true.' | "$TRILOG" -s 2>/tmp/trilog_stress_baseline >/dev/null
   BASE_CLAUSES=$(grep "^clauses=" /tmp/trilog_stress_baseline | cut -d= -f2)
-  export BASE_CLAUSES
+  echo 'use_module(library(between)).' | "$TRILOG" -s 2>/tmp/trilog_stress_baseline >/dev/null
+  BETWEEN_CLAUSES=$(grep "^clauses=" /tmp/trilog_stress_baseline | cut -d= -f2)
+  export BASE_CLAUSES BETWEEN_CLAUSES
 }
 
 teardown() {
@@ -24,27 +26,27 @@ stat_val() {
 
 # template chain-walk is O(n^2) for a var threaded through recursion.
 @test "stress: findall 500 integers" {
-  echo 'findall(X, between(1,500,X), L), length(L, N), write(N).' \
+  echo 'use_module(library(between)), findall(X, between(1,500,X), L), length(L, N), write(N).' \
     | timeout 10 "$TRILOG" -s 2>"$STATS_FILE" | grep -q '500'
   # temp-only query: perm and clauses unchanged from baseline
-  [ "$(stat_val clauses)" -eq "$BASE_CLAUSES" ]
+  [ "$(stat_val clauses)" -eq "$BETWEEN_CLAUSES" ]
 }
 
 # regression: findall/setof used to block LCO for the whole nested solve.
 @test "stress: findall wrapping a deep backtrack stays fast" {
-  result=$(echo 'findall(S, (between(1,3000,X), X =:= 3000, atom_number(S,X)), L), length(L, N), write(N), nl.' \
+  result=$(echo 'use_module(library(between)), findall(S, (between(1,3000,X), X =:= 3000, atom_number(S,X)), L), length(L, N), write(N), nl.' \
     | timeout 5 "$TRILOG" -s 2>"$STATS_FILE")
   [ "$(echo "$result" | head -1)" = "1" ]
-  [ "$(stat_val clauses)" -eq "$BASE_CLAUSES" ]
+  [ "$(stat_val clauses)" -eq "$BETWEEN_CLAUSES" ]
 }
 
 # --- sort 200 reversed integers ---
 
 @test "stress: sort 200 elements" {
-  echo 'findall(X, between(1,200,X), L), reverse(L, R), sort(R, S), length(S, N), write(N).' \
+  echo 'use_module(library(between)), findall(X, between(1,200,X), L), reverse(L, R), sort(R, S), length(S, N), write(N).' \
     | timeout 10 "$TRILOG" -s 2>"$STATS_FILE" | grep -q '200'
   # temp-only: no perm growth
-  [ "$(stat_val clauses)" -eq "$BASE_CLAUSES" ]
+  [ "$(stat_val clauses)" -eq "$BETWEEN_CLAUSES" ]
 }
 
 # --- 500 dynamic asserts + query ---
@@ -84,17 +86,17 @@ print('findall(X, st(X), L3), length(L3, N3), write(N3), write(s), nl.')
 # --- many backtracking solutions ---
 
 @test "stress: 200 backtracking solutions in pipe" {
-  count=$(echo 'between(1,200,X), write(X), write(s), nl, fail ; true.' \
+  count=$(echo 'use_module(library(between)), between(1,200,X), write(X), write(s), nl, fail ; true.' \
     | timeout 10 "$TRILOG" -s 2>"$STATS_FILE" | grep -c 's$')
   [ "$count" -eq 200 ]
   # backtracking is temp-only
-  [ "$(stat_val clauses)" -eq "$BASE_CLAUSES" ]
+  [ "$(stat_val clauses)" -eq "$BETWEEN_CLAUSES" ]
 }
 
 # --- large file I/O ---
 
 @test "stress: write and read back 500 lines via Prolog I/O" {
-  echo "open('/tmp/trilog_stress_io.txt', write, S), forall(between(1,500,I), (write(S, line(I)), nl(S))), close(S)." \
+  echo "use_module(library(between)), open('/tmp/trilog_stress_io.txt', write, S), forall(between(1,500,I), (write(S, line(I)), nl(S))), close(S)." \
     | timeout 10 "$TRILOG" -s 2>"$STATS_FILE" >/dev/null
   lines=$(wc -l < /tmp/trilog_stress_io.txt)
   [ "$lines" -eq 500 ]
@@ -147,23 +149,23 @@ print('findall(X, churn(X), L), length(L, N), write(N).')
 
 @test "stress: foldl sum of 1..500" {
   echo 'add(X, S0, S) :- S is S0 + X.' > /tmp/trilog_stress_fold.pl
-  result=$(printf "consult('/tmp/trilog_stress_fold.pl').\nfindall(X, between(1,500,X), L), foldl(add, L, 0, Sum), write(Sum).\n" \
+  result=$(printf "use_module(library(between)), consult('/tmp/trilog_stress_fold.pl').\nfindall(X, between(1,500,X), L), foldl(add, L, 0, Sum), write(Sum).\n" \
     | timeout 10 "$TRILOG" -s 2>"$STATS_FILE" | tail -1)
   # sum 1..500 = 125250
   [[ "$result" == *"125250"* ]]
   # add/3, plus the file's consult record
-  [ "$(stat_val clauses)" -eq $(( BASE_CLAUSES + 2 )) ]
+  [ "$(stat_val clauses)" -eq $(( BETWEEN_CLAUSES + 2 )) ]
 }
 
 # --- maplist over large list ---
 
 @test "stress: maplist over 200-element list" {
   echo 'inc(X, Y) :- Y is X + 1.' > /tmp/trilog_stress_map.pl
-  result=$(printf "consult('/tmp/trilog_stress_map.pl').\nfindall(X, between(1,200,X), L), maplist(inc, L, M), length(M, N), write(N).\n" \
+  result=$(printf "use_module(library(between)), consult('/tmp/trilog_stress_map.pl').\nfindall(X, between(1,200,X), L), maplist(inc, L, M), length(M, N), write(N).\n" \
     | timeout 10 "$TRILOG" -s 2>"$STATS_FILE" | tail -1)
   [[ "$result" == *"200"* ]]
   # inc/2, plus the file's consult record
-  [ "$(stat_val clauses)" -eq $(( BASE_CLAUSES + 2 )) ]
+  [ "$(stat_val clauses)" -eq $(( BETWEEN_CLAUSES + 2 )) ]
 }
 
 # --- deep setof dedup ---

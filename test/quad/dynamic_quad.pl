@@ -1,3 +1,5 @@
+:- use_module(library(make)).
+
 % dynamic declaration, static protection, consulted/unconsult tests
 
 % --- dynamic declaration allows assert/retract ---

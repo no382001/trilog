@@ -122,7 +122,7 @@ $(REL)/image.load: FORCE
 $(REL)/image.c: $(PROLOG_SRCS) $(LIB_SRCS) src/kernel/image_dump.c $(HDRS) cli/main.c cli/toplevel.c $(IMAGE_DEPS) $(REL)/image.load
 	@mkdir -p $(@D)
 	$(HOST_MAKE) trilog
-	./trilog -n -f -e "$(IMAGE_LOAD), '\$$\$$dump_image'('$@'), forall('\$$consulted'(P, _), (write(P), nl)), halt." >$(REL)/image.files
+	./trilog -f -e "$(IMAGE_LOAD), '\$$\$$dump_image'('$@'), forall('\$$consulted'(P, _), (write(P), nl)), halt." >$(REL)/image.files
 
 $(REL)/image.o: $(REL)/image.c
 	$(CC) $(CPPFLAGS) -DTRILOG_EMBEDDED $(CFLAGS) -flto=auto -c $< -o $@

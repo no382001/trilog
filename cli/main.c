@@ -8,15 +8,13 @@
 
 static trilog_t *T;
 
-static const char *usage =
-    "Usage: trilog [options] [file...]\n"
-    "  -e GOAL   evaluate GOAL and exit\n"
-    "  -f        fast startup: skip ~/.trilog\n"
-    "  -n        load only the core: no apply, dcgs, between, charsio, make\n"
-    "  -v        verbose: echo startup consults\n"
-    "  -s        print resource-usage stats on exit\n"
-    "  -V        print the version and exit\n"
-    "  -h        show this help\n";
+static const char *usage = "Usage: trilog [options] [file...]\n"
+                           "  -e GOAL   evaluate GOAL and exit\n"
+                           "  -f        fast startup: skip ~/.trilog\n"
+                           "  -v        verbose: echo startup consults\n"
+                           "  -s        print resource-usage stats on exit\n"
+                           "  -V        print the version and exit\n"
+                           "  -h        show this help\n";
 
 static void print_exit_stats(void) {
   if (!T)
@@ -58,19 +56,6 @@ static void resolve_core_path(const char *argv0, char *out, size_t out_size) {
 }
 #endif
 
-static bool no_more(trilog_t *t, void *ud, bool has_more) {
-  (void)t, (void)ud, (void)has_more;
-  return false;
-}
-
-static void load_default_libraries(void) {
-  static const char *const libs =
-      "ensure_loaded(library(dcgs)), ensure_loaded(library(between)), "
-      "ensure_loaded(library(charsio)), ensure_loaded(library(make))";
-  if (trilog_query(T, libs, no_more, NULL) != TRILOG_TRUE)
-    toplevel_print_uncaught(T);
-}
-
 static void load_init_file(int verbose) {
   const char *home = getenv("HOME");
   if (!home)
@@ -91,7 +76,7 @@ static void load_init_file(int verbose) {
 }
 
 int main(int argc, char **argv) {
-  int fast = 0, verbose = 0, exit_stats = 0, core_only = 0;
+  int fast = 0, verbose = 0, exit_stats = 0;
   const char *query = NULL;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "-h")) {
@@ -104,8 +89,6 @@ int main(int argc, char **argv) {
     }
     if (!strcmp(argv[i], "-f")) {
       fast = 1;
-    } else if (!strcmp(argv[i], "-n")) {
-      core_only = 1;
     } else if (!strcmp(argv[i], "-v")) {
       verbose = 1;
     } else if (!strcmp(argv[i], "-s")) {
@@ -131,14 +114,12 @@ int main(int argc, char **argv) {
   T = trilog_new(&config);
   if (!T)
     return 1;
-  if (!core_only)
-    load_default_libraries();
   if (!fast)
     load_init_file(verbose);
 
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "-v") ||
-        !strcmp(argv[i], "-s") || !strcmp(argv[i], "-n")) {
+        !strcmp(argv[i], "-s")) {
       continue;
     } else if (!strcmp(argv[i], "-e") && i + 1 < argc) {
       i++;

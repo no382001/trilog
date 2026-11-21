@@ -526,9 +526,9 @@ load common
 
 @test "DCG: terminals and phrase/2" {
   printf 'greeting --> [hello], [world].\n' > /tmp/trilog_dcg1.pl
-  run "$TRILOG" /tmp/trilog_dcg1.pl -e "phrase(greeting, [hello, world])."
+  run "$TRILOG" /tmp/trilog_dcg1.pl -e "use_module(library(dcgs)), phrase(greeting, [hello, world])."
   succeeded
-  run "$TRILOG" /tmp/trilog_dcg1.pl -e "phrase(greeting, [hello, there])."
+  run "$TRILOG" /tmp/trilog_dcg1.pl -e "use_module(library(dcgs)), phrase(greeting, [hello, there])."
   ! succeeded
   rm -f /tmp/trilog_dcg1.pl
 }
@@ -536,7 +536,7 @@ load common
 @test "DCG: recursion and a {}//1 embedded goal" {
   printf 'digits([D|Ds]) --> [D], { D >= 0, D =< 9 }, digits(Ds).\n' > /tmp/trilog_dcg2.pl
   printf 'digits([D]) --> [D], { D >= 0, D =< 9 }.\n' >> /tmp/trilog_dcg2.pl
-  run "$TRILOG" /tmp/trilog_dcg2.pl -e "phrase(digits(Ds), [1,2,3])."
+  run "$TRILOG" /tmp/trilog_dcg2.pl -e "use_module(library(dcgs)), phrase(digits(Ds), [1,2,3])."
   [[ "$output" == *"Ds = [1,2,3]"* ]]
   rm -f /tmp/trilog_dcg2.pl
 }
@@ -547,13 +547,13 @@ alt --> [x] ; [y].
 opt --> [z], !, [w].
 opt --> [].
 EOF
-  run "$TRILOG" /tmp/trilog_dcg3.pl -e "phrase(alt, [x])."
+  run "$TRILOG" /tmp/trilog_dcg3.pl -e "use_module(library(dcgs)), phrase(alt, [x])."
   succeeded
-  run "$TRILOG" /tmp/trilog_dcg3.pl -e "phrase(alt, [y])."
+  run "$TRILOG" /tmp/trilog_dcg3.pl -e "use_module(library(dcgs)), phrase(alt, [y])."
   succeeded
-  run "$TRILOG" /tmp/trilog_dcg3.pl -e "phrase(opt, [z, w])."
+  run "$TRILOG" /tmp/trilog_dcg3.pl -e "use_module(library(dcgs)), phrase(opt, [z, w])."
   succeeded
-  run "$TRILOG" /tmp/trilog_dcg3.pl -e "phrase(opt, [])."
+  run "$TRILOG" /tmp/trilog_dcg3.pl -e "use_module(library(dcgs)), phrase(opt, [])."
   succeeded
   rm -f /tmp/trilog_dcg3.pl
 }
@@ -564,7 +564,7 @@ EOF
 count(N0, N) --> [_], !, { N1 is N0 + 1 }, count(N1, N).
 count(N, N) --> [].
 EOF
-  run bash -c "ulimit -v 1048576; timeout 30 $TRILOG /tmp/trilog_dcg4.pl -e \"length(L, 2000), phrase(count(0, N), L).\""
+  run bash -c "ulimit -v 1048576; timeout 30 $TRILOG /tmp/trilog_dcg4.pl -e \"use_module(library(dcgs)), length(L, 2000), phrase(count(0, N), L).\""
   [ "$status" -eq 0 ]
   [[ "$output" == *"N = 2000"* ]]
   rm -f /tmp/trilog_dcg4.pl
@@ -650,10 +650,10 @@ EOF
 
 @test "solve/2: DCG rules with an embedded cut work under meta-interpretation" {
   printf 'opt --> [z], !, [w].\nopt --> [].\n' > /tmp/mi_dcg_test.pl
-  run "$TRILOG" /tmp/mi_dcg_test.pl -e "phrase(opt, [z, w])."
+  run "$TRILOG" /tmp/mi_dcg_test.pl -e "use_module(library(dcgs)), phrase(opt, [z, w])."
   [ "$status" -eq 0 ]
   succeeded
-  run "$TRILOG" /tmp/mi_dcg_test.pl -e "phrase(opt, [])."
+  run "$TRILOG" /tmp/mi_dcg_test.pl -e "use_module(library(dcgs)), phrase(opt, [])."
   [ "$status" -eq 0 ]
   succeeded
   rm -f /tmp/mi_dcg_test.pl
@@ -661,7 +661,7 @@ EOF
 
 @test "DCG rules translate lazily at call time, not eagerly at consult time (regression)" {
   run "$TRILOG" -e "
-    assertz((greeting --> [hello],[world])),
+    use_module(library(dcgs)), assertz((greeting --> [hello],[world])),
     phrase(greeting,[hello,world]).
   "
   [ "$status" -eq 0 ]

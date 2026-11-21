@@ -107,7 +107,7 @@ load common
 }
 
 @test "--> is a standard operator even with only the core loaded" {
-  run "$TRILOG" -n -f -e "X = (a-->b), write_canonical(X), nl."
+  run "$TRILOG" -f -e "X = (a-->b), write_canonical(X), nl."
   [ "$status" -eq 0 ]
   [[ "$output" == *"-->(a,b)"* ]]
 }
@@ -182,7 +182,7 @@ PLEOF
 
 @test "write_canonical/1 output reads back as the same term" {
   run "$TRILOG" -f -e "
-    Ts = [[a, b], [a|b], '[]', {a, b}, '{}'(x), f(:-, (a :- b)), - 1, -(-(1)), 1 - -1,
+    use_module(library(charsio)), Ts = [[a, b], [a|b], '[]', {a, b}, '{}'(x), f(:-, (a :- b)), - 1, -(-(1)), 1 - -1,
           1.5, -0.0, 'hello world', 'it''s', '\\n', 'B', f(A, B, A), '\$VAR'(1),
           f(;, '|', ','), \\+ a, a = (\\+), [-]],
     findall(T,
@@ -226,7 +226,7 @@ PLEOF
 
 @test "current_op/3 lists the standard operator table, plus : for modules and | from library(dcgs)" {
   run "$TRILOG" -f -e "
-    findall(op(P, T, N), current_op(P, T, N), L),
+    use_module(library(dcgs)), findall(op(P, T, N), current_op(P, T, N), L),
     msort(L, S),
     writeq(S),
     nl.
@@ -316,6 +316,6 @@ PLEOF
 
 @test "a backslash before a newline continues quoted text on the next line" {
   printf "t('a\\\\\nb').\nu(\"c\\\\\nd\").\n" > "$BATS_TEST_TMPDIR/cont.pl"
-  run "$TRILOG" -n -f "$BATS_TEST_TMPDIR/cont.pl" -e "t(X), atom_length(X, N), u(Y)."
+  run "$TRILOG" -f "$BATS_TEST_TMPDIR/cont.pl" -e "t(X), atom_length(X, N), u(Y)."
   [[ "$output" == *'X = ab, N = 2, Y = "cd".'* ]]
 }
