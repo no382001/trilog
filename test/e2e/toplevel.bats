@@ -78,9 +78,13 @@ load common
   rm -f "$fifo" "$out"
 }
 
-@test "trilog -V prints git describe and the branch" {
+@test "trilog -V prints the tag on a tag, else git describe and the branch" {
   root="$BATS_TEST_DIRNAME/.."
-  expected="trilog $(git -C "$root" describe --tags --always --dirty) ($(git -C "$root" rev-parse --abbrev-ref HEAD))"
+  if tag=$(git -C "$root" describe --tags --exact-match --dirty 2>/dev/null); then
+    expected="trilog $tag"
+  else
+    expected="trilog $(git -C "$root" describe --tags --always --dirty) ($(git -C "$root" rev-parse --abbrev-ref HEAD))"
+  fi
   run make -s -C "$root" trilog
   run "$TRILOG" -V
   [ "$status" -eq 0 ]

@@ -1,0 +1,48 @@
+name: Release
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: build
+        run: make release "CFLAGS=-Wall -Wextra -std=c11 -O2 -static"
+
+      - name: check the version is the tag
+        run: test "$(_build/trilog -V)" = "trilog ${GITHUB_REF_NAME}"
+
+      - name: package
+        run: |
+          d=trilog-${GITHUB_REF_NAME}-linux-x86_64
+          mkdir -p $d/bin $d/lib $d/include
+          cp _build/trilog $d/bin/
+          cp _build/release-posix/libtrilog.a $d/lib/
+          cp include/*.h $d/include/
+          cp LICENSE README.md $d/
+          tar -czf $d.tar.gz $d
+          sha256sum $d.tar.gz > $d.tar.gz.sha256
+
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag --latest \
+            --title "trilog $GITHUB_REF_NAME" --generate-notes \
+            trilog-${GITHUB_REF_NAME}-linux-x86_64.tar.gz \
+            trilog-${GITHUB_REF_NAME}-linux-x86_64.tar.gz.sha256
