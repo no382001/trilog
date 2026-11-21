@@ -798,12 +798,40 @@ static void run_directive(trilog_t *T, tterm_t *goal, int32_t nvars) {
   heap_release(T, hmark);
 }
 
+static bool core_refuses(trilog_t *T, tterm_t *head) {
+  if (head->tag != T_ATOM && head->tag != T_STR)
+    return false;
+  int32_t id = head->tag == T_ATOM ? head->as.atom_id : head->as.str.atom_id;
+  int32_t arity = head->tag == T_ATOM ? 0 : head->as.str.arity;
+  if (!db_is_core(T, id, arity))
+    return false;
+  size_t hmark = heap_mark(T);
+  size_t pi[2] = {heap_new_atom(T, id), heap_new_int(T, arity)};
+  size_t perm[3] = {heap_new_atom(T, atom_intern(T, "modify")),
+                    heap_new_atom(T, atom_intern(T, "static_procedure")),
+                    heap_new_struct(T, atom_slash, 2, pi)};
+  size_t ctx_pi[2] = {heap_new_atom(T, atom_intern(T, "consult")),
+                      heap_new_int(T, 1)};
+  size_t ball[2] = {
+      heap_new_struct(T, atom_intern(T, "permission_error"), 3, perm),
+      heap_new_struct(T, atom_slash, 2, ctx_pi)};
+  io_write_err(T, "uncaught exception: ");
+  print_term_via(T, heap_new_struct(T, atom_error, 2, ball), 0, io_write_err);
+  io_write_err(T, "\n");
+  heap_release(T, hmark);
+  T->directive_errors++;
+  return true;
+}
+
 static void assemble_clause(trilog_t *T, tterm_t *t, int32_t nvars) {
   if (t->tag == T_STR && t->as.str.arity == 2 &&
       t->as.str.atom_id == atom_ruleop) {
+    tterm_t *head = module_head(T, t->as.str.args[0]);
+    if (core_refuses(T, head))
+      return;
     int32_t nbody;
     tterm_t **body = flatten_conj(T, t->as.str.args[1], &nbody);
-    db_add(T, module_head(T, t->as.str.args[0]), body, nbody, nvars, 1);
+    db_add(T, head, body, nbody, nvars, 1);
     return;
   }
   if (t->tag == T_STR && t->as.str.arity == 1 &&
@@ -814,7 +842,9 @@ static void assemble_clause(trilog_t *T, tterm_t *t, int32_t nvars) {
     run_directive(T, t->as.str.args[0], nvars);
     return;
   }
-  db_add(T, module_head(T, t), NULL, 0, nvars, 1); // a fact
+  tterm_t *head = module_head(T, t);
+  if (!core_refuses(T, head))
+    db_add(T, head, NULL, 0, nvars, 1);
 }
 
 // library files baked into a release build are consulted as "embedded:PATH".

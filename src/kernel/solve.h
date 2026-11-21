@@ -65,7 +65,7 @@ typedef struct pred_bucket {
   int32_t pred_id, pred_arity;
   int32_t *indices;
   int32_t count, cap;
-  bool dynamic, multifile;
+  bool dynamic, multifile, core;
   uint32_t consult_serial; // the last consult that gave it a clause
   int32_t foreign;
   struct pred_bucket *next;
@@ -111,6 +111,8 @@ size_t catch_stack_size(trilog_t *T);
 void catch_stack_set_size(trilog_t *T, size_t n);
 void fatal_trace_fill(trilog_t *T);
 
+void db_seal_core(trilog_t *T);
+bool db_is_core(trilog_t *T, int32_t pred_id, int32_t pred_arity);
 void db_add(trilog_t *T, tterm_t *head, tterm_t **body, int32_t nbody,
             int32_t nvars, int mark_static);
 

@@ -5,6 +5,7 @@
 :- op(1200, xfx, '-->').
 :- op(1105, xfy, '|').
 :- dynamic('$dcg_compiled'/2).
+:- multifile(('-->')/2).
 
 dcg_constr([]).
 dcg_constr([_|_]).

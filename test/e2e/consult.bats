@@ -220,6 +220,49 @@ PLEOF
     nl.
   "
   [[ "$output" == *"n(2)"* ]]
+  [[ "$output" == *"app.pl redefines append/3, which "*"lists.pl defined"* ]]
+}
+
+@test "a file that defines a predicate another file defined warns once, and reconsulting it does not" {
+  printf "p(a).\n" > "$BATS_TEST_TMPDIR/pa.pl"
+  printf "p(b).\np(c).\n" > "$BATS_TEST_TMPDIR/pb.pl"
+  run "$TRILOG" -f -e "
+    consult('$BATS_TEST_TMPDIR/pa.pl'),
+    consult('$BATS_TEST_TMPDIR/pb.pl'),
+    consult('$BATS_TEST_TMPDIR/pb.pl').
+  "
+  [ "$(printf '%s\n' "$output" | grep -c '% Warning:')" -eq 1 ]
+  [[ "$output" == *"pb.pl redefines p/1, which "*"pa.pl defined"* ]]
+}
+
+@test "a file with grammar rules keeps the rules other files gave (regression)" {
+  # regression: a file's --> rules replaced the uncompiled --> rules of the files loaded before it.
+  printf "ga --> \"a\".\n" > "$BATS_TEST_TMPDIR/ga.pl"
+  printf "gb --> \"b\".\n" > "$BATS_TEST_TMPDIR/gb.pl"
+  run "$TRILOG" -f -e "
+    use_module(library(dcgs)),
+    consult('$BATS_TEST_TMPDIR/ga.pl'),
+    consult('$BATS_TEST_TMPDIR/gb.pl'),
+    phrase(ga, \"a\"),
+    phrase(gb, \"b\"),
+    write(both),
+    nl.
+  "
+  [[ "$output" == *"both"* ]]
+  [[ "$output" != *"Warning:"* ]]
+}
+
+@test "a file cannot define a built-in predicate" {
+  printf "atom_length(q, r).\nkeep(yes).\n" > "$BATS_TEST_TMPDIR/bi.pl"
+  run "$TRILOG" -f -e "
+    consult('$BATS_TEST_TMPDIR/bi.pl'),
+    atom_length(abc, N),
+    keep(K),
+    write(r(N, K)),
+    nl.
+  "
+  [[ "$output" == *"error(permission_error(modify,static_procedure,atom_length/2),consult/1)"* ]]
+  [[ "$output" == *"r(3,yes)"* ]]
 }
 
 @test "multifile/1 keeps the clauses each file gives the predicate" {

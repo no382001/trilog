@@ -135,6 +135,7 @@ trilog_t *trilog_new(const trilog_config_t *config) {
     trilog_free(t);
     return NULL;
   }
+  db_seal_core(t);
   return t;
 }
 

@@ -433,6 +433,13 @@ static void unmark_consulted(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
 
 static void clause_dies(trilog_t *T, int32_t idx);
 
+static bool same_file(const char *old, const char *now) {
+  if (strncmp(old, "embedded:", 9) != 0)
+    return false;
+  size_t n = strlen(old + 9), m = strlen(now);
+  return m > n && now[m - n - 1] == '/' && strcmp(now + m - n, old + 9) == 0;
+}
+
 // The first clause a consult gives a predicate replaces the clauses other
 // files gave it, unless it is multifile
 static void db_redefine(trilog_t *T, pred_bucket_t *b) {
@@ -441,14 +448,49 @@ static void db_redefine(trilog_t *T, pred_bucket_t *b) {
   b->consult_serial = T->consult_serial;
   if (b->multifile)
     return;
+  int32_t old = -1;
   for (int32_t k = 0; k < b->count; k++) {
     int32_t i = b->indices[k];
     if (T->db[i].head && clause_alive(&T->db[i]) && T->db[i].source >= 0 &&
         T->db[i].source != T->consulting_atom) {
+      old = T->db[i].source;
       clause_dies(T, i);
       T->db_pending++;
     }
   }
+  if (old < 0 || same_file(atom_name(T, old), atom_name(T, T->consulting_atom)))
+    return;
+  char arity[16];
+  fmt(arity, sizeof arity, "%d", b->pred_arity);
+  io_write_err(T, "% Warning: ");
+  io_write_err(T, atom_name(T, T->consulting_atom));
+  io_write_err(T, " redefines ");
+  io_write_err(T, atom_name(T, b->pred_id));
+  io_write_err(T, "/");
+  io_write_err(T, arity);
+  io_write_err(T, ", which ");
+  io_write_err(T, atom_name(T, old));
+  io_write_err(T, " already defined\n");
+}
+
+void db_seal_core(trilog_t *T) {
+  int32_t core = -1;
+  for (int32_t i = 0; i < T->db_count && core < 0; i++)
+    if (T->db[i].head && clause_alive(&T->db[i]) && T->db[i].source >= 0)
+      core = T->db[i].source;
+  if (core < 0)
+    return;
+  for (int i = 0; i < PRED_HASH_SIZE; i++)
+    for (pred_bucket_t *b = T->pred_hash[i]; b; b = b->next)
+      for (int32_t k = 0; !b->dynamic && !b->core && k < b->count; k++) {
+        clause_t *c = &T->db[b->indices[k]];
+        b->core = c->head && clause_alive(c) && c->source == core;
+      }
+}
+
+bool db_is_core(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
+  pred_bucket_t *b = pred_bucket_find(T, pred_id, pred_arity);
+  return b && b->core && !b->dynamic;
 }
 
 void db_add(trilog_t *T, tterm_t *head, tterm_t **body, int32_t nbody,
