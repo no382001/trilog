@@ -15,6 +15,11 @@ The "tri" is for three: the three states of the ABC algorithm, which trilog's so
 - [Libraries](#libraries)
 - [How the solver works](#how-the-solver-works)
 - [History](#history)
+  - [The first engine](#the-first-engine)
+  - [How the versions are measured](#how-the-versions-are-measured)
+  - [v0.2.0](#v020)
+  - [v0.2.1](#v021)
+  - [Next: the ZIP VM](#next-the-zip-vm)
 - [License](#license)
 
 ## Goals
@@ -26,7 +31,7 @@ The "tri" is for three: the three states of the ABC algorithm, which trilog's so
 
 ### Current
 
-- **Conformity beyond syntax.** The aim is builtins and errors that follow ISO 13211-1. Modules, `char_conversion/2` and `set_stream_position/2` are still open. Where the standard leaves room, as in how the toplevel prints answers or which error a library predicate throws, trilog follows [Scryer Prolog](https://codeberg.org/mthom/scryer-prolog).
+- **Conformity beyond syntax.** The aim is builtins and errors that follow ISO 13211-1. Modules, `char_conversion/2` and `set_stream_position/2` are still open, and the 50 Logtalk ISO tests that still fail need work. Where the standard leaves room, as in how the toplevel prints answers or which error a library predicate throws, trilog follows [Scryer Prolog](https://codeberg.org/mthom/scryer-prolog).
 - **A ZIP VM.** It runs compiled bytecode instead of interpreting every goal at run time, and on trilog's benchmarks it is 3.7x faster. It will probably join trilog as a runtime on Linux. See [Next: the ZIP VM](#next-the-zip-vm).
 
 ## Conformance
