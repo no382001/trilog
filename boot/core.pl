@@ -1364,6 +1364,23 @@ abolish(PI) :-
     retractall(Head),
     '$$undynamic'(Name, Arity).
 
+%!  multifile(+PIs) is det.
+%   The predicates may get clauses from more than one file. PIs is a predicate
+%   indicator, a conjunction or a list of them.
+multifile(PIs) :- '$with_context'('$multifile'(PIs), multifile/1).
+
+'$multifile'(PIs) :- var(PIs), !, throw(error(instantiation_error, _)).
+'$multifile'((A, B)) :- !, '$multifile'(A), '$multifile'(B).
+'$multifile'([]) :- !.
+'$multifile'([PI|PIs]) :- !, '$multifile'(PI), '$multifile'(PIs).
+'$multifile'(Name/Arity) :-
+    !,
+    must_be(atom, Name),
+    must_be(integer, Arity),
+    ( Arity >= 0 -> true ; throw(error(domain_error(not_less_than_zero, Arity), _)) ),
+    '$$multifile'(Name, Arity).
+'$multifile'(PI) :- throw(error(type_error(predicate_indicator, PI), _)).
+
 % --- operators ---
 
 % Queried before the first op/3 call has asserted anything - without

@@ -309,7 +309,9 @@ tterm_t *module_head(trilog_t *T, tterm_t *h) {
 
 void module_directive(trilog_t *T, tterm_t **slot) {
   tterm_t *d = *slot;
-  if (d->tag == T_STR && d->as.str.atom_id == atom_dynamic &&
+  if (d->tag == T_STR &&
+      (d->as.str.atom_id == atom_dynamic ||
+       d->as.str.atom_id == atom_multifile) &&
       d->as.str.arity == 1)
     module_dynamic(T, d->as.str.args[0]);
   module_patch(T);

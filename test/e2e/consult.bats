@@ -197,3 +197,50 @@ PLEOF
   "
   [[ "$output" == *"r([1],existence_error(procedure,v/1))"* ]]
 }
+
+@test "a file that defines a predicate another file defined replaces its clauses" {
+  printf "p(a).\np(b).\n" > "$BATS_TEST_TMPDIR/pa.pl"
+  printf "p(c).\n" > "$BATS_TEST_TMPDIR/pc.pl"
+  run "$TRILOG" -f -e "
+    consult('$BATS_TEST_TMPDIR/pa.pl'),
+    consult('$BATS_TEST_TMPDIR/pc.pl'),
+    findall(X, p(X), L).
+  "
+  [[ "$output" == *'L = "c"'* ]]
+}
+
+@test "a file that defines a library predicate replaces it (regression)" {
+  # regression: the file's clauses came after the library's, so append(X, Y, [a]) had 6 answers.
+  printf "append([], Zs, Zs).\nappend([X|Xs], Ys, [X|Zs]) :- append(Xs, Ys, Zs).\n" > "$BATS_TEST_TMPDIR/app.pl"
+  run "$TRILOG" -f -e "
+    consult('$BATS_TEST_TMPDIR/app.pl'),
+    findall(X-Y, append(X, Y, [a]), L),
+    length(L, N),
+    write(n(N)),
+    nl.
+  "
+  [[ "$output" == *"n(2)"* ]]
+}
+
+@test "multifile/1 keeps the clauses each file gives the predicate" {
+  printf ":- multifile(q/1).\nq(a).\n" > "$BATS_TEST_TMPDIR/qa.pl"
+  printf ":- multifile(q/1).\nq(b).\n" > "$BATS_TEST_TMPDIR/qb.pl"
+  run "$TRILOG" -f -e "
+    consult('$BATS_TEST_TMPDIR/qa.pl'),
+    consult('$BATS_TEST_TMPDIR/qb.pl'),
+    consult('$BATS_TEST_TMPDIR/qa.pl'),
+    findall(X, q(X), L).
+  "
+  [[ "$output" == *'L = "ba"'* ]]
+}
+
+@test "multifile/1 raises instantiation and type errors" {
+  run "$TRILOG" -f -e "
+    catch(multifile(_), error(E1, _), true),
+    catch(multifile(foo), error(E2, _), true),
+    catch(multifile(f/a), error(E3, _), true),
+    writeq(r(E1, E2, E3)),
+    nl.
+  "
+  [[ "$output" == *"r(instantiation_error,type_error(predicate_indicator,foo),type_error(integer,a))"* ]]
+}

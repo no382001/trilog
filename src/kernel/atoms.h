@@ -96,6 +96,8 @@
   X(atom_skip_list, "$$skip_list")                                             \
   X(atom_is_static_pred, "$$is_static")                                        \
   X(atom_undynamic, "$$undynamic")                                             \
+  X(atom_multifile, "multifile")                                               \
+  X(atom_multifile_set, "$$multifile")                                         \
   X(atom_prolog_flags, "$$prolog_flags")                                       \
   X(atom_flag_bounded, "bounded")                                              \
   X(atom_flag_max_integer, "max_integer")                                      \

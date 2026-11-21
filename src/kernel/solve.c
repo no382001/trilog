@@ -431,13 +431,35 @@ static void unmark_consulted(trilog_t *T, int32_t pred_id, int32_t pred_arity) {
     }
 }
 
+static void clause_dies(trilog_t *T, int32_t idx);
+
+// The first clause a consult gives a predicate replaces the clauses other
+// files gave it, unless it is multifile
+static void db_redefine(trilog_t *T, pred_bucket_t *b) {
+  if (b->consult_serial == T->consult_serial)
+    return;
+  b->consult_serial = T->consult_serial;
+  if (b->multifile)
+    return;
+  for (int32_t k = 0; k < b->count; k++) {
+    int32_t i = b->indices[k];
+    if (T->db[i].head && clause_alive(&T->db[i]) && T->db[i].source >= 0 &&
+        T->db[i].source != T->consulting_atom) {
+      clause_dies(T, i);
+      T->db_pending++;
+    }
+  }
+}
+
 void db_add(trilog_t *T, tterm_t *head, tterm_t **body, int32_t nbody,
             int32_t nvars, int mark_static) {
   idx_key_t key = key_of_template(head);
   if (key.pred_id == atom_op_pred)
     T->op_gen++;
-  pred_bucket_grow_if_needed(
-      T, pred_bucket_find_or_create(T, key.pred_id, key.pred_arity));
+  pred_bucket_t *b = pred_bucket_find_or_create(T, key.pred_id, key.pred_arity);
+  if (mark_static && T->consult_serial && T->consulting_atom >= 0)
+    db_redefine(T, b);
+  pred_bucket_grow_if_needed(T, b);
   db_ensure_cap(T);
   if (mark_static)
     mark_consulted(T, key.pred_id, key.pred_arity);
@@ -2156,6 +2178,20 @@ BUILTIN(bi_undynamic) {
   return 1;
 }
 
+BUILTIN(bi_multifile) {
+  size_t name_d = heap_deref(T, f + 1);
+  size_t arity_d = heap_deref(T, f + 2);
+  if (T->heap[name_d].tag != TAG_ATOM || T->heap[arity_d].tag != TAG_INT) {
+    *ok = 0;
+    return 1;
+  }
+  pred_bucket_find_or_create(T, T->heap[name_d].as.atom_id,
+                             (int32_t)T->heap[arity_d].as.ival)
+      ->multifile = true;
+  *ok = 1;
+  return 1;
+}
+
 BUILTIN(bi_is_static_pred) {
   size_t name_d = heap_deref(T, f + 1);
   size_t arity_d = heap_deref(T, f + 2);
@@ -2819,6 +2855,7 @@ static const builtin_t builtins[WELL_KNOWN_ATOM_COUNT] = {
     [atom_qualify] = {bi_qualify, B(3)},
     [atom_dynamic] = {bi_dynamic, B(1)},
     [atom_undynamic] = {bi_undynamic, B(2)},
+    [atom_multifile_set] = {bi_multifile, B(2)},
     [atom_is_static_pred] = {bi_is_static_pred, B(2)},
     [atom_prolog_flags] = {bi_prolog_flags, B(1)},
     [atom_set_flag] = {bi_set_flag, B(2)},

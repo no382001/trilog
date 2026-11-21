@@ -983,16 +983,19 @@ static bool consult_nested(trilog_t *T, const char *text, const char *file,
                            const char *name) {
   const char *saved_P = T->P, *saved_consulting = T->consulting;
   int32_t saved_atom = T->consulting_atom;
+  uint32_t saved_serial = T->consult_serial;
   size_t saved_psp = T->psp;
   jmp_buf saved_jmp;
   memcpy(saved_jmp, T->err_jmp, sizeof(jmp_buf));
   module_enter(T);
   T->consulting = file;
   T->consulting_atom = file ? atom_intern(T, file) : -1;
+  T->consult_serial = ++T->consult_count;
   bool ok = consult_source(T, text, name);
   module_leave(T);
   T->consulting = saved_consulting;
   T->consulting_atom = saved_atom;
+  T->consult_serial = saved_serial;
   T->P = saved_P;
   T->psp = saved_psp;
   memcpy(T->err_jmp, saved_jmp, sizeof(jmp_buf));

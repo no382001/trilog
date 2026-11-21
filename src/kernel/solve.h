@@ -65,7 +65,8 @@ typedef struct pred_bucket {
   int32_t pred_id, pred_arity;
   int32_t *indices;
   int32_t count, cap;
-  bool dynamic;
+  bool dynamic, multifile;
+  uint32_t consult_serial; // the last consult that gave it a clause
   int32_t foreign;
   struct pred_bucket *next;
 } pred_bucket_t;

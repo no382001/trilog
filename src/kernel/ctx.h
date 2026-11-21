@@ -136,6 +136,8 @@ struct trilog {
   size_t rename_tmp_cap, goals_tmp_cap;
   const char *consulting; // path of the file being consulted
   int32_t consulting_atom;
+  // The consult running now, 0 outside one; each consult gets a new serial.
+  uint32_t consult_serial, consult_count;
   // -1 when the file being consulted declared no module.
   int32_t module_id;
   pred_decl_t *module_exports, *module_private;
