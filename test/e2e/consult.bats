@@ -220,7 +220,7 @@ PLEOF
     nl.
   "
   [[ "$output" == *"n(2)"* ]]
-  [[ "$output" == *"app.pl redefines append/3, which "*"lists.pl defined"* ]]
+  [[ "$output" == *"app.pl redefines append/3, which "*"lists.pl already defined"* ]]
 }
 
 @test "a file that defines a predicate another file defined warns once, and reconsulting it does not" {
@@ -232,7 +232,7 @@ PLEOF
     consult('$BATS_TEST_TMPDIR/pb.pl').
   "
   [ "$(printf '%s\n' "$output" | grep -c '% Warning:')" -eq 1 ]
-  [[ "$output" == *"pb.pl redefines p/1, which "*"pa.pl defined"* ]]
+  [[ "$output" == *"pb.pl redefines p/1, which "*"pa.pl already defined"* ]]
 }
 
 @test "a file with grammar rules keeps the rules other files gave (regression)" {
