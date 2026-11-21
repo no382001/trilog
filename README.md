@@ -27,7 +27,7 @@ The "tri" is for three: the three states of the ABC algorithm, which trilog's so
 ### Current
 
 - **Conformity beyond syntax.** The aim is builtins and errors that follow ISO 13211-1. Modules, `char_conversion/2` and `set_stream_position/2` are still open. Where the standard leaves room, as in how the toplevel prints answers or which error a library predicate throws, trilog follows [Scryer Prolog](https://codeberg.org/mthom/scryer-prolog).
-- **A ZIP VM.** It runs compiled bytecode instead of interpreting every goal at run time, and the first numbers show it about 4x faster. It will probably join trilog as a runtime on Linux. See [Next: the ZIP VM](#next-the-zip-vm).
+- **A ZIP VM.** It runs compiled bytecode instead of interpreting every goal at run time, and on trilog's benchmarks it is 3.7x faster. It will probably join trilog as a runtime on Linux. See [Next: the ZIP VM](#next-the-zip-vm).
 
 ## Conformance
 
@@ -240,9 +240,10 @@ v0.2.1 passes all 366 conformity tests.
 
 ### Next: the ZIP VM
 
-trilog is fast enough to serve a small HTTP server on the Pico W, in its limited memory. Still, that showed that even a fast enough interpreter is not the way to do serious programming on a target that small. So trilog will stay as an interpreter for now, while the work for small targets will be moved to a ZIP virtual machine, which runs compiled bytecode instead of interpreting every goal at run time. The first numbers show that it is about 4x faster (not feature complete).
+trilog is fast enough to serve a small HTTP server on the Pico W, in its limited memory. Still, that showed that even a fast enough interpreter is not the way to do serious programming on a target that small. The HTTP server gets by with classic memory tricks: failure-driven loops (`repeat`/`fail` per request, `forall/2` per piece of a page) give the heap back after each step, each piece of a page is rendered and sent alone because one list for the whole page does not fit, and a connection that comes in while another is served gets a 503. This demonstrates that trilog can indeed work on cheap and constrained environments such as the RPI 2040, but the interpreter approach takes its toll.
+Any or all optimizations I can think of for the interpreter are now marginal, so trilog will stay as an interpreter for now, while the work for small targets will be moved to a ZIP virtual machine, which runs compiled bytecode instead of interpreting every goal at run time. On trilog's naive reverse, 8 queens and `fib(21)` benchmarks it is 3.7x faster and runs 4.2x fewer instructions, although its feature set is not even close to trilog.
 
-The ZIP VM will probably join trilog as a runtime on Linux. Later, I plan to release the ZIP VM and trilog separately. The ZIP VM will be for very small embedded targets like the Pico W. A program there rarely needs dynamic code, or a REPL to talk to the system. Instead, you upload the bytecode to the Pico W over the network, then send it a signal to run. With a protocol like 9P, a mesh of such devices could run compiled Prolog code on demand.
+The ZIP VM will probably join trilog as a runtime on Linux. Later, I plan to release the ZIP VM and trilog separately. The ZIP VM will be for very small embedded targets like the Pico W. Working on the assumption that a program there rarely needs dynamic code, or a REPL to talk to the system, you could just upload the compiled bytecode over the network, then send it a signal to run. Since these small targets don't really have the power to compile on the fly, I believe this is a fair trade. And with a protocol like 9P, a mesh of such devices could run compiled Prolog code on demand.
 
 ## License
 
