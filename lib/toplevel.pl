@@ -113,6 +113,7 @@ run(Goal, VNs) :-
 show(VNs, M0, M1) :-
     (   answered -> nl, write(';  ') ; assertz(answered), write('   ') ),
     write_answer(VNs),
+    flush_output,
     (   M1 == M0
     ->  write('.'), nl
     ;   stop

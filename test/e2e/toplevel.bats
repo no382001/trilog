@@ -230,6 +230,11 @@ load common
   [[ "$result" == *";"* ]]
 }
 
+@test "pipe mode: an answer is shown before the search for the next one ends" {
+  result=$(printf "( X = 0 ; repeat, fail ).\n" | timeout 2 "$TRILOG" 2>&1 || true)
+  [[ "$result" == *"X = 0"* ]]
+}
+
 @test "the REPL prints answers exactly as -e does" {
   # The REPL's printer is lib/toplevel.pl; -e uses trilog_format_answer in C.
   queries=(
