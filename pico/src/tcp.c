@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MAX_CONNS 8
+#define MAX_CONNS 2
 #define IDLE_TIMEOUT_MS 5000
 
 typedef enum { FREE, PENDING, ACCEPTED } conn_state;
@@ -25,8 +25,7 @@ static conn_t conns[MAX_CONNS];
 static struct tcp_pcb *listener;
 static unsigned accepted;
 static u16_t listener_port;
-static const char *const conn_paths[MAX_CONNS] = {
-    "tcp:0", "tcp:1", "tcp:2", "tcp:3", "tcp:4", "tcp:5", "tcp:6", "tcp:7"};
+static const char *const conn_paths[MAX_CONNS] = {"tcp:0", "tcp:1"};
 
 static void conn_release(conn_t *c) {
   if (c->pcb) {
@@ -63,10 +62,57 @@ static void on_err(void *arg, err_t err) {
   c->eof = true;
 }
 
+static const char busy_reply[] = "HTTP/1.1 503 Service Unavailable\r\n"
+                                  "Retry-After: 30\r\n"
+                                  "Content-Length: 0\r\n"
+                                  "Connection: close\r\n\r\n";
+
+// Reading what the client sends keeps lwIP from resetting the close.
+static err_t busy_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p,
+                       err_t err) {
+  (void)arg, (void)err;
+  if (p) {
+    tcp_recved(pcb, p->tot_len);
+    pbuf_free(p);
+  }
+  return ERR_OK;
+}
+
+static err_t busy_sent(void *arg, struct tcp_pcb *pcb, u16_t len) {
+  (void)arg, (void)len;
+  tcp_sent(pcb, NULL);
+  if (tcp_close(pcb) != ERR_OK) {
+    tcp_abort(pcb);
+    return ERR_ABRT;
+  }
+  return ERR_OK;
+}
+
+static bool serving(void) {
+  for (int i = 0; i < MAX_CONNS; i++)
+    if (conns[i].state == ACCEPTED)
+      return true;
+  return false;
+}
+
+static err_t refuse(struct tcp_pcb *pcb) {
+  tcp_arg(pcb, NULL);
+  tcp_recv(pcb, busy_recv);
+  tcp_sent(pcb, busy_sent);
+  if (tcp_write(pcb, busy_reply, sizeof busy_reply - 1, 0) != ERR_OK) {
+    tcp_abort(pcb);
+    return ERR_ABRT;
+  }
+  tcp_output(pcb);
+  return ERR_OK;
+}
+
 static err_t on_accept(void *arg, struct tcp_pcb *pcb, err_t err) {
   (void)arg;
   if (err != ERR_OK || !pcb)
     return ERR_VAL;
+  if (serving())
+    return refuse(pcb);
   for (int i = 0; i < MAX_CONNS; i++) {
     conn_t *c = &conns[i];
     if (c->state != FREE)

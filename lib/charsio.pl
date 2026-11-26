@@ -4,7 +4,7 @@
 
 %!  write_term_to_chars(@Term, +Options, -Chars) is det.
 write_term_to_chars(T, Opts, Cs) :-
-    '$with_context'('$write_options'(Opts, _), write_term_to_chars/3),
+    '$with_context'('$write_options'(Opts, _, _), write_term_to_chars/3),
     with_output_to(chars(Cs0), write_term(T, Opts)),
     Cs = Cs0.
 

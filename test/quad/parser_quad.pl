@@ -208,3 +208,47 @@ pcolor(blue).
 
 ?- pcolor(green).
    true.
+
+% --- digit groups, as in Scryer: _ and optional layout between decimal digits ---
+
+?- X = 6_000.
+   X = 6000.
+
+?- X = 1_000_000.
+   X = 1000000.
+
+?- X = 6_ 000.
+   X = 6000.
+
+?- X = 6_/* c */000.
+   X = 6000.
+
+?- X = 1_000.5.
+   X = 1000.5.
+
+?- X = - 1_0.
+   X = -10.
+
+?- number_chars(N, "1_000").
+   N = 1000.
+
+?- catch(number_chars(_, "6__000"), error(syntax_error(_), _), true).
+   true.
+
+?- catch(number_chars(_, "6_"), error(syntax_error(_), _), true).
+   true.
+
+?- catch(term_to_atom(_, '6_a'), error(syntax_error(_), _), true).
+   true.
+
+?- catch(term_to_atom(_, '1 _0'), error(syntax_error(_), _), true).
+   true.
+
+?- catch(term_to_atom(_, '0x1_F'), error(syntax_error(_), _), true).
+   true.
+
+?- catch(term_to_atom(_, '1.0_0'), error(syntax_error(_), _), true).
+   true.
+
+?- catch(term_to_atom(_, '1.0e1_0'), error(syntax_error(_), _), true).
+   true.

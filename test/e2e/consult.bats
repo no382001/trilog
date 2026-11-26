@@ -104,7 +104,7 @@ PLEOF
 @test "unconsult/1 removes only the file's clauses and fails when not loaded" {
   printf ":- dynamic(p/1).\np(1).\n" > "$BATS_TEST_TMPDIR/u.pl"
   run "$TRILOG" -f -e "
-    consult('$BATS_TEST_TMPDIR/u.pl'),
+    use_module(library(make)), consult('$BATS_TEST_TMPDIR/u.pl'),
     assertz(p(2)),
     unconsult('$BATS_TEST_TMPDIR/u.pl'),
     findall(X, p(X), L),
@@ -116,7 +116,7 @@ PLEOF
 @test "consulted/1 lists loaded files, including ones from the command line" {
   printf "q(1).\n" > "$BATS_TEST_TMPDIR/from_command_line.pl"
   run "$TRILOG" -f "$BATS_TEST_TMPDIR/from_command_line.pl" -e "
-    consulted(L),
+    use_module(library(make)), consulted(L),
     member(F, L),
     atom_concat(_, '/from_command_line.pl', F).
   "
@@ -129,7 +129,7 @@ PLEOF
   printf "v(old).\n" > "$BATS_TEST_TMPDIR/m.pl"
   touch -t 202001010000 "$BATS_TEST_TMPDIR/m.pl"
   run "$TRILOG" -f "$BATS_TEST_TMPDIR/m.pl" -e "
-    open('$BATS_TEST_TMPDIR/m.pl', write, S),
+    use_module(library(make)), open('$BATS_TEST_TMPDIR/m.pl', write, S),
     write(S, 'v(new).'),
     nl(S),
     close(S),
@@ -187,7 +187,7 @@ PLEOF
   bin="$(cd "$(dirname "$TRILOG")" && pwd)/$(basename "$TRILOG")"
   cd "$dir"
   run "$bin" -f -e "
-    consult('sub/f.pl'),
+    use_module(library(make)), consult('sub/f.pl'),
     consult('./sub/../sub/f.pl'),
     findall(X, v(X), L1),
     unconsult('sub/f.pl'),
@@ -196,4 +196,94 @@ PLEOF
     nl.
   "
   [[ "$output" == *"r([1],existence_error(procedure,v/1))"* ]]
+}
+
+@test "a file that defines a predicate another file defined replaces its clauses" {
+  printf "p(a).\np(b).\n" > "$BATS_TEST_TMPDIR/pa.pl"
+  printf "p(c).\n" > "$BATS_TEST_TMPDIR/pc.pl"
+  run "$TRILOG" -f -e "
+    consult('$BATS_TEST_TMPDIR/pa.pl'),
+    consult('$BATS_TEST_TMPDIR/pc.pl'),
+    findall(X, p(X), L).
+  "
+  [[ "$output" == *'L = "c"'* ]]
+}
+
+@test "a file that defines a library predicate replaces it (regression)" {
+  # regression: the file's clauses came after the library's, so append(X, Y, [a]) had 6 answers.
+  printf "append([], Zs, Zs).\nappend([X|Xs], Ys, [X|Zs]) :- append(Xs, Ys, Zs).\n" > "$BATS_TEST_TMPDIR/app.pl"
+  run "$TRILOG" -f -e "
+    consult('$BATS_TEST_TMPDIR/app.pl'),
+    findall(X-Y, append(X, Y, [a]), L),
+    length(L, N),
+    write(n(N)),
+    nl.
+  "
+  [[ "$output" == *"n(2)"* ]]
+  [[ "$output" == *"app.pl redefines append/3, which "*"lists.pl already defined"* ]]
+}
+
+@test "a file that defines a predicate another file defined warns once, and reconsulting it does not" {
+  printf "p(a).\n" > "$BATS_TEST_TMPDIR/pa.pl"
+  printf "p(b).\np(c).\n" > "$BATS_TEST_TMPDIR/pb.pl"
+  run "$TRILOG" -f -e "
+    consult('$BATS_TEST_TMPDIR/pa.pl'),
+    consult('$BATS_TEST_TMPDIR/pb.pl'),
+    consult('$BATS_TEST_TMPDIR/pb.pl').
+  "
+  [ "$(printf '%s\n' "$output" | grep -c '% Warning:')" -eq 1 ]
+  [[ "$output" == *"pb.pl redefines p/1, which "*"pa.pl already defined"* ]]
+}
+
+@test "a file with grammar rules keeps the rules other files gave (regression)" {
+  # regression: a file's --> rules replaced the uncompiled --> rules of the files loaded before it.
+  printf "ga --> \"a\".\n" > "$BATS_TEST_TMPDIR/ga.pl"
+  printf "gb --> \"b\".\n" > "$BATS_TEST_TMPDIR/gb.pl"
+  run "$TRILOG" -f -e "
+    use_module(library(dcgs)),
+    consult('$BATS_TEST_TMPDIR/ga.pl'),
+    consult('$BATS_TEST_TMPDIR/gb.pl'),
+    phrase(ga, \"a\"),
+    phrase(gb, \"b\"),
+    write(both),
+    nl.
+  "
+  [[ "$output" == *"both"* ]]
+  [[ "$output" != *"Warning:"* ]]
+}
+
+@test "a file cannot define a built-in predicate" {
+  printf "atom_length(q, r).\nkeep(yes).\n" > "$BATS_TEST_TMPDIR/bi.pl"
+  run "$TRILOG" -f -e "
+    consult('$BATS_TEST_TMPDIR/bi.pl'),
+    atom_length(abc, N),
+    keep(K),
+    write(r(N, K)),
+    nl.
+  "
+  [[ "$output" == *"error(permission_error(modify,static_procedure,atom_length/2),consult/1)"* ]]
+  [[ "$output" == *"r(3,yes)"* ]]
+}
+
+@test "multifile/1 keeps the clauses each file gives the predicate" {
+  printf ":- multifile(q/1).\nq(a).\n" > "$BATS_TEST_TMPDIR/qa.pl"
+  printf ":- multifile(q/1).\nq(b).\n" > "$BATS_TEST_TMPDIR/qb.pl"
+  run "$TRILOG" -f -e "
+    consult('$BATS_TEST_TMPDIR/qa.pl'),
+    consult('$BATS_TEST_TMPDIR/qb.pl'),
+    consult('$BATS_TEST_TMPDIR/qa.pl'),
+    findall(X, q(X), L).
+  "
+  [[ "$output" == *'L = "ba"'* ]]
+}
+
+@test "multifile/1 raises instantiation and type errors" {
+  run "$TRILOG" -f -e "
+    catch(multifile(_), error(E1, _), true),
+    catch(multifile(foo), error(E2, _), true),
+    catch(multifile(f/a), error(E3, _), true),
+    writeq(r(E1, E2, E3)),
+    nl.
+  "
+  [[ "$output" == *"r(instantiation_error,type_error(predicate_indicator,foo),type_error(integer,a))"* ]]
 }

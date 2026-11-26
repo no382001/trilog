@@ -1,6 +1,7 @@
 #include "mem.h"
 #include "ctx.h"
 #include "io.h"
+#include "solve.h"
 #include <setjmp.h>
 #include <stdint.h>
 
@@ -40,6 +41,7 @@ void mem_free(trilog_t *T, void *p) {
 }
 
 _Noreturn void engine_fatal(trilog_t *T, const char *msg) {
+  fatal_trace_fill(T);
   io_write_err(T, msg);
   longjmp(T->fatal_jmp, 1);
 }
@@ -59,11 +61,13 @@ size_t mem_grow_by(trilog_t *T, size_t n, unsigned percent) {
 }
 
 _Noreturn void engine_abort(trilog_t *T) {
+  fatal_trace_fill(T);
   T->aborted = true;
   longjmp(T->fatal_jmp, 1);
 }
 
 _Noreturn void engine_halt(trilog_t *T, int code) {
+  T->query_cn = NULL;
   T->halted = true;
   T->halt_code = code;
   longjmp(T->fatal_jmp, 1);

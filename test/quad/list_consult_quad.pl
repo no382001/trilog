@@ -1,3 +1,5 @@
+:- use_module(library(make)).
+
 % [file] shorthand for consult tests
 
 % --- [] as a goal succeeds ---

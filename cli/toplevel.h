@@ -11,3 +11,7 @@ trilog_status_t toplevel_query(trilog_t *t, const char *goal, bool interactive);
 trilog_status_t toplevel_repl(trilog_t *t);
 
 void toplevel_print_uncaught(trilog_t *t);
+
+// The key typed at an answer that starts the next query, or EOF; reading it
+// clears it.
+int toplevel_typed_ahead(void);

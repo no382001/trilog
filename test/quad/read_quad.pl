@@ -85,7 +85,7 @@ read_or_error(S, T) :- catch(read(S, T), error(E, _), T = error(E)).
    error(instantiation_error).
 
 ?- read(foo, T).
-   error(domain_error(stream_or_alias, foo)).
+   error(existence_error(stream, foo)).
 
 ?- read(user_output, T).
    error(permission_error(input, stream, user_output)).
@@ -109,10 +109,31 @@ read_or_error(S, T) :- catch(read(S, T), error(E, _), T = error(E)).
    error(instantiation_error).
 
 ?- set_input(foo).
-   error(domain_error(stream_or_alias, foo)).
+   error(existence_error(stream, foo)).
 
 ?- set_input(user_output).
    error(permission_error(input, stream, user_output)).
 
 ?- current_input(foo).
    error(domain_error(stream, foo)).
+
+% An infix operator that is also a prefix one, followed by (, is the infix
+% operator.
+?- atom_to_term('a:-(b:-c)', T, _), T = (_:-B).
+   T = (a:-(b:-c)), B = (b:-c).
+
+?- atom_to_term('a* -(1)', T, _), T = (_*B), compound(B).
+   T = a* - (1), B = - (1).
+
+% | is an infix operator only once op/3 declares it, as in Scryer.
+?- catch(atom_to_term('(a|b)', _, _), error(syntax_error(_), _), true).
+   true.
+
+?- op(1105, xfy, '|'), atom_to_term('(a;b|c)', T, _), T =.. L, op(0, xfy, '|').
+   T = '|'((a;b),c), L = ['|',(a;b),c].
+
+?- op(1105, xfy, '|'), atom_to_term('[(a|b)|c]', T, _), op(0, xfy, '|').
+   T = ['|'(a,b)|c].
+
+?- op(1105, xfy, '|'), atom_to_term('(a-->b,c|d)', _T, _), with_output_to(atom(A), (writeq(_T), write(' '), write_canonical('|'(a,b)))), op(0, xfy, '|').
+   A = 'a-->b,c|d \'|\'(a,b)'.

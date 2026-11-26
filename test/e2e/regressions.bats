@@ -91,7 +91,7 @@ load common
 
 @test "read_from_chars/2, read_term_from_chars/3, write_term_to_chars/3 exist (#20)" {
   run "$TRILOG" -f -e "
-    write_term_to_chars(f('A b', [x|y]), [quoted(true)], Cs),
+    use_module(library(charsio)), write_term_to_chars(f('A b', [x|y]), [quoted(true)], Cs),
     read_term_from_chars(Cs, T, []),
     read_from_chars(\"g(X, Y, X)\", G),
     read_term_from_chars(\"h(X, _)\", _, [variable_names(Ns), variables(Vs)]),

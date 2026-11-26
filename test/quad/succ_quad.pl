@@ -1,3 +1,5 @@
+:- use_module(library(between)).
+
 % Ported from https://git.liminal.cafe/byakuren/flowlog.git
 % tests/ulrich/succ_quad.pl
 

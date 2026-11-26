@@ -54,7 +54,7 @@
    error(instantiation_error).
 
 ?- put_char(foo, a).
-   error(domain_error(stream_or_alias, foo)).
+   error(existence_error(stream, foo)).
 
 ?- put_char(user_input, a).
    error(permission_error(output, stream, user_input)).
@@ -75,7 +75,7 @@
    error(instantiation_error).
 
 ?- flush_output(foo).
-   error(domain_error(stream_or_alias, foo)).
+   error(existence_error(stream, foo)).
 
 ?- close(user_output, foo).
    error(type_error(list, foo)).

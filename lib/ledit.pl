@@ -31,6 +31,7 @@
 
 %!  ledit is det.
 :- ensure_loaded(library(dcgs)).
+:- ensure_loaded(library(charsio)).
 
 ledit :-
     ed_new(S),

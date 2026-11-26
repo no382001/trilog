@@ -7,16 +7,31 @@
 :- use_module(pages).
 
 tree(Out) :-
+    nodes(Nodes),
+    text:emit(Out, "<pre>.\n"),
+    emit_nodes(Out, Nodes, []),
+    count(Nodes, 0, Dirs, 0, Files),
+    text:emit(Out, tree_footer(Dirs, Files)),
+    text:emit(Out, "<p>in the image, without their text:"),
+    forall(image_file(A), text:emit(Out, (" ", text:atom(A)))),
+    text:emit(Out, "</p>\n").
+
+nodes(Nodes) :-
     vfs_count(0, N),
     Last is N - 1,
     findall(Segs-A, (between(0, Last, I), vfs_file(I, A), path_segments(A, Segs)), Es),
     msort(Es, Sorted),
-    entries_nodes(Sorted, Nodes),
-    text:emit(Out, pages:title),
-    text:emit(Out, "<pre>.\n"),
-    emit_nodes(Out, Nodes, []),
-    count(Nodes, 0, Dirs, 0, Files),
-    text:emit(Out, tree_footer(Dirs, Files)).
+    entries_nodes(Sorted, Nodes).
+
+% A file whose clauses the image holds but whose text is not on the board.
+image_file(A) :-
+    (   '$boot_file'(P)
+    ;   '$consulted'(P, _)
+    ),
+    atom_concat('embedded:', A, P),
+    \+ vfs_has(A, 0).
+
+vfs_has(A, I) :- vfs_file(I, B), ( A == B -> true ; I1 is I + 1, vfs_has(A, I1) ).
 
 vfs_count(I, N) :-
     (   vfs_file(I, _)
@@ -33,7 +48,7 @@ path_segments(A, Segs) :-
 segments([S|Ss]) --> segment(S), "/", !, segments(Ss).
 segments([S]) --> segment(S).
 
-segment([C|Cs]) --> [C], { C \== '/' }, segment(Cs).
+segment([C|Cs]) --> [C], { C \== (/) }, segment(Cs).
 segment([]) --> [].
 
 entries_nodes([], []).

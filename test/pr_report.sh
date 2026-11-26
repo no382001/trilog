@@ -23,7 +23,7 @@ else
 fi
 echo
 printf '%s\n' "$verdicts"
-echo "<details><summary>Charts and per-file results</summary>"
+echo "<details><summary>Per-file results</summary>"
 echo
 for d in "$@"; do
   test/summarize_results.sh "$d" "${d##*test-results-}"

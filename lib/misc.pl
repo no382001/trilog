@@ -7,16 +7,26 @@
 forall(Cond, Action) :- \+ (Cond, \+ Action).
 
 %!  with_output_to(+Sink, :Goal) is semidet.
-%   Sink is atom(-A) or codes(-Cs).
-with_output_to(atom(A), Goal) :-
+%   Sink is atom(-A), codes(-Cs) or chars(-Cs). Codes and chars make no atom of
+%   the text, as atoms are never freed.
+with_output_to(Sink, Goal) :-
+    '$output_sink'(Sink, Kind),
+    '$output'(S, N),
     '$$capture_start',
+    '$set_output'(user_output, 0),
     % must pop the capture level even if Goal throws, or output stays silently swallowed after.
-    ( catch(call(Goal), Ball, ('$$capture_stop'(_), throw(Ball)))
-    -> '$$capture_stop'(A)
-    ;  '$$capture_stop'(_), fail
+    ( catch(call(Goal), Ball, ('$$capture_stop'(_), '$set_output'(S, N), throw(Ball)))
+    -> '$$capture_stop'(Kind, Text), '$set_output'(S, N), '$output_text'(Sink, Text)
+    ;  '$$capture_stop'(_), '$set_output'(S, N), fail
     ).
-with_output_to(codes(Cs), Goal) :- with_output_to(atom(A), Goal), '$$atom_codes'(A, Cs).
-with_output_to(chars(Cs), Goal) :- with_output_to(atom(A), Goal), atom_chars(A, Cs).
+
+'$output_sink'(atom(_), atom).
+'$output_sink'(codes(_), codes).
+'$output_sink'(chars(_), codes).
+
+'$output_text'(atom(A), A).
+'$output_text'(codes(Cs), Cs).
+'$output_text'(chars(Cs), Codes) :- '$codes_chars'(Codes, Cs).
 
 %!  numbervars(?Term, +Start, -End) is det.
 %   Binds each variable of Term to '$VAR'(N), N counting up from Start.

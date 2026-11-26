@@ -2,6 +2,7 @@
 #include "hardware/structs/sysinfo.h"
 #include "hardware/watchdog.h"
 #include "pico/stdlib.h"
+#include "terminal.h"
 #include "toplevel.h"
 #include "trilog.h"
 #include <malloc.h>
@@ -99,6 +100,96 @@ static bool sleep_for(trilog_t *t, void *ud, const trilog_value_t *in,
   return true;
 }
 
+// Survives a reset; the magic rejects power-on noise and old layouts.
+#define CRASH_MAGIC (0x7c4a5e00u ^ (uint32_t)sizeof(crash_t))
+
+typedef struct {
+  uint32_t magic, count;
+  char reason[24], running[48], trace[160];
+  uint32_t uptime_ms, pc, lr;
+  uint32_t malloc_in_use, live, peak, failed_request;
+  uint32_t heap_cells, heap_capacity, atoms, clauses;
+} crash_t;
+
+static crash_t last __attribute__((section(".uninitialized_data")));
+
+static void crash_record(const char *reason, const char *running,
+                         bool trace) {
+  uint32_t count = last.magic == CRASH_MAGIC ? last.count + 1 : 1;
+  struct mallinfo mi = mallinfo();
+  last = (crash_t){.magic = CRASH_MAGIC,
+                   .count = count,
+                   .uptime_ms = to_ms_since_boot(get_absolute_time()),
+                   .malloc_in_use = (uint32_t)mi.uordblks,
+                   .live = (uint32_t)live_bytes,
+                   .peak = (uint32_t)peak_bytes,
+                   .failed_request = (uint32_t)failed_request};
+  snprintf(last.reason, sizeof last.reason, "%s", reason);
+  snprintf(last.running, sizeof last.running, "%s", running);
+  if (T && trace)
+    snprintf(last.trace, sizeof last.trace, "%s", trilog_fatal_trace(T));
+  if (T) {
+    trilog_usage_t u;
+    trilog_usage(T, &u);
+    last.heap_cells = (uint32_t)u.heap_peak_cells;
+    last.heap_capacity = (uint32_t)u.heap_capacity_cells;
+    last.atoms = (uint32_t)u.atoms;
+    last.clauses = (uint32_t)u.clauses;
+  }
+}
+
+static const char *crash_text(void) {
+  static char text[600];
+  if (last.magic != CRASH_MAGIC)
+    return NULL;
+  last.reason[sizeof last.reason - 1] = '\0';
+  last.running[sizeof last.running - 1] = '\0';
+  last.trace[sizeof last.trace - 1] = '\0';
+  snprintf(text, sizeof text,
+           "crash %u: %s while running %s, %u ms after boot\n"
+           "in %s\n"
+           "pc 0x%08x, lr 0x%08x\n"
+           "malloc in use %u B, trilog live %u B, peak %u B, last failed "
+           "request %u B\n"
+           "prolog heap %u/%u cells at most, %u atoms, %u clauses\n",
+           (unsigned)last.count, last.reason, last.running,
+           (unsigned)last.uptime_ms, last.trace, (unsigned)last.pc,
+           (unsigned)last.lr,
+           (unsigned)last.malloc_in_use, (unsigned)last.live,
+           (unsigned)last.peak, (unsigned)last.failed_request,
+           (unsigned)last.heap_cells, (unsigned)last.heap_capacity,
+           (unsigned)last.atoms, (unsigned)last.clauses);
+  return text;
+}
+
+static bool last_crash(trilog_t *t, void *ud, const trilog_value_t *in,
+                       trilog_value_t *out) {
+  (void)t, (void)ud, (void)in;
+  out[0].a = crash_text();
+  return out[0].a != NULL;
+}
+
+__attribute__((used)) void hard_fault(uint32_t *frame) {
+  crash_record("hard fault", "", false);
+  last.lr = frame[5];
+  last.pc = frame[6];
+  watchdog_reboot(0, 0, 0);
+  for (;;)
+    tight_loop_contents();
+}
+
+__attribute__((naked)) void isr_hardfault(void) {
+  __asm volatile("movs r0, #4\n"
+                 "mov r1, lr\n"
+                 "tst r0, r1\n"
+                 "beq 1f\n"
+                 "mrs r0, psp\n"
+                 "b 2f\n"
+                 "1: mrs r0, msp\n"
+                 "2: ldr r1, =hard_fault\n"
+                 "bx r1\n");
+}
+
 static bool reboot(trilog_t *t, void *ud, const trilog_value_t *in,
                    trilog_value_t *out) {
   (void)t, (void)ud, (void)in, (void)out;
@@ -169,6 +260,34 @@ static bool crashed(trilog_status_t s) {
           trilog_term_type(T, trilog_error_term(T)) == TRILOG_INVALID);
 }
 
+// The Prolog toplevel does not fit in the board's RAM.
+static void repl(void) {
+  static char line[512];
+  printf("trilog %s\n", trilog_version());
+  const char *crash = crash_text();
+  if (crash)
+    printf("last %s", crash);
+  for (;;) {
+    fputs("?- ", stdout);
+    size_t n = 0;
+    int key = toplevel_typed_ahead();
+    if (key != EOF) {
+      line[n++] = (char)key;
+      putchar(key);
+    }
+    fflush(stdout);
+    if (!terminal_read_line(line + n, sizeof line - n))
+      return;
+    const char *p = line;
+    while (*p == ' ' || *p == '\t')
+      p++;
+    trilog_status_t s = *p ? toplevel_query(T, line, true) : TRILOG_TRUE;
+    if (crashed(s))
+      crash_record(s == TRILOG_ABORTED ? "aborted" : "out of memory", line,
+                   true);
+  }
+}
+
 int main(void) {
   paint_stack();
   stdio_init_all();
@@ -193,14 +312,18 @@ int main(void) {
   trilog_register(T, "memory_usage", ">iiiii", memory_usage, NULL);
   trilog_register(T, "prolog_usage", ">iiiiii", prolog_usage, NULL);
   trilog_register(T, "flash_usage", ">ii", flash_usage, NULL);
+  trilog_register(T, "last_crash", ">a", last_crash, NULL);
   wifi_register(T);
   tcp_register(T);
   vfs_register(T);
   mail_register(T);
   trilog_set_io(T, &board_io);
 
-  trilog_status_t s = toplevel_query(T, "main", false);
+  const char *running = "main";
+  trilog_status_t s = toplevel_query(T, running, false);
   for (int idle = 0; crashed(s);) {
+    crash_record(s == TRILOG_ABORTED ? "aborted" : "out of memory", running,
+                 true);
     tcp_fail_all(s == TRILOG_ABORTED ? "aborted" : "out of memory");
     trilog_close_streams(T);
     tcp_drop_all();
@@ -216,10 +339,11 @@ int main(void) {
                   : "A request ran trilog out of memory. The server was "
                     "restarted.\n");
     unsigned before = tcp_accept_count();
-    s = toplevel_query(T, "serve(80)", false);
+    running = "serve(80)";
+    s = toplevel_query(T, running, false);
     if (tcp_accept_count() != before)
       idle = 0;
   }
   for (;;)
-    toplevel_repl(T);
+    repl();
 }

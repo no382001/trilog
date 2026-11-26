@@ -12,7 +12,7 @@ API_TEST_BINS = $(API_TESTS:%=_build/%)
 $(API_TEST_BINS): _build/%: $(DEV)/test/api/%.o $(DEV)/libtrilog.a
 	$(CC) $(CFLAGS) $(if $(findstring threads,$*),-pthread) -o $@ $^ -lm
 
-.PHONY: known-failures test test-api api-junit quad quad-junit syscheck-junit conformity conformity-junit
+.PHONY: check known-failures test test-api api-junit quad quad-junit syscheck-junit conformity conformity-junit logtalk logtalk-junit logtalk-files
 test: trilog test-api
 	bats test/e2e/
 
@@ -31,6 +31,16 @@ api-junit: $(API_TEST_BINS) examples/embed
 	@mkdir -p $(RESULTS)
 	test/api/tap.sh examples/embed $(API_TEST_BINS) | awk -v suite=api -v file=test/api -f test/tap2junit.awk >$(RESULTS)/api.xml
 
+# What CI runs: every suite into RESULTS, then fails on a failure that is not
+# in test/known_failures.txt.
+# The API and Logtalk tests need the POSIX platform, as in CI.
+TRILOG_PLATFORM ?= posix
+
+check: trilog
+	rm -rf $(RESULTS)
+	$(MAKE) quad-junit syscheck-junit conformity-junit $(if $(filter posix,$(TRILOG_PLATFORM)),api-junit logtalk-junit)
+	test/regressions.py $(RESULTS)
+
 # Run every suite into RESULTS first.
 known-failures:
 	test/regressions.py --update $(RESULTS)
@@ -47,18 +57,31 @@ QUAD_TIMEOUT := 60
 # Hard cap in KB (1GB) via `ulimit -v`
 QUAD_MEM_LIMIT_KB := 1048576
 
+QUAD_FILES = test/quad/*_quad.pl
+
 quad: trilog
-	@for f in test/quad/*_quad.pl; do \
+	@for f in $(QUAD_FILES); do \
 		[ -f "$$f" ] || continue; \
 		( ulimit -v $(QUAD_MEM_LIMIT_KB); timeout $(QUAD_TIMEOUT) $(TRILOG) -e "consult('lib/quad.pl'), quad_cli('$$f')" ) || true; \
 	done
+
+# The quad files read and write their test files in _build/logtalk/.
+logtalk-files:
+	@mkdir -p _build/logtalk
+	@cp -R test/logtalk/files/. _build/logtalk/
+
+logtalk: trilog logtalk-files
+	@$(MAKE) --no-print-directory quad QUAD_FILES='test/logtalk/*_quad.pl'
+
+logtalk-junit: trilog logtalk-files
+	@$(MAKE) --no-print-directory quad-junit QUAD_FILES='test/logtalk/*_quad.pl'
 
 QUAD_MAX_RESUME_ATTEMPTS := 20
 
 # Crash-resume: relaunches with an incremented Skip after every crash, reusing the same checkpoint files.
 quad-junit: trilog
 	@mkdir -p $(RESULTS)
-	@for f in test/quad/*_quad.pl; do \
+	@for f in $(QUAD_FILES); do \
 		[ -f "$$f" ] || continue; \
 		suite=$$(basename "$$f" .pl); \
 		skip=0; \

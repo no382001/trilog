@@ -1,0 +1,79 @@
+Logtalk <https://logtalk.org/>
+Copyright 1998-2026 Paulo Moura <pmoura@logtalk.org>
+Licensed under the Apache License 2.0
+
+The Logtalk distribution includes contributed third-party software
+and Logtalk ports of third-party software:
+
+- coding/textadept
+	Copyright 2006-2019 Mitchell (`prolog.lua`)
+	Copyright 2017-2019 Michael T. Richter (`logtalk.lua`)
+	Licensed under the MIT License
+
+- contributions/flags
+	Copyright 2010 Katholieke Universiteit Leuven
+	Licensed under the Artistic License 2.0
+
+- contributions/iso8601
+	Copyright 2004-2005 Daniel L. Dudley
+	Licensed under the Apache License 2.0
+
+- contributions/pddl_parser
+	Copyright 2011 Robert Sasak
+	Licensed under the Artistic License 2.0
+
+- contributions/verdi_neruda
+	Copyright 2010 Victor Lagerkvist
+	Licensed under the BSD license
+
+- contributions/xml_parser
+	Copyright 2001-2005 Binding Time Limited
+	Copyright 2005-2013 John Fletcher
+	Licensed under its own permissive license
+	(see the file contributions/xml_parser/LICENSE.txt for details)
+
+- docs/_static
+	Copyright (c) 2013-2018 Dave Snider, Read the Docs, Inc. & contributors
+	Licensed under the MIT License
+
+- examples/adventure/nani_search.lgt
+	Copyright (C) Amzi! inc. 1990-2010
+	No rights reserved, use it as you wish
+
+- examples/edcgs
+	Copyright (c) 1992 Peter Van Roy
+	Copyright (c) 2015 Michael Hendricks
+	Licensed under the MIT License
+
+- library/dictionaries/avltree.lgt
+	Copyright 2004-2018 various people and institutions
+	Licensed under the BSD 2-Clause License
+
+- library/edcg/edcg.lgt
+	Copyright (c) 1992 Peter Van Roy
+	Licensed under the MIT License
+
+- library/dictionaries/rbtree.lgt
+	Copyright 2010 Vitor Santos Costa
+	Licensed under the Apache License 2.0
+
+- library/stop_words/stopwords_*.lgt and source data
+	Copyright (c) 2016 Gene Diaz
+	Licensed under the MIT License
+	(see the files library/stop_words/scripts/sources/stopwords-*/LICENSE for details)
+
+- manuals/_static
+	Copyright (c) 2013-2018 Dave Snider, Read the Docs, Inc. & contributors
+	Licensed under the MIT License
+
+- ports/fcube
+	Copyright Copright 2012 Mauro Ferrari, Camillo Fiorentini, Guido Fiorino
+	Licensed under the GNU GPL 2 License
+
+- ports/metagol
+	Copyright 2016 Metagol authors
+	Licensed under the BSD-3-Clause License
+
+- ports/toychr
+	Copyright 2004 Gregory J. Duck
+	Licensed under the GNU GPL 2 License

@@ -3,12 +3,15 @@
 :- meta_predicate([phrase('//', ?), phrase('//', ?, ?)]).
 
 :- op(1200, xfx, '-->').
+:- op(1105, xfy, '|').
 :- dynamic('$dcg_compiled'/2).
+:- multifile(('-->')/2).
 
 dcg_constr([]).
 dcg_constr([_|_]).
 dcg_constr((_, _)).
 dcg_constr((_ ; _)).
+dcg_constr('|'(_, _)).
 dcg_constr((_ -> _)).
 dcg_constr({_}).
 dcg_constr(!).
@@ -45,6 +48,7 @@ dcg_cbody((A ; B), S0, S, (AT ; BT)) :-
     !,
     dcg_body(A, S0, S, AT),
     dcg_body(B, S0, S, BT).
+dcg_cbody('|'(A, B), S0, S, Goal) :- !, dcg_cbody((A ; B), S0, S, Goal).
 dcg_cbody((A -> B), S0, S, (AT -> BT)) :-
     !,
     dcg_body(A, S0, S1, AT),

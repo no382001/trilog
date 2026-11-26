@@ -5,7 +5,7 @@
 
 typedef struct {
   void *handle;
-  bool output;
+  bool output, binary;
   size_t pos, len;
   char buf[512];
 } io_reader_t;
@@ -17,6 +17,7 @@ void io_write_err(trilog_t *T, const char *str);
 void io_flush_target(trilog_t *T, void *handle);
 int io_read_char(trilog_t *T);
 int io_peek_char(trilog_t *T);
+int io_peek_at(trilog_t *T, int i);
 char *io_read_line(trilog_t *T, char *buf, int size);
 void *io_file_open(trilog_t *T, const char *path, const char *mode);
 // The current directory of the file system the I/O hooks open from; false
@@ -27,4 +28,5 @@ bool io_file_write(trilog_t *T, void *handle, const char *str);
 long io_file_read(trilog_t *T, void *handle, char *buf, size_t n);
 // The next byte, or -1 at end of file; peek leaves it unread.
 int io_reader_byte(trilog_t *T, io_reader_t *r, bool peek);
+int io_reader_peek_at(trilog_t *T, io_reader_t *r, int i);
 char *io_reader_line(trilog_t *T, io_reader_t *r, char *buf, int size);

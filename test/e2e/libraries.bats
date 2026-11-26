@@ -20,6 +20,7 @@ load common
   run "$TRILOG" -f -e "
     use_module(library(apply)),
     use_module(library(apply)),
+    use_module(library(between)),
     maplist(succ, [1, 2], L),
     write(L),
     nl.
@@ -59,8 +60,8 @@ load common
   [[ "$output" == *"n(2)"* ]]
 }
 
-@test "-n boots the core and the libraries it uses, lists and apply, but not DCGs" {
-  run "$TRILOG" -f -n -e "
+@test "the CLI boots the core and the libraries it uses, lists and apply, but not DCGs" {
+  run "$TRILOG" -f -e "
     append([1], [2], L),
     ( maplist(atom, [a]) -> M = maplist ; M = none ),
     catch(phrase(x, []), error(E3, _), true),
@@ -70,9 +71,9 @@ load common
   [[ "$output" == *"r([1,2],maplist,existence_error(procedure,phrase/2))"* ]]
 }
 
-@test "with -n, libraries load on request and DCG files parse after library(dcgs)" {
+@test "libraries load on request, and DCG files parse after library(dcgs)" {
   printf ':- ensure_loaded(library(dcgs)).\ngreeting --> [hello], name.\nname --> [world].\n' > "$BATS_TEST_TMPDIR/g.pl"
-  run "$TRILOG" -f -n -e "
+  run "$TRILOG" -f -e "
     ensure_loaded(library(apply)),
     maplist(atom, [a, b]),
     append([1], [2], L),
@@ -84,8 +85,9 @@ load common
   [[ "$output" == *"r([1,2],parsed)"* ]]
 }
 
-@test "the CLI loads lists, apply and dcgs by default" {
+@test "the CLI loads lists and apply, which the core uses, and not dcgs" {
   run "$TRILOG" -f -e "
+    use_module(library(make)),
     append([a], [b], L),
     maplist(atom, L),
     consulted(Fs),
@@ -94,11 +96,11 @@ load common
     writeq(S),
     nl.
   "
-  [[ "$output" == *"['apply.pl','dcgs.pl','lists.pl']"* ]]
+  [[ "$output" == *"['apply.pl','lists.pl']"* ]]
 }
 
-@test "-n keeps error and misc, which the core uses, but not between, charsio or make" {
-  run "$TRILOG" -f -n -e "
+@test "the CLI keeps error and misc, which the core uses, but not between, charsio or make" {
+  run "$TRILOG" -f -e "
     must_be(integer, 3),
     forall(true, true),
     findall(P, ( member(P, [between/3, succ/2, plus/3, read_term_from_chars/3, write_term_to_chars/3, consulted/1, make/0]),
@@ -111,22 +113,9 @@ load common
   [[ "$output" == *"present([])"* ]]
 }
 
-@test "the CLI loads between, charsio and make by default" {
-  run "$TRILOG" -f -e "
-    between(1, 3, X),
-    X =:= 3,
-    succ(1, S),
-    read_term_from_chars([f, '(', x, ')'], T, []),
-    consulted(Fs),
-    is_list(Fs),
-    writeq(r(S, T)),
-    nl.
-  "
-  [[ "$output" == *"r(2,f(x))"* ]]
-}
-
 @test "unconsult(library(Name)) unloads a library, and ensure_loaded/1 loads it again" {
   run "$TRILOG" -f -e "
+    use_module(library(make)),
     unconsult(library(apply)),
     catch(maplist(atom, [a]), error(E, _), true),
     ensure_loaded(library(apply)),
@@ -137,16 +126,16 @@ load common
   [[ "$output" == *"r(existence_error(procedure,maplist/2))"* ]]
 }
 
-@test "each library loads what it uses, so it works without the CLI's defaults (-n) (regression)" {
+@test "each library loads what it uses, so it works on the core alone (regression)" {
   for f in lib/*.pl; do
-    run "$TRILOG" -n -f -e "consult('$f'), halt."
+    run "$TRILOG" -f -e "consult('$f'), halt."
     [ -z "$output" ] || { echo "$f: $output"; false; }
   done
-  run "$TRILOG" -n -f -e "max_member(M, [1, 3, 2]), min_member(N, [2, 1, 3])."
+  run "$TRILOG" -f -e "max_member(M, [1, 3, 2]), min_member(N, [2, 1, 3])."
   [[ "$output" == *"M = 3, N = 1"* ]]
-  run "$TRILOG" -n -f -e "consult('lib/ledit.pl'), ed_new(S0), ed_session([\"a\", \"foo\", \".\"], S0, S), ed_lines(S, L)."
+  run "$TRILOG" -f -e "consult('lib/ledit.pl'), ed_new(S0), ed_session([\"a\", \"foo\", \".\"], S0, S), ed_lines(S, L)."
   [[ "$output" == *'L = ["foo"]'* ]]
-  run "$TRILOG" -n -f -e "consult('lib/quad.pl'), quad_cli('test/quad/cuts_quad.pl')."
+  run "$TRILOG" -f -e "consult('lib/quad.pl'), quad_cli('test/quad/cuts_quad.pl')."
   [[ "$output" != *"existence_error"* ]]
   [[ "$output" == *"2 passed"* ]]
 }

@@ -1,11 +1,12 @@
 #!/bin/sh
 # usage: test/perf/run.sh [TRILOG]   (default: _build/trilog, a release build)
-# FLAGS (default -f -n) is passed before each program; -n loads only the core.
+# FLAGS (default -f) is passed before each program; -f skips ~/.trilog. Builds
+# before the CLI stopped loading libraries need FLAGS="-f -n" for the same start.
 # One Markdown table row per workload: the median task-clock, user-space
 # instructions and peak RSS over the runs. Needs perf and a C compiler.
 set -eu
 T=${1:-_build/trilog}
-F=${FLAGS:--f -n}
+F=${FLAGS:--f}
 D=$(dirname "$0")
 P=_build/perf-peak
 mkdir -p _build
@@ -19,8 +20,10 @@ bench() {
   out=$(mktemp)
   i=0
   while [ "$i" -lt "$runs" ]; do
+    # Not inside the pipeline: that would run it beside the timed run.
+    kb=$("$P" "$@")
     perf stat -x, -e task-clock,instructions:u "$@" 2>&1 >/dev/null |
-      awk -F, -v kb="$("$P" "$@")" '/task-clock/ { ms = $1 } /instructions/ { ins = $1 } END { print ms, ins, kb }' >>"$out"
+      awk -F, -v kb="$kb" '/task-clock/ { ms = $1 } /instructions/ { ins = $1 } END { print ms, ins, kb }' >>"$out"
     i=$((i + 1))
   done
   ms=$(cut -d' ' -f1 "$out" | median)
@@ -36,3 +39,4 @@ bench "naive reverse, 300 elements" 7 "$T" $F "$D/nrev.pl" -e main
 bench "8 queens, all solutions" 7 "$T" $F "$D/queens.pl" -e main
 bench "fib(21)" 7 "$T" $F "$D/fib.pl" -e main
 bench "build 20,000 atoms" 7 "$T" $F "$D/atoms.pl" -e main
+bench "conformity table, every entry" 7 "$T" $F "$D/conformity.pl" -e main

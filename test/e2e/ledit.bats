@@ -92,7 +92,7 @@ teardown() {
   posix_only
   printf "pet(cat).\npet(dog).\n" > /tmp/trilog_ledit_make.pl
   touch -t 202001010000 /tmp/trilog_ledit_make.pl
-  result=$(printf "consult('/tmp/trilog_ledit_make.pl').\nconsult('lib/ledit.pl').\nledit('/tmp/trilog_ledit_make.pl').\nw\na\npet(fish).\n.\nw\ns /tmp/trilog_ledit_make.pl\nq\nmake.\nfindall(X, pet(X), L), write(L).\n" \
+  result=$(printf "consult('/tmp/trilog_ledit_make.pl').\nconsult('lib/ledit.pl').\nledit('/tmp/trilog_ledit_make.pl').\nw\na\npet(fish).\n.\nw\ns /tmp/trilog_ledit_make.pl\nq\nuse_module(library(make)), make.\nfindall(X, pet(X), L), write(L).\n" \
     | timeout 5 "$TRILOG" 2>&1 | tail -1)
   [[ "$result" == *"[cat,dog,fish]"* ]]
 }
@@ -101,7 +101,7 @@ teardown() {
   posix_only
   printf "color(red).\ncolor(green).\ncolor(blue).\n" > /tmp/trilog_ledit_make.pl
   touch -t 202001010000 /tmp/trilog_ledit_make.pl
-  result=$(printf "consult('/tmp/trilog_ledit_make.pl').\nconsult('lib/ledit.pl').\nledit('/tmp/trilog_ledit_make.pl').\nf\nd\ns /tmp/trilog_ledit_make.pl\nq\nmake.\nfindall(X, color(X), L), write(L).\n" \
+  result=$(printf "consult('/tmp/trilog_ledit_make.pl').\nconsult('lib/ledit.pl').\nledit('/tmp/trilog_ledit_make.pl').\nf\nd\ns /tmp/trilog_ledit_make.pl\nq\nuse_module(library(make)), make.\nfindall(X, color(X), L), write(L).\n" \
     | timeout 5 "$TRILOG" 2>&1 | tail -1)
   [[ "$result" == *"[green,blue]"* ]]
 }

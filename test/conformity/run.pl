@@ -21,16 +21,19 @@ conformity(Setup, AnswerFile) :-
     ),
     halt.
 
-goals(S, Outcome) :- goals(S, true([]), Outcome).
+goals(S, Outcome) :- goals(S, none, Outcome).
 
 % A goal that fails or throws does not end the entry: earlier ones set up ops.
+% Text left incomplete after a goal ran waits for more without changing the
+% answer the goal gave.
 
 goals(S, Last, Outcome) :-
     catch(read_term(S, G, [variable_names(Names)]), error(E, _), true),
     (   nonvar(E)
-    ->  read_error(E, Outcome)
+    ->  read_error(E, O0),
+        ( O0 == waits, Last \== none -> Outcome = Last ; Outcome = O0 )
     ;   G == end_of_file
-    ->  Outcome = Last
+    ->  ( Last == none -> Outcome = true([]) ; Outcome = Last )
     ;   catch(( call(G) -> R = true(Names) ; R = false ), Ball, R = thrown(Ball)),
         (   R = thrown(error(Formal, _)) -> O = error(Formal)
         ;   R = thrown(Other) -> O = error(Other)
@@ -79,7 +82,17 @@ judge(A, Out, true(Names)) :-
     ->  atom_chars(Text, Out),
         bindings_match(Exp, Names)
     ;   atom_chars(A, Out)
+    ->  true
+    ;   same_float(A, Out)
     ).
+
+% Float text that reads back as the same float is the same answer: the table
+% writes 1.0e+100 where Scryer and trilog write 1.0e100.
+same_float(A, Out) :-
+    catch(( atom_chars(A, Cs), number_chars(X, Cs), number_chars(Y, Out) ),
+          _, fail),
+    float(X),
+    X == Y.
 
 error_answer('repr. err.', representation_error(_)) :- !.
 error_answer('rep._e.', representation_error(_)) :- !.
